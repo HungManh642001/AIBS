@@ -1,9 +1,10 @@
-"""Trích xuất văn bản từ PDF (text/scan). OCR bằng Tesseract (vie+eng)."""
+"""Trích xuất văn bản từ PDF (text/scan) và Excel. OCR bằng Tesseract (vie+eng)."""
 from __future__ import annotations
-from typing import TypedDict
+from typing import Any, TypedDict
 import io
 
 import fitz  # PyMuPDF
+from openpyxl import load_workbook
 
 
 class PageText(TypedDict):
@@ -37,9 +38,32 @@ def ocr_pdf(data: bytes) -> list[PageText]:
     return out
 
 
+class SheetData(TypedDict):
+    sheet: str
+    rows: list[list[Any]]
+
+
+def parse_excel(data: bytes) -> list[SheetData]:
+    wb = load_workbook(io.BytesIO(data), data_only=True)
+    out: list[SheetData] = []
+    for ws in wb.worksheets:
+        rows = [list(r) for r in ws.iter_rows(values_only=True)]
+        out.append({"sheet": ws.title, "rows": rows})
+    return out
+
+
 def extract_document(data: bytes, file_kind: str) -> list[PageText]:
     if file_kind == "pdf_scan":
         return ocr_pdf(data)
     if file_kind == "pdf_text":
         return extract_pdf(data)
-    raise ValueError(f"file_kind không hỗ trợ ở đây: {file_kind}")
+    if file_kind == "excel":
+        pages: list[PageText] = []
+        for i, sheet in enumerate(parse_excel(data)):
+            text = "\n".join(
+                "\t".join("" if c is None else str(c) for c in row)
+                for row in sheet["rows"]
+            )
+            pages.append({"page": i + 1, "text": f"[{sheet['sheet']}]\n{text}"})
+        return pages
+    raise ValueError(f"file_kind không hỗ trợ: {file_kind}")
