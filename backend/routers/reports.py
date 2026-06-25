@@ -61,7 +61,7 @@ def _rebuild_evals(
                 if ky_thuat
                 else 0.0
             ),
-            "passed_legality": all(
+            "passed_legality": bool(groups["hop_le"] + groups["nang_luc"]) and all(
                 x["result"] != "FAIL"
                 for x in groups["hop_le"] + groups["nang_luc"]
             ),
@@ -80,6 +80,9 @@ async def generate_report(
     pkg = db.get(models.ProcurementPackage, package_id)
     if not pkg:
         return fail("Không tìm thấy gói thầu", 404)
+
+    if loai not in ("word", "excel"):
+        return fail("loai phải là 'word' hoặc 'excel'", 422)
 
     vendor_names, evals = _rebuild_evals(pkg, db)
 

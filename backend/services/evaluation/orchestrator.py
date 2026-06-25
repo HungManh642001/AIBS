@@ -40,7 +40,8 @@ async def evaluate_vendor(
     capacity = await evaluate_capacity(criteria, hsdt_pages)
     technical = await evaluate_technical(criteria, hsdt_pages)
     financial = recalc_price_table(extract_price_rows(price_pages))
-    passed = all(r["result"] != "FAIL" for r in legality + capacity)
+    legality_items = legality + capacity
+    passed = bool(legality_items) and all(r["result"] != "FAIL" for r in legality_items)
     return VendorEvaluation(
         legality=legality, capacity=capacity, technical=technical,
         financial=financial, technical_score=_weighted(technical, criteria),
