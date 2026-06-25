@@ -1,7 +1,8 @@
 """ORM entities theo PRD §8."""
 from __future__ import annotations
 from datetime import datetime, timezone
-from sqlalchemy import String, Integer, Float, DateTime, ForeignKey, Text, JSON
+from typing import Any
+from sqlalchemy import String, Float, DateTime, ForeignKey, Text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -69,7 +70,7 @@ class EvaluationResult(Base):
     ket_qua: Mapped[str] = mapped_column(String(16), default="PARTIAL")  # PASS|FAIL|PARTIAL
     diem_so: Mapped[float] = mapped_column(Float, default=0.0)
     dan_chung: Mapped[str] = mapped_column(Text, default="")
-    so_trang: Mapped[list] = mapped_column(JSON, default=list)
+    so_trang: Mapped[list[int]] = mapped_column(JSON, default=list)
     ghi_chu: Mapped[str] = mapped_column(Text, default="")
     ai_model: Mapped[str] = mapped_column(String(64), default="")
     overridden: Mapped[bool] = mapped_column(default=False)
@@ -81,7 +82,7 @@ class EvaluationSession(Base):
     package_id: Mapped[int] = mapped_column(ForeignKey("procurement_package.id"))
     trang_thai: Mapped[str] = mapped_column(String(32), default="dang_xu_ly")
     ngay_bat_dau: Mapped[datetime] = mapped_column(DateTime, default=_now)
-    ket_qua_tong_hop: Mapped[dict] = mapped_column(JSON, default=dict)
+    ket_qua_tong_hop: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
 class Report(Base):
