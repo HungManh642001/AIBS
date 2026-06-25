@@ -1,0 +1,24 @@
+"""ABES demo — FastAPI app factory."""
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from responses import ok
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="ABES Demo", version="0.1.0")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    @app.get("/api/v1/health")
+    async def health() -> dict:
+        return ok({"status": "up"})
+
+    return app
+
+
+app = create_app()
