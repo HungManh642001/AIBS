@@ -18,12 +18,15 @@ router = APIRouter(prefix="/api/v1", tags=["reports"])
 
 
 def _rebuild_evals(
-    pkg: models.ProcurementPackage, db: Session
+    pkg: models.ProcurementPackage, db: Session,
+    financials: dict[str, dict] | None = None,
 ) -> tuple[dict[int, str], dict[int, dict]]:
     """Tái tạo dicts VendorEvaluation từ EvaluationResult trong DB."""
     criteria = {c.id: c for c in pkg.criteria}
     vendor_names: dict[int, str] = {v.id: v.ten for v in pkg.vendors}
     evals: dict[int, dict] = {}
+    if financials is None:
+        financials = {}
 
     for v in pkg.vendors:
         rows = db.scalars(
@@ -46,15 +49,18 @@ def _rebuild_evals(
                 "ai_model": r.ai_model,
             })
         ky_thuat = groups["ky_thuat"]
+        fin = financials.get(str(v.id), {})
+        price = Decimal(str(fin.get("evaluated_price", 0)))
+        so_loi = int(fin.get("so_loi", 0))
         evals[v.id] = {
             "legality": groups["hop_le"],
             "capacity": groups["nang_luc"],
             "technical": ky_thuat,
             "financial": {
                 "corrected_rows": [],
-                "errors": [],
-                "tong_gia": Decimal("0"),
-                "evaluated_price": Decimal("0"),
+                "errors": [{}] * so_loi,
+                "tong_gia": price,
+                "evaluated_price": price,
             },
             "technical_score": (
                 sum(x["score"] for x in ky_thuat) / len(ky_thuat)
@@ -84,9 +90,7 @@ async def generate_report(
     if loai not in ("word", "excel"):
         return fail("loai phải là 'word' hoặc 'excel'", 422)
 
-    vendor_names, evals = _rebuild_evals(pkg, db)
-
-    # Lấy session đánh giá mới nhất để lấy ranking
+    # Lấy session đánh giá mới nhất để lấy ranking và financials
     session = db.scalars(
         select(models.EvaluationSession)
         .where(models.EvaluationSession.package_id == package_id)
@@ -95,6 +99,11 @@ async def generate_report(
     ranking_raw: list[dict] = (
         session.ket_qua_tong_hop.get("ranking", []) if session else []
     )
+    financials_map: dict[str, dict] = (
+        session.ket_qua_tong_hop.get("financials", {}) if session else {}
+    )
+
+    vendor_names, evals = _rebuild_evals(pkg, db, financials_map)
     # Chuyển evaluated_price từ float JSON về Decimal để report builders dùng
     ranking = [
         {**r, "evaluated_price": Decimal(str(r["evaluated_price"]))}

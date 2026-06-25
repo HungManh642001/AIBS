@@ -105,11 +105,20 @@ async def evaluate(package_id: int, db: Session = Depends(get_db)):
         {**r, "evaluated_price": float(r["evaluated_price"])} for r in ranking
     ]
 
+    # Lưu thông tin tài chính từng nhà thầu để report dùng lại
+    financials_json = {
+        str(vid): {
+            "evaluated_price": float(ev["financial"]["evaluated_price"]),
+            "so_loi": len(ev["financial"]["errors"]),
+        }
+        for vid, ev in evals.items()
+    }
+
     # Tạo phiên đánh giá
     session = models.EvaluationSession(
         package_id=package_id,
         trang_thai="cho_review",
-        ket_qua_tong_hop={"ranking": ranking_json},
+        ket_qua_tong_hop={"ranking": ranking_json, "financials": financials_json},
     )
     pkg.trang_thai = "cho_review"
     db.add(session)
