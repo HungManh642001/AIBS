@@ -42,15 +42,20 @@ export default function Evaluation() {
   }, [data]);
 
   const saveOverride = async () => {
+    if (!editing) return;
     const v = await form.validateFields();
-    await api.put(`/evaluation/${editing!.id}/override`, v);
+    await api.put(`/evaluation/${editing.id}/override`, v);
     message.success("Đã ghi nhận override"); setEditing(null); load();
   };
 
   const genReport = async (loai: "word" | "excel") => {
-    const res = unwrap<{ report_id: number }>(
-      await api.post(`/packages/${id}/reports?loai=${loai}`));
-    window.open(`http://localhost:8000/api/v1/reports/${res.report_id}/download`, "_blank");
+    try {
+      const res = unwrap<{ report_id: number }>(
+        await api.post(`/packages/${id}/reports?loai=${loai}`));
+      window.open(`http://localhost:8000/api/v1/reports/${res.report_id}/download`, "_blank");
+    } catch (e: any) {
+      message.error(e.message);
+    }
   };
 
   if (!data) return null;
