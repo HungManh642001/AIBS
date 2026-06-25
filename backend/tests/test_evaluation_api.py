@@ -41,3 +41,20 @@ def test_evaluate_then_results_and_override(client, monkeypatch):
     ov = client.put(f"/api/v1/evaluation/{result_id}/override",
                     json={"ket_qua": "FAIL", "ghi_chu": "Chuyên gia bác bỏ"})
     assert ov.json()["data"]["overridden"] is True
+
+
+def test_re_evaluate_is_idempotent(client, monkeypatch):
+    """Re-evaluate không được tích lũy kết quả orphan từ lần chạy trước."""
+    package_id, vendor_id = _setup(client, monkeypatch)
+    # Lần đánh giá thứ nhất
+    client.post(f"/api/v1/packages/{package_id}/evaluate")
+    first = client.get(f"/api/v1/packages/{package_id}/results").json()["data"]
+    first_count = sum(len(v["results"]) for v in first["vendors"])
+    # Lần đánh giá thứ hai — kết quả cũ phải bị xóa trước
+    client.post(f"/api/v1/packages/{package_id}/evaluate")
+    second = client.get(f"/api/v1/packages/{package_id}/results").json()["data"]
+    second_count = sum(len(v["results"]) for v in second["vendors"])
+    assert first_count > 0, "Phải có ít nhất một kết quả sau lần đánh giá đầu"
+    assert second_count == first_count, (
+        f"Re-evaluate sinh orphan rows: first={first_count}, second={second_count}"
+    )

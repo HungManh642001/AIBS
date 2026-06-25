@@ -40,6 +40,13 @@ async def evaluate(package_id: int, db: Session = Depends(get_db)):
     # Trích xuất tiêu chí từ HSMT
     criteria_dicts = await extract_criteria(_pages(hsmt))
 
+    # Xóa kết quả đánh giá cũ của tiêu chí cũ TRƯỚC khi xóa tiêu chí
+    old_crit_ids = [c.id for c in pkg.criteria]
+    if old_crit_ids:
+        db.query(models.EvaluationResult).filter(
+            models.EvaluationResult.criteria_id.in_(old_crit_ids)
+        ).delete(synchronize_session=False)
+
     # Xóa tiêu chí cũ, tạo lại từ kết quả AI
     db.query(models.EvaluationCriteria).filter_by(package_id=package_id).delete()
     crit_rows: list[models.EvaluationCriteria] = []
@@ -58,14 +65,8 @@ async def evaluate(package_id: int, db: Session = Depends(get_db)):
     for row in crit_rows:
         db.refresh(row)
 
-    # Map tên tiêu chí -> id để lưu kết quả
-    crit_by_name: dict[str, int] = {r.ten: r.id for r in crit_rows}
-
-    # Xóa kết quả đánh giá cũ liên quan đến các tiêu chí vừa tạo
-    if crit_by_name:
-        db.query(models.EvaluationResult).filter(
-            models.EvaluationResult.criteria_id.in_(crit_by_name.values())
-        ).delete(synchronize_session=False)
+    # Map (nhom, tên tiêu chí) -> id để tránh collision khi trùng tên khác nhóm
+    crit_by_key: dict[tuple[str, str], int] = {(r.nhom, r.ten): r.id for r in crit_rows}
 
     # Đánh giá từng nhà thầu
     evals: dict[int, Any] = {}
@@ -76,21 +77,26 @@ async def evaluate(package_id: int, db: Session = Depends(get_db)):
         ev = await evaluate_vendor(criteria_dicts, hsdt_pages, price_pages)
         evals[vendor.id] = ev
 
-        # Lưu kết quả từng tiêu chí (map qua criteria_ten)
-        for item in ev["legality"] + ev["capacity"] + ev["technical"]:
-            cid = crit_by_name.get(item["criteria_ten"])
-            if cid is None:
-                continue
-            db.add(models.EvaluationResult(
-                criteria_id=cid,
-                vendor_id=vendor.id,
-                ket_qua=item["result"],
-                diem_so=item["score"],
-                dan_chung=item["evidence"],
-                so_trang=item["page_ref"],
-                ghi_chu=item["note"],
-                ai_model=item["ai_model"],
-            ))
+        # Lưu kết quả từng tiêu chí (map qua (nhom, criteria_ten) để tránh collision)
+        for nhom, items in (
+            ("hop_le", ev["legality"]),
+            ("nang_luc", ev["capacity"]),
+            ("ky_thuat", ev["technical"]),
+        ):
+            for item in items:
+                cid = crit_by_key.get((nhom, item["criteria_ten"]))
+                if cid is None:
+                    continue
+                db.add(models.EvaluationResult(
+                    criteria_id=cid,
+                    vendor_id=vendor.id,
+                    ket_qua=item["result"],
+                    diem_so=item["score"],
+                    dan_chung=item["evidence"],
+                    so_trang=item["page_ref"],
+                    ghi_chu=item["note"],
+                    ai_model=item["ai_model"],
+                ))
     db.commit()
 
     # Tổng hợp xếp hạng, chuyển Decimal -> float để JSON serialize được
