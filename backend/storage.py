@@ -21,8 +21,8 @@ def save_upload(package_id: int, filename: str, content: bytes, subdir: str) -> 
 
 
 def abs_path(rel: str) -> Path:
-    return STORAGE_DIR / rel
+    return STORAGE_DIR / rel.replace("\\", "/")
 
 
 def read_bytes(rel: str) -> bytes:
-    return (STORAGE_DIR / rel).read_bytes()
+    return (STORAGE_DIR / rel.replace("\\", "/")).read_bytes()
