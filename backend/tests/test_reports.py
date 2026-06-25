@@ -31,4 +31,4 @@ def test_build_summary_xlsx(tmp_path):
     pkg, names, evals, ranking = _sample()
     out = reports.build_summary_xlsx(names, evals, ranking, tmp_path / "r.xlsx")
     wb = load_workbook(out)
-    assert "Xep hang" in wb.sheetnames
+    assert wb.sheetnames == ["Hop le", "Nang luc", "Ky thuat", "Tai chinh", "Xep hang"]
