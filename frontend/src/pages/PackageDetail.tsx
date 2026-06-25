@@ -24,8 +24,12 @@ export default function PackageDetail() {
     const fd = new FormData();
     fd.append("file", file); fd.append("loai", loai);
     if (loai === "HSDT" && vendorId) fd.append("vendor_id", String(vendorId));
-    await api.post(`/packages/${id}/documents`, fd);
-    message.success("Đã tải lên & xử lý"); load();
+    try {
+      await api.post(`/packages/${id}/documents`, fd);
+      message.success("Đã tải lên & xử lý"); load();
+    } catch (e: any) {
+      message.error(e.message);
+    }
     return false;
   };
 
