@@ -14,6 +14,11 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    from database import init_db
+    from routers import packages
+    init_db()
+    app.include_router(packages.router)
+
     @app.get("/api/v1/health")
     async def health() -> dict:
         return ok({"status": "up"})
