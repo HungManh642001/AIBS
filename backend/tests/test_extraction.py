@@ -23,3 +23,5 @@ async def test_map_hsdt_returns_evidence():
     pages = [{"page": 1, "text": "Đơn dự thầu..."}]
     mappings = await extraction.map_hsdt(criteria, pages)
     assert mappings[0]["page_ref"]
+    assert "criteria_ten" in mappings[0]
+    assert "content" in mappings[0]

@@ -32,7 +32,7 @@ async def extract_criteria(hsmt_pages: list[dict[str, Any]]) -> list[dict[str, A
 async def map_hsdt(
     criteria: list[dict[str, Any]], hsdt_pages: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    names = ", ".join(c["ten"] for c in criteria)
+    names = ", ".join(c.get("ten", "") for c in criteria)
     prompt = (
         f"Tiêu chí: {names}\n\nHSDT:\n" + _join(hsdt_pages) +
         '\n\nTrả về JSON: {"mappings":[{"criteria_ten","page_ref","content"}]}'
