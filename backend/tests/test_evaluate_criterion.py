@@ -33,9 +33,20 @@ async def test_deterministic_value_threshold_used():
 
 
 def test_aggregate_fail_when_blocking_fail():
-    subs = [{"sub_check_ten": "Có", "result": "FAIL", "evidence": "", "page_ref": [], "nguon_file": "", "ai_model": ""}]
+    subs = [{"sub_check_ten": "Có bảo đảm dự thầu", "result": "FAIL", "evidence": "", "page_ref": [], "nguon_file": "", "ai_model": ""}]
     agg = base.aggregate_subresults(CRIT, subs)
     assert agg["result"] == "FAIL"
+
+
+def test_aggregate_partial_when_nonblocking_fail():
+    crit = {"sub_checks": [
+        {"ten": "A", "blocking": True}, {"ten": "B", "blocking": False}]}
+    subs = [
+        {"sub_check_ten": "A", "result": "PASS", "evidence": "", "page_ref": [], "nguon_file": "", "ai_model": ""},
+        {"sub_check_ten": "B", "result": "FAIL", "evidence": "", "page_ref": [], "nguon_file": "", "ai_model": ""},
+    ]
+    agg = base.aggregate_subresults(crit, subs)
+    assert agg["result"] == "PARTIAL"
 
 
 def test_aggregate_pass_when_all_pass():

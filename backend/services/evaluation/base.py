@@ -89,7 +89,7 @@ async def evaluate_criterion(criterion: dict[str, Any], artifact_content_map: di
                 sub_check_ten=sc["ten"],
                 result=det["result"],
                 evidence=det["evidence"],
-                page_ref=[],
+                page_ref=det.get("page_ref") or [],
                 nguon_file=art,
                 ai_model="python",
             ))
