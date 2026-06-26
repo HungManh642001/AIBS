@@ -1,4 +1,4 @@
-"""Router đánh giá AI: trích tiêu chí, chạy đánh giá, kết quả, override."""
+"""Router đánh giá AI: artifact routing, sub-check results, override."""
 from __future__ import annotations
 import json
 from typing import Any
@@ -10,8 +10,7 @@ from sqlalchemy.orm import Session
 import models
 from database import get_db
 from responses import ok, fail
-from services.extraction import extract_criteria
-from services.evaluation.orchestrator import evaluate_vendor, rank_vendors
+from services.evaluation.legality import evaluate_legality_routed, compute_completeness
 
 router = APIRouter(prefix="/api/v1", tags=["evaluation"])
 
@@ -26,187 +25,108 @@ def _pages(doc: models.TenderDocument) -> list[dict[str, Any]]:
         return []
 
 
+def _artifact_map(pkg: models.ProcurementPackage, vendor_id: int) -> tuple[dict[str, str], set[str]]:
+    amap: dict[str, str] = {}
+    present: set[str] = set()
+    for d in pkg.documents:
+        if d.vendor_id != vendor_id or not d.artifact_type:
+            continue
+        present.add(d.artifact_type)
+        pages = json.loads(d.extracted_text) if d.extracted_text else []
+        text = "\n".join(p.get("text", "") for p in pages)
+        amap[d.artifact_type] = (amap.get(d.artifact_type, "") + "\n" + text).strip()
+    return amap, present
+
+
 @router.post("/packages/{package_id}/evaluate")
 async def evaluate(package_id: int, db: Session = Depends(get_db)):
-    """Khởi chạy đánh giá AI cho gói thầu: trích tiêu chí, đánh giá nhà thầu, xếp hạng."""
+    """Khởi chạy đánh giá AI theo artifact routing — yêu cầu đề cương đã chốt trước."""
     pkg = db.get(models.ProcurementPackage, package_id)
     if not pkg:
         return fail("Không tìm thấy gói thầu", 404)
+    crit_rows = list(pkg.criteria)
+    if not crit_rows:
+        return fail("Chưa có đề cương — hãy tạo và chốt đề cương trước", 400)
+    # build criterion dicts kèm sub_checks (từ DB)
+    crit_dicts: list[dict] = []
+    sub_by_crit_ten: dict[str, dict[str, int]] = {}
+    for c in crit_rows:
+        subs = db.scalars(select(models.EvaluationSubCheck).where(
+            models.EvaluationSubCheck.criteria_id == c.id).order_by(models.EvaluationSubCheck.thu_tu)).all()
+        sub_by_crit_ten[c.ten] = {s.ten: s.id for s in subs}
+        crit_dicts.append({"nhom": c.nhom, "ten": c.ten, "required_artifacts": c.required_artifacts,
+                           "sub_checks": [{"ten": s.ten, "check_type": s.check_type, "thong_so": s.thong_so,
+                                           "required_artifact": s.required_artifact, "blocking": s.blocking} for s in subs]})
+    crit_id_by_ten = {c.ten: c.id for c in crit_rows}
+    # dọn kết quả cũ
+    all_sub_ids = [sid for m in sub_by_crit_ten.values() for sid in m.values()]
+    if all_sub_ids:
+        db.query(models.SubCheckResult).filter(
+            models.SubCheckResult.sub_check_id.in_(all_sub_ids)).delete(synchronize_session=False)
+    db.query(models.EvaluationResult).filter(
+        models.EvaluationResult.criteria_id.in_(list(crit_id_by_ten.values()))).delete(synchronize_session=False)
 
-    hsmt = next((d for d in pkg.documents if d.loai == "HSMT"), None)
-    if not hsmt:
-        return fail("Chưa upload HSMT", 400)
-
-    # Trích xuất tiêu chí từ HSMT
-    criteria_dicts = await extract_criteria(_pages(hsmt))
-
-    # Xóa kết quả đánh giá cũ của tiêu chí cũ TRƯỚC khi xóa tiêu chí
-    old_crit_ids = [c.id for c in pkg.criteria]
-    if old_crit_ids:
-        db.query(models.EvaluationResult).filter(
-            models.EvaluationResult.criteria_id.in_(old_crit_ids)
-        ).delete(synchronize_session=False)
-
-    # Xóa tiêu chí cũ, tạo lại từ kết quả AI
-    db.query(models.EvaluationCriteria).filter_by(package_id=package_id).delete()
-    crit_rows: list[models.EvaluationCriteria] = []
-    for c in criteria_dicts:
-        row = models.EvaluationCriteria(
-            package_id=package_id,
-            nhom=c.get("nhom", ""),
-            ten=c.get("ten", ""),
-            yeu_cau=c.get("yeu_cau", ""),
-            trong_so=float(c.get("trong_so") or 0),
-            kieu=c.get("kieu", "pass_fail"),
-        )
-        db.add(row)
-        crit_rows.append(row)
-    db.commit()
-    for row in crit_rows:
-        db.refresh(row)
-
-    # Map (nhom, tên tiêu chí) -> id để tránh collision khi trùng tên khác nhóm
-    crit_by_key: dict[tuple[str, str], int] = {(r.nhom, r.ten): r.id for r in crit_rows}
-
-    # Đánh giá từng nhà thầu
-    evals: dict[int, Any] = {}
+    vendors_out = []
     for vendor in pkg.vendors:
-        vdocs = [d for d in pkg.documents if d.vendor_id == vendor.id]
-        hsdt_pages = [p for d in vdocs if d.file_kind != "excel" for p in _pages(d)]
-        price_pages = [p for d in vdocs if d.file_kind == "excel" for p in _pages(d)]
-        ev = await evaluate_vendor(criteria_dicts, hsdt_pages, price_pages)
-        evals[vendor.id] = ev
-
-        # Lưu kết quả từng tiêu chí (map qua (nhom, criteria_ten) để tránh collision)
-        for nhom, items in (
-            ("hop_le", ev["legality"]),
-            ("nang_luc", ev["capacity"]),
-            ("ky_thuat", ev["technical"]),
-        ):
-            for item in items:
-                cid = crit_by_key.get((nhom, item["criteria_ten"]))
-                if cid is None:
+        amap, present = _artifact_map(pkg, vendor.id)
+        routed = await evaluate_legality_routed(crit_dicts, amap)
+        comp = compute_completeness(crit_dicts, present)
+        crit_summ = []
+        for r in routed:
+            cid = crit_id_by_ten.get(r["criteria_ten"])
+            db.add(models.EvaluationResult(criteria_id=cid, vendor_id=vendor.id, ket_qua=r["result"],
+                                           diem_so=r["score"], dan_chung="; ".join(s["evidence"] for s in r["sub_results"][:3]),
+                                           so_trang=[], ghi_chu="", ai_model="mix"))
+            sub_ids = sub_by_crit_ten.get(r["criteria_ten"], {})
+            for s in r["sub_results"]:
+                sid = sub_ids.get(s["sub_check_ten"])
+                if sid is None:
                     continue
-                db.add(models.EvaluationResult(
-                    criteria_id=cid,
-                    vendor_id=vendor.id,
-                    ket_qua=item["result"],
-                    diem_so=item["score"],
-                    dan_chung=item["evidence"],
-                    so_trang=item["page_ref"],
-                    ghi_chu=item["note"],
-                    ai_model=item["ai_model"],
-                ))
-    db.commit()
-
-    # Tổng hợp xếp hạng, chuyển Decimal -> float để JSON serialize được
-    ranking = rank_vendors(evals)
-    ranking_json = [
-        {**r, "evaluated_price": float(r["evaluated_price"])} for r in ranking
-    ]
-
-    # Lưu thông tin tài chính từng nhà thầu để report dùng lại
-    financials_json = {
-        str(vid): {
-            "evaluated_price": float(ev["financial"]["evaluated_price"]),
-            "so_loi": len(ev["financial"]["errors"]),
-        }
-        for vid, ev in evals.items()
-    }
-
-    # Tạo phiên đánh giá
-    session = models.EvaluationSession(
-        package_id=package_id,
-        trang_thai="cho_review",
-        ket_qua_tong_hop={"ranking": ranking_json, "financials": financials_json},
-    )
+                db.add(models.SubCheckResult(sub_check_id=sid, vendor_id=vendor.id, ket_qua=s["result"],
+                                             evidence=s["evidence"], page_ref=s["page_ref"], nguon_file=s["nguon_file"],
+                                             ai_model=s["ai_model"]))
+            crit_summ.append({"criteria_ten": r["criteria_ten"], "result": r["result"], "score": r["score"]})
+        vendors_out.append({"vendor_id": vendor.id, "completeness": comp, "criteria": crit_summ})
     pkg.trang_thai = "cho_review"
-    db.add(session)
     db.commit()
-    db.refresh(session)
-
-    return ok({
-        "session_id": session.id,
-        "ranking": ranking_json,
-        "so_tieu_chi": len(crit_rows),
-    })
+    return ok({"vendors": vendors_out})
 
 
 @router.get("/packages/{package_id}/results")
 async def results(package_id: int, db: Session = Depends(get_db)):
-    """Trả về kết quả đánh giá: tiêu chí, kết quả từng nhà thầu, xếp hạng."""
+    """Trả về kết quả đánh giá kèm sub_results lồng trong mỗi tiêu chí của mỗi nhà thầu."""
     pkg = db.get(models.ProcurementPackage, package_id)
     if not pkg:
         return fail("Không tìm thấy gói thầu", 404)
-
-    criteria = db.scalars(
-        select(models.EvaluationCriteria).where(
-            models.EvaluationCriteria.package_id == package_id
-        )
-    ).all()
-    crit_ids = [c.id for c in criteria]
-
+    crits = list(pkg.criteria)
     vendors_out = []
     for v in pkg.vendors:
-        rows = (
-            db.scalars(
-                select(models.EvaluationResult).where(
-                    models.EvaluationResult.vendor_id == v.id,
-                    models.EvaluationResult.criteria_id.in_(crit_ids),
-                )
-            ).all()
-            if crit_ids
-            else []
-        )
-        vendors_out.append({
-            "vendor_id": v.id,
-            "ten": v.ten,
-            "results": [
-                {
-                    "id": r.id,
-                    "criteria_id": r.criteria_id,
-                    "ket_qua": r.ket_qua,
-                    "diem_so": r.diem_so,
-                    "dan_chung": r.dan_chung,
-                    "so_trang": r.so_trang,
-                    "ghi_chu": r.ghi_chu,
-                    "ai_model": r.ai_model,
-                    "overridden": r.overridden,
-                }
-                for r in rows
-            ],
-        })
-
-    # Lấy phiên đánh giá mới nhất
-    session = db.scalars(
-        select(models.EvaluationSession)
-        .where(models.EvaluationSession.package_id == package_id)
-        .order_by(models.EvaluationSession.id.desc())
-    ).first()
-    ranking = session.ket_qua_tong_hop.get("ranking", []) if session else []
-
-    return ok({
-        "criteria": [
-            {
-                "id": c.id,
-                "nhom": c.nhom,
-                "ten": c.ten,
-                "yeu_cau": c.yeu_cau,
-                "trong_so": c.trong_so,
-                "kieu": c.kieu,
-            }
-            for c in criteria
-        ],
-        "vendors": vendors_out,
-        "ranking": ranking,
-    })
+        crit_out = []
+        for c in crits:
+            er = db.scalars(select(models.EvaluationResult).where(
+                models.EvaluationResult.criteria_id == c.id,
+                models.EvaluationResult.vendor_id == v.id)).first()
+            subs = db.scalars(select(models.EvaluationSubCheck).where(
+                models.EvaluationSubCheck.criteria_id == c.id)).all()
+            sub_ids = [s.id for s in subs]
+            srs = db.scalars(select(models.SubCheckResult).where(
+                models.SubCheckResult.sub_check_id.in_(sub_ids),
+                models.SubCheckResult.vendor_id == v.id)).all() if sub_ids else []
+            sub_ten = {s.id: s.ten for s in subs}
+            crit_out.append({"criteria_id": c.id, "criteria_ten": c.ten,
+                             "result": er.ket_qua if er else None, "score": er.diem_so if er else 0,
+                             "sub_results": [{"id": r.id, "sub_check_ten": sub_ten.get(r.sub_check_id, ""),
+                                              "result": r.ket_qua, "evidence": r.evidence, "page_ref": r.page_ref,
+                                              "nguon_file": r.nguon_file, "overridden": r.overridden} for r in srs]})
+        vendors_out.append({"vendor_id": v.id, "ten": v.ten, "criteria": crit_out})
+    return ok({"vendors": vendors_out})
 
 
 @router.put("/evaluation/{result_id}/override")
 async def override(
     result_id: int, payload: dict[str, Any], db: Session = Depends(get_db)
 ):
-    """Chuyên gia ghi đè kết quả AI: cập nhật result, ghi AuditLog."""
+    """Chuyên gia ghi đè kết quả AI mức tiêu chí: cập nhật result, ghi AuditLog."""
     row = db.get(models.EvaluationResult, result_id)
     if not row:
         return fail("Không tìm thấy kết quả đánh giá", 404)
@@ -240,3 +160,19 @@ async def override(
         "diem_so": row.diem_so,
         "overridden": row.overridden,
     })
+
+
+@router.put("/evaluation/sub-check-result/{sub_result_id}/override")
+async def override_sub(sub_result_id: int, payload: dict, db: Session = Depends(get_db)):
+    """Chuyên gia ghi đè kết quả AI mức sub-check: cập nhật ket_qua, ghi AuditLog."""
+    row = db.get(models.SubCheckResult, sub_result_id)
+    if not row:
+        return fail("Không tìm thấy kết quả sub-check", 404)
+    if "ket_qua" in payload:
+        row.ket_qua = payload["ket_qua"]
+    row.ghi_chu = payload.get("ghi_chu", row.ghi_chu)
+    row.overridden = True
+    db.add(models.AuditLog(action="override_sub", entity_type="sub_check_result",
+                           entity_id=sub_result_id, detail=json.dumps(payload, ensure_ascii=False)))
+    db.commit(); db.refresh(row)
+    return ok({"id": row.id, "ket_qua": row.ket_qua, "overridden": row.overridden})

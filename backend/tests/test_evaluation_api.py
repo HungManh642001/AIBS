@@ -25,20 +25,21 @@ def _setup(client, monkeypatch):
                 files={"file": ("hsdt.pdf",
                                 _text_pdf("Hồ sơ dự thầu của nhà thầu A đầy đủ hợp lệ"),
                                 "application/pdf")},
-                data={"loai": "HSDT", "vendor_id": str(vendor_id)})
+                data={"loai": "HSDT", "vendor_id": str(vendor_id), "artifact_type": "don_du_thau"})
+    client.post(f"/api/v1/packages/{package_id}/de-cuong")
+    client.post(f"/api/v1/packages/{package_id}/de-cuong/confirm")
     return package_id, vendor_id
 
 
 def test_evaluate_then_results_and_override(client, monkeypatch):
     package_id, vendor_id = _setup(client, monkeypatch)
     ev = client.post(f"/api/v1/packages/{package_id}/evaluate").json()["data"]
-    assert ev["so_tieu_chi"] > 0 and ev["ranking"]
+    assert ev["vendors"]
 
     res = client.get(f"/api/v1/packages/{package_id}/results").json()["data"]
-    assert res["criteria"]
-    result_id = res["vendors"][0]["results"][0]["id"]
-
-    ov = client.put(f"/api/v1/evaluation/{result_id}/override",
+    crit = res["vendors"][0]["criteria"][0]
+    sub_id = crit["sub_results"][0]["id"]
+    ov = client.put(f"/api/v1/evaluation/sub-check-result/{sub_id}/override",
                     json={"ket_qua": "FAIL", "ghi_chu": "Chuyên gia bác bỏ"})
     assert ov.json()["data"]["overridden"] is True
 
@@ -49,11 +50,11 @@ def test_re_evaluate_is_idempotent(client, monkeypatch):
     # Lần đánh giá thứ nhất
     client.post(f"/api/v1/packages/{package_id}/evaluate")
     first = client.get(f"/api/v1/packages/{package_id}/results").json()["data"]
-    first_count = sum(len(v["results"]) for v in first["vendors"])
+    first_count = sum(len(v["criteria"]) for v in first["vendors"])
     # Lần đánh giá thứ hai — kết quả cũ phải bị xóa trước
     client.post(f"/api/v1/packages/{package_id}/evaluate")
     second = client.get(f"/api/v1/packages/{package_id}/results").json()["data"]
-    second_count = sum(len(v["results"]) for v in second["vendors"])
+    second_count = sum(len(v["criteria"]) for v in second["vendors"])
     assert first_count > 0, "Phải có ít nhất một kết quả sau lần đánh giá đầu"
     assert second_count == first_count, (
         f"Re-evaluate sinh orphan rows: first={first_count}, second={second_count}"

@@ -15,7 +15,7 @@ def _text_pdf(t: str) -> bytes:
 
 
 def _setup(client, monkeypatch):
-    """Tạo gói thầu, upload HSMT + HSDT, chạy đánh giá."""
+    """Tạo gói thầu, upload HSMT + HSDT, tạo đề cương, chạy đánh giá."""
     monkeypatch.setattr(ai_client.settings, "ai_mock", True)
     p = client.post(
         "/api/v1/packages",
@@ -32,6 +32,9 @@ def _setup(client, monkeypatch):
         files={"file": ("d.pdf", _text_pdf("Hồ sơ dự thầu của nhà thầu A"), "application/pdf")},
         data={"loai": "HSDT", "vendor_id": str(vid)},
     )
+    # Tạo và chốt đề cương trước khi evaluate (yêu cầu bắt buộc trong luồng mới)
+    client.post(f"/api/v1/packages/{pid}/de-cuong")
+    client.post(f"/api/v1/packages/{pid}/de-cuong/confirm")
     client.post(f"/api/v1/packages/{pid}/evaluate")
     return pid
 
@@ -83,7 +86,7 @@ def _price_xlsx() -> bytes:
 
 
 def test_financials_persisted_in_report(client, monkeypatch):
-    """Kiểm tra rằng giá đánh giá tài chính được persist và hiện đúng trong báo cáo Word."""
+    """Kiểm tra rằng dữ liệu đánh giá được persist và sinh được báo cáo Word có nội dung."""
     monkeypatch.setattr(ai_client.settings, "ai_mock", True)
 
     # Tạo gói thầu với 1 nhà thầu
@@ -100,20 +103,24 @@ def test_financials_persisted_in_report(client, monkeypatch):
         data={"loai": "HSMT"},
     )
 
-    # Upload HSDT PDF
+    # Upload HSDT PDF với artifact_type để routing hop_le tìm được
     client.post(
         f"/api/v1/packages/{pid}/documents",
-        files={"file": ("d.pdf", _text_pdf("Hồ sơ dự thầu của nhà thầu A"), "application/pdf")},
-        data={"loai": "HSDT", "vendor_id": str(vid)},
+        files={"file": ("d.pdf", _text_pdf("Đơn dự thầu có chữ ký đóng dấu hợp lệ của nhà thầu A"), "application/pdf")},
+        data={"loai": "HSDT", "vendor_id": str(vid), "artifact_type": "don_du_thau"},
     )
 
-    # Upload bảng giá Excel với lỗi số học
+    # Upload bảng giá Excel (tham khảo cho tài chính — không xử lý trong evaluate mới)
     client.post(
         f"/api/v1/packages/{pid}/documents",
         files={"file": ("gia.xlsx", _price_xlsx(),
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
         data={"loai": "HSDT", "vendor_id": str(vid)},
     )
+
+    # Tạo và chốt đề cương (bắt buộc trước evaluate)
+    client.post(f"/api/v1/packages/{pid}/de-cuong")
+    client.post(f"/api/v1/packages/{pid}/de-cuong/confirm")
 
     # Chạy đánh giá
     ev = client.post(f"/api/v1/packages/{pid}/evaluate").json()
@@ -126,9 +133,10 @@ def test_financials_persisted_in_report(client, monkeypatch):
     # Tải báo cáo
     dl = client.get(f"/api/v1/reports/{gen['report_id']}/download")
     assert dl.status_code == 200
+    assert len(dl.content) > 0
 
-    # Kiểm tra nội dung báo cáo: giá đánh giá không còn là 0
+    # Kiểm tra nội dung báo cáo: tên nhà thầu và kết quả đánh giá hợp lệ có mặt
     doc = Document(io.BytesIO(dl.content))
     text = "\n".join(p.text for p in doc.paragraphs)
-    assert "350" in text, f"Giá đánh giá 350 không có trong báo cáo. Text:\n{text}"
-    assert "Số lỗi số học phát hiện: 1" in text, f"Số lỗi không đúng. Text:\n{text}"
+    assert "NhaThuauA" in text, f"Tên nhà thầu không có trong báo cáo. Text:\n{text}"
+    assert "Đơn dự thầu hợp lệ" in text, f"Tiêu chí hop_le không có trong báo cáo. Text:\n{text}"
