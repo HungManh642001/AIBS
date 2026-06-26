@@ -28,7 +28,7 @@ export interface DeCuongCriteria {
 }
 export interface SubResult {
   id: number; sub_check_ten: string; result: string; evidence: string;
-  page_ref: number[]; nguon_file: string; overridden: boolean;
+  page_ref: number[]; nguon_file: string; ai_model: string; overridden: boolean;
 }
 export interface CriteriaBreakdown {
   criteria_id: number; criteria_ten: string; result: string | null;
