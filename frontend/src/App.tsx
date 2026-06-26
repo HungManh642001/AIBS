@@ -4,6 +4,7 @@ import Dashboard from "./pages/Dashboard";
 import Packages from "./pages/Packages";
 import PackageDetail from "./pages/PackageDetail";
 import Evaluation from "./pages/Evaluation";
+import DeCuong from "./pages/DeCuong";
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/packages" element={<Packages />} />
           <Route path="/packages/:id" element={<PackageDetail />} />
           <Route path="/packages/:id/evaluation" element={<Evaluation />} />
+          <Route path="/packages/:id/de-cuong" element={<DeCuong />} />
         </Routes>
       </Layout.Content>
     </Layout>
