@@ -119,7 +119,8 @@ async def results(package_id: int, db: Session = Depends(get_db)):
                              "result": er.ket_qua if er else None, "score": er.diem_so if er else 0,
                              "sub_results": [{"id": r.id, "sub_check_ten": sub_ten.get(r.sub_check_id, ""),
                                               "result": r.ket_qua, "evidence": r.evidence, "page_ref": r.page_ref,
-                                              "nguon_file": r.nguon_file, "overridden": r.overridden} for r in srs]})
+                                              "nguon_file": r.nguon_file, "ai_model": r.ai_model,
+                                              "overridden": r.overridden} for r in srs]})
         crit_list = [{"required_artifacts": c.required_artifacts} for c in crits]
         present = {d.artifact_type for d in pkg.documents if d.vendor_id == v.id and d.artifact_type}
         comp = compute_completeness(crit_list, present)

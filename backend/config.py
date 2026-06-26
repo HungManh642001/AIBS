@@ -11,7 +11,8 @@ class Settings(BaseSettings):
 
     storage_dir: Path = BASE_DIR / "storage"
     db_url: str = f"sqlite:///{BASE_DIR / 'abes_demo.db'}"
-    ai_base_url: str = "http://localhost:4000"   # LiteLLM proxy
+    ai_base_url: str = "http://localhost:4000/v1"  # LiteLLM Proxy (OpenAI-compatible, kết thúc bằng /v1)
+    ai_api_key: str = ""                           # API key của LiteLLM Proxy
     ai_model: str = "qwen3-27b"
     ai_mock: bool = False                          # True -> luôn dùng mock
 

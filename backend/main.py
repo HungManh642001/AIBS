@@ -29,7 +29,11 @@ def create_app() -> FastAPI:
 
     @app.get("/api/v1/health")
     async def health() -> dict:
-        return ok({"status": "up"})
+        from config import get_settings
+        s = get_settings()
+        return ok({"status": "up",
+                   "ai_mode": "mock" if s.ai_mock else "real",
+                   "ai_model": s.ai_model})
 
     return app
 

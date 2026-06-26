@@ -2,11 +2,26 @@
 from __future__ import annotations
 import copy
 import json
+import logging
+import os
 from typing import Any
+
+# Dùng model cost map đóng gói sẵn, KHÔNG fetch từ internet (server on-premise).
+# Phải đặt trước khi import litellm (litellm đọc biến này lúc import).
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 from config import get_settings
 
+logger = logging.getLogger("abes.ai")
 settings = get_settings()
+
+# Banner cho biết đang chạy chế độ AI nào (hiện ngay khi khởi động backend).
+if settings.ai_mock:
+    logger.warning("AI mode = MOCK (ABES_AI_MOCK=1) — KHÔNG gọi LLM thật.")
+else:
+    logger.warning(
+        "AI mode = REAL — LiteLLM Proxy base=%s model=%s", settings.ai_base_url, settings.ai_model
+    )
 
 MOCK_RESPONSES: dict[str, dict[str, Any]] = {
     "extract_criteria": {
@@ -52,12 +67,19 @@ MOCK_RESPONSES: dict[str, dict[str, Any]] = {
 
 
 def _litellm_completion(system: str, prompt: str) -> str:
-    """Tách riêng để test dễ monkeypatch. Trả về chuỗi JSON."""
+    """Gọi LiteLLM Proxy (OpenAI-compatible /v1). Tách riêng để test dễ monkeypatch."""
     import litellm
 
+    # LiteLLM Proxy expose endpoint OpenAI-compatible -> route qua provider "openai"
+    # để litellm gọi đúng <api_base>/chat/completions với api_key.
+    model = settings.ai_model
+    if "/" not in model:
+        model = f"openai/{model}"
+
     resp = litellm.completion(
-        model=settings.ai_model,
-        api_base=settings.ai_base_url,
+        model=model,
+        api_base=settings.ai_base_url,          # ví dụ: https://proxy.example.com/v1
+        api_key=settings.ai_api_key or "sk-no-key",  # proxy không auth vẫn cần key khác rỗng
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
@@ -70,13 +92,20 @@ def _litellm_completion(system: str, prompt: str) -> str:
 
 async def ai_json(system: str, prompt: str, *, mock_key: str) -> dict[str, Any]:
     if settings.ai_mock:
+        logger.info("AI[%s]: dùng MOCK (ai_mock=1).", mock_key)
         return _mock(mock_key)
     try:
+        logger.info("AI[%s]: gọi LiteLLM model=%s ...", mock_key, settings.ai_model)
         raw = _litellm_completion(system, prompt)
         data = json.loads(raw)
         data["_model"] = settings.ai_model
+        logger.info("AI[%s]: LiteLLM TRẢ KẾT QUẢ THẬT (model=%s).", mock_key, settings.ai_model)
         return data
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "AI[%s]: gọi LiteLLM THẤT BẠI -> fallback MOCK. Lý do: %s: %s",
+            mock_key, type(exc).__name__, exc,
+        )
         return _mock(mock_key)
 
 
