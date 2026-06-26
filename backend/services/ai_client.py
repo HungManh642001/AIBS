@@ -46,6 +46,7 @@ MOCK_RESPONSES: dict[str, dict[str, Any]] = {
              ], "proposed_artifacts": []},
         ]
     },
+    "validate_artifact": {"match": True, "suggested_type": "", "confidence": 1.0, "note": "Khớp loại khai báo"},
 }
 
 
