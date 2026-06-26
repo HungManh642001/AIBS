@@ -47,6 +47,7 @@ MOCK_RESPONSES: dict[str, dict[str, Any]] = {
         ]
     },
     "validate_artifact": {"match": True, "suggested_type": "", "confidence": 1.0, "note": "Khớp loại khai báo"},
+    "eval_subcheck": {"result": "PASS", "evidence": "Đáp ứng yêu cầu", "page_ref": [1]},
 }
 
 
