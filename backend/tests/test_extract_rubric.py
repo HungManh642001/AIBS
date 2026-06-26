@@ -8,10 +8,10 @@ def force_mock(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_extract_de_cuong_shape():
+async def test_extract_rubric_shape():
     sections = {"tcdg": [{"page": 3, "text": "Tiêu chuẩn đánh giá"}],
                 "bds": [{"page": 1, "text": "Giá trị bảo đảm: 150 triệu"}]}
-    crit = await extraction.extract_de_cuong(sections)
+    crit = await extraction.extract_rubric(sections)
     bdt = next(c for c in crit if c["ten"] == "Bảo đảm dự thầu")
     assert bdt["required_artifacts"] == ["bao_dam_du_thau"]
     sc = {s["check_type"]: s for s in bdt["sub_checks"]}

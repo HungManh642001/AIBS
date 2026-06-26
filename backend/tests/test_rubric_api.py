@@ -1,4 +1,4 @@
-"""Tests cho đề cương router: extract / edit / confirm."""
+"""Tests cho tiêu chí đánh giá router: extract / edit / confirm."""
 import fitz
 from services import ai_client
 
@@ -19,10 +19,10 @@ def _pkg_with_hsmt(client):
     return pid
 
 
-def test_extract_edit_confirm_de_cuong(client, monkeypatch):
+def test_extract_edit_confirm_rubric(client, monkeypatch):
     monkeypatch.setattr(ai_client.settings, "ai_mock", True)
     pid = _pkg_with_hsmt(client)
-    ext = client.post(f"/api/v1/packages/{pid}/de-cuong").json()["data"]
+    ext = client.post(f"/api/v1/packages/{pid}/rubric").json()["data"]
     assert any(c["ten"] == "Bảo đảm dự thầu" for c in ext["criteria"])
     bdt = next(c for c in ext["criteria"] if c["ten"] == "Bảo đảm dự thầu")
     assert bdt["required_artifacts"] == ["bao_dam_du_thau"]
@@ -30,10 +30,10 @@ def test_extract_edit_confirm_de_cuong(client, monkeypatch):
 
     # chuyên gia sửa: đổi tên một sub-check rồi PUT
     bdt["sub_checks"][0]["ten"] = "Có bảo đảm dự thầu (đã sửa)"
-    client.put(f"/api/v1/packages/{pid}/de-cuong", json={"criteria": ext["criteria"]})
-    got = client.get(f"/api/v1/packages/{pid}/de-cuong").json()["data"]
+    client.put(f"/api/v1/packages/{pid}/rubric", json={"criteria": ext["criteria"]})
+    got = client.get(f"/api/v1/packages/{pid}/rubric").json()["data"]
     bdt2 = next(c for c in got["criteria"] if c["ten"] == "Bảo đảm dự thầu")
     assert bdt2["sub_checks"][0]["ten"] == "Có bảo đảm dự thầu (đã sửa)"
 
-    conf = client.post(f"/api/v1/packages/{pid}/de-cuong/confirm").json()["data"]
+    conf = client.post(f"/api/v1/packages/{pid}/rubric/confirm").json()["data"]
     assert conf["confirmed"] is True

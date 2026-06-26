@@ -7,7 +7,7 @@ import Dashboard from "./pages/Dashboard";
 import Packages from "./pages/Packages";
 import PackageDetail from "./pages/PackageDetail";
 import Evaluation from "./pages/Evaluation";
-import DeCuong from "./pages/DeCuong";
+import Rubric from "./pages/Rubric";
 
 interface HealthData {
   ai_mode: "mock" | "real";
@@ -96,7 +96,7 @@ export default function App() {
             <Route path="/packages" element={<Packages />} />
             <Route path="/packages/:id" element={<PackageDetail />} />
             <Route path="/packages/:id/evaluation" element={<Evaluation />} />
-            <Route path="/packages/:id/de-cuong" element={<DeCuong />} />
+            <Route path="/packages/:id/rubric" element={<Rubric />} />
           </Routes>
         </Layout.Content>
       </Layout>

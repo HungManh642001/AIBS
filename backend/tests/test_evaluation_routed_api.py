@@ -27,8 +27,8 @@ def _setup(client):
 def test_evaluate_routed_with_subresults(client, monkeypatch):
     monkeypatch.setattr(ai_client.settings, "ai_mock", True)
     pid, vid = _setup(client)
-    client.post(f"/api/v1/packages/{pid}/de-cuong")          # tạo đề cương từ HSMT (mock)
-    client.post(f"/api/v1/packages/{pid}/de-cuong/confirm")
+    client.post(f"/api/v1/packages/{pid}/rubric")            # tạo tiêu chí đánh giá từ HSMT (mock)
+    client.post(f"/api/v1/packages/{pid}/rubric/confirm")
     ev = client.post(f"/api/v1/packages/{pid}/evaluate").json()["data"]
     v = ev["vendors"][0]
     assert v["completeness"]["percent"] >= 0

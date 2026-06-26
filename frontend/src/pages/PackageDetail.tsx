@@ -69,7 +69,7 @@ export default function PackageDetail() {
           <Upload beforeUpload={upload} showUploadList={false}>
             <Button>Tải tài liệu</Button>
           </Upload>
-          <Button onClick={() => nav(`/packages/${id}/de-cuong`)}>Đề cương chấm</Button>
+          <Button onClick={() => nav(`/packages/${id}/rubric`)}>Tiêu chí đánh giá</Button>
           <Button type="primary" loading={evaluating} onClick={runEvaluate}>
             Chạy đánh giá AI</Button>
         </div>

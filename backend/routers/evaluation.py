@@ -40,13 +40,13 @@ def _artifact_map(pkg: models.ProcurementPackage, vendor_id: int) -> tuple[dict[
 
 @router.post("/packages/{package_id}/evaluate")
 async def evaluate(package_id: int, db: Session = Depends(get_db)):
-    """Khởi chạy đánh giá AI theo artifact routing — yêu cầu đề cương đã chốt trước."""
+    """Khởi chạy đánh giá AI theo artifact routing — yêu cầu tiêu chí đánh giá đã chốt trước."""
     pkg = db.get(models.ProcurementPackage, package_id)
     if not pkg:
         return fail("Không tìm thấy gói thầu", 404)
     crit_rows = list(pkg.criteria)
     if not crit_rows:
-        return fail("Chưa có đề cương — hãy tạo và chốt đề cương trước", 400)
+        return fail("Chưa có tiêu chí đánh giá — hãy tạo và chốt tiêu chí đánh giá trước", 400)
     # build criterion dicts kèm sub_checks (từ DB)
     crit_dicts: list[dict] = []
     sub_by_crit_ten: dict[str, dict[str, int]] = {}

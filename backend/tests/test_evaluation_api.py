@@ -26,8 +26,8 @@ def _setup(client, monkeypatch):
                                 _text_pdf("Hồ sơ dự thầu của nhà thầu A đầy đủ hợp lệ"),
                                 "application/pdf")},
                 data={"loai": "HSDT", "vendor_id": str(vendor_id), "artifact_type": "don_du_thau"})
-    client.post(f"/api/v1/packages/{package_id}/de-cuong")
-    client.post(f"/api/v1/packages/{package_id}/de-cuong/confirm")
+    client.post(f"/api/v1/packages/{package_id}/rubric")
+    client.post(f"/api/v1/packages/{package_id}/rubric/confirm")
     return package_id, vendor_id
 
 

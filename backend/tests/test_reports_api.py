@@ -15,7 +15,7 @@ def _text_pdf(t: str) -> bytes:
 
 
 def _setup(client, monkeypatch):
-    """Tạo gói thầu, upload HSMT + HSDT, tạo đề cương, chạy đánh giá."""
+    """Tạo gói thầu, upload HSMT + HSDT, tạo tiêu chí đánh giá, chạy đánh giá."""
     monkeypatch.setattr(ai_client.settings, "ai_mock", True)
     p = client.post(
         "/api/v1/packages",
@@ -32,9 +32,9 @@ def _setup(client, monkeypatch):
         files={"file": ("d.pdf", _text_pdf("Hồ sơ dự thầu của nhà thầu A"), "application/pdf")},
         data={"loai": "HSDT", "vendor_id": str(vid)},
     )
-    # Tạo và chốt đề cương trước khi evaluate (yêu cầu bắt buộc trong luồng mới)
-    client.post(f"/api/v1/packages/{pid}/de-cuong")
-    client.post(f"/api/v1/packages/{pid}/de-cuong/confirm")
+    # Tạo và chốt tiêu chí đánh giá trước khi evaluate (yêu cầu bắt buộc trong luồng mới)
+    client.post(f"/api/v1/packages/{pid}/rubric")
+    client.post(f"/api/v1/packages/{pid}/rubric/confirm")
     client.post(f"/api/v1/packages/{pid}/evaluate")
     return pid
 
@@ -118,9 +118,9 @@ def test_legality_results_in_report(client, monkeypatch):
         data={"loai": "HSDT", "vendor_id": str(vid)},
     )
 
-    # Tạo và chốt đề cương (bắt buộc trước evaluate)
-    client.post(f"/api/v1/packages/{pid}/de-cuong")
-    client.post(f"/api/v1/packages/{pid}/de-cuong/confirm")
+    # Tạo và chốt tiêu chí đánh giá (bắt buộc trước evaluate)
+    client.post(f"/api/v1/packages/{pid}/rubric")
+    client.post(f"/api/v1/packages/{pid}/rubric/confirm")
 
     # Chạy đánh giá
     ev = client.post(f"/api/v1/packages/{pid}/evaluate").json()

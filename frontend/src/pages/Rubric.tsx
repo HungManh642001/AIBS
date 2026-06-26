@@ -2,38 +2,38 @@ import { useEffect, useState } from "react";
 import { Button, Card, Input, Select, Table, Tag, message } from "antd";
 import { useParams, useNavigate } from "react-router-dom";
 import { api, unwrap } from "../api/client";
-import { ARTIFACT_TYPES, type DeCuongCriteria } from "../api/types";
+import { ARTIFACT_TYPES, type RubricCriteria } from "../api/types";
 
 const CHECK_TYPES = ["presence", "form_match", "signature_stamp", "authority",
   "value_threshold", "date_validity", "quantity_match", "semantic_match"]
   .map((v) => ({ value: v, label: v }));
 
-export default function DeCuong() {
+export default function Rubric() {
   const { id } = useParams();
   const nav = useNavigate();
-  const [criteria, setCriteria] = useState<DeCuongCriteria[]>([]);
+  const [criteria, setCriteria] = useState<RubricCriteria[]>([]);
 
-  const load = () => api.get(`/packages/${id}/de-cuong`)
-    .then((r) => setCriteria(unwrap<{ criteria: DeCuongCriteria[] }>(r).criteria));
+  const load = () => api.get(`/packages/${id}/rubric`)
+    .then((r) => setCriteria(unwrap<{ criteria: RubricCriteria[] }>(r).criteria));
   useEffect(() => { load(); }, [id]);
 
   const extract = async () => {
     try {
-      setCriteria(unwrap<{ criteria: DeCuongCriteria[] }>(await api.post(`/packages/${id}/de-cuong`)).criteria);
-      message.success("Đã bóc tách đề cương từ HSMT");
+      setCriteria(unwrap<{ criteria: RubricCriteria[] }>(await api.post(`/packages/${id}/rubric`)).criteria);
+      message.success("Đã bóc tách tiêu chí đánh giá từ HSMT");
     } catch (e: any) { message.error(e.message); }
   };
   const save = async () => {
     try {
-      await api.put(`/packages/${id}/de-cuong`, { criteria });
-      message.success("Đã lưu đề cương");
+      await api.put(`/packages/${id}/rubric`, { criteria });
+      message.success("Đã lưu tiêu chí đánh giá");
     } catch (e: any) { message.error(e.message); }
   };
   const confirm = async () => {
     try {
-      await api.put(`/packages/${id}/de-cuong`, { criteria });
-      await api.post(`/packages/${id}/de-cuong/confirm`);
-      message.success("Đã chốt đề cương");
+      await api.put(`/packages/${id}/rubric`, { criteria });
+      await api.post(`/packages/${id}/rubric/confirm`);
+      message.success("Đã chốt tiêu chí đánh giá");
       nav(`/packages/${id}`);
     } catch (e: any) { message.error(e.message); }
   };
@@ -47,17 +47,21 @@ export default function DeCuong() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between">
-        <h2 className="text-xl font-semibold">Đề cương chấm</h2>
-        <div className="flex gap-2">
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20 }}>
+        <div>
+          <span className="page-eyebrow">Barem chấm thầu</span>
+          <h1 className="page-title" style={{ marginBottom: 0 }}>Tiêu chí đánh giá</h1>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
           <Button onClick={extract}>Bóc tách từ HSMT</Button>
           <Button onClick={save}>Lưu</Button>
-          <Button type="primary" onClick={confirm}>Chốt đề cương</Button>
+          <Button type="primary" onClick={confirm}>Chốt tiêu chí</Button>
         </div>
       </div>
+
       {criteria.map((c, ci) => (
-        <Card key={ci} title={`${c.ten}`} extra={
+        <Card key={ci} title={`${c.ten}`} style={{ marginBottom: 12 }} extra={
           <span>Loại HS: {c.required_artifacts.map((a) => <Tag key={a}>{a}</Tag>)}</span>}>
           <Table rowKey={(_, i) => String(i)} pagination={false} dataSource={c.sub_checks}
             columns={[

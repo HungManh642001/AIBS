@@ -1,4 +1,4 @@
-"""Router đề cương chấm: trích từ HSMT, chuyên gia sửa, chốt."""
+"""Router tiêu chí đánh giá: trích từ HSMT, chuyên gia sửa, chốt."""
 from __future__ import annotations
 import json
 from fastapi import APIRouter, Depends
@@ -9,9 +9,9 @@ import models
 from database import get_db
 from responses import ok, fail
 from services.hsmt_locator import locate_hsmt_sections
-from services.extraction import extract_de_cuong
+from services.extraction import extract_rubric
 
-router = APIRouter(prefix="/api/v1/packages", tags=["de-cuong"])
+router = APIRouter(prefix="/api/v1/packages", tags=["rubric"])
 
 
 def _pages(doc: models.TenderDocument) -> list[dict]:
@@ -19,7 +19,7 @@ def _pages(doc: models.TenderDocument) -> list[dict]:
 
 
 def _persist(db: Session, package_id: int, criteria: list[dict]) -> None:
-    """Xóa đề cương cũ (sub-checks trước, rồi criteria) rồi tạo lại."""
+    """Xóa tiêu chí cũ (sub-checks trước, rồi criteria) rồi tạo lại."""
     olds = db.scalars(select(models.EvaluationCriteria).where(
         models.EvaluationCriteria.package_id == package_id)).all()
     old_ids = [c.id for c in olds]
@@ -60,7 +60,7 @@ def _persist(db: Session, package_id: int, criteria: list[dict]) -> None:
 
 
 def _read(db: Session, package_id: int) -> dict:
-    """Đọc đề cương kèm sub-checks lồng nhau."""
+    """Đọc tiêu chí đánh giá kèm sub-checks lồng nhau."""
     crits = db.scalars(select(models.EvaluationCriteria).where(
         models.EvaluationCriteria.package_id == package_id)).all()
     out = []
@@ -93,9 +93,9 @@ def _read(db: Session, package_id: int) -> dict:
     return {"criteria": out}
 
 
-@router.post("/{package_id}/de-cuong")
+@router.post("/{package_id}/rubric")
 async def extract(package_id: int, db: Session = Depends(get_db)):
-    """Trích xuất đề cương từ HSMT bằng AI và lưu vào DB."""
+    """Trích xuất tiêu chí đánh giá từ HSMT bằng AI và lưu vào DB."""
     pkg = db.get(models.ProcurementPackage, package_id)
     if not pkg:
         return fail("Không tìm thấy gói thầu", 404)
@@ -103,31 +103,31 @@ async def extract(package_id: int, db: Session = Depends(get_db)):
     if not hsmt:
         return fail("Chưa upload HSMT", 400)
     sections = locate_hsmt_sections(_pages(hsmt))
-    criteria = await extract_de_cuong(sections)
+    criteria = await extract_rubric(sections)
     _persist(db, package_id, criteria)
     return ok(_read(db, package_id))
 
 
-@router.get("/{package_id}/de-cuong")
-async def get_de_cuong(package_id: int, db: Session = Depends(get_db)):
-    """Trả đề cương đã lưu kèm sub-checks."""
+@router.get("/{package_id}/rubric")
+async def get_rubric(package_id: int, db: Session = Depends(get_db)):
+    """Trả tiêu chí đánh giá đã lưu kèm sub-checks."""
     if not db.get(models.ProcurementPackage, package_id):
         return fail("Không tìm thấy gói thầu", 404)
     return ok(_read(db, package_id))
 
 
-@router.put("/{package_id}/de-cuong")
-async def update_de_cuong(package_id: int, payload: dict, db: Session = Depends(get_db)):
-    """Cập nhật đề cương theo chỉnh sửa của chuyên gia."""
+@router.put("/{package_id}/rubric")
+async def update_rubric(package_id: int, payload: dict, db: Session = Depends(get_db)):
+    """Cập nhật tiêu chí đánh giá theo chỉnh sửa của chuyên gia."""
     if not db.get(models.ProcurementPackage, package_id):
         return fail("Không tìm thấy gói thầu", 404)
     _persist(db, package_id, payload.get("criteria", []))
     return ok(_read(db, package_id))
 
 
-@router.post("/{package_id}/de-cuong/confirm")
-async def confirm_de_cuong(package_id: int, db: Session = Depends(get_db)):
-    """Chốt đề cương: chuyển trạng thái gói thầu sang dang_xu_ly."""
+@router.post("/{package_id}/rubric/confirm")
+async def confirm_rubric(package_id: int, db: Session = Depends(get_db)):
+    """Chốt tiêu chí đánh giá: chuyển trạng thái gói thầu sang dang_xu_ly."""
     pkg = db.get(models.ProcurementPackage, package_id)
     if not pkg:
         return fail("Không tìm thấy gói thầu", 404)

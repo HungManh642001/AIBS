@@ -22,7 +22,7 @@ export interface SubCheck {
   id?: number; ten: string; check_type: string; thong_so: Record<string, unknown>;
   required_artifact: string; blocking: boolean;
 }
-export interface DeCuongCriteria {
+export interface RubricCriteria {
   id?: number; nhom: string; ten: string; yeu_cau: string; required_artifacts: string[];
   kieu: string; trong_so: number; sub_checks: SubCheck[];
 }
