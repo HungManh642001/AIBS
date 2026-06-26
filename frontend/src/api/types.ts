@@ -30,6 +30,14 @@ export interface SubResult {
   id: number; sub_check_ten: string; result: string; evidence: string;
   page_ref: number[]; nguon_file: string; overridden: boolean;
 }
+export interface CriteriaBreakdown {
+  criteria_id: number; criteria_ten: string; result: string | null;
+  score: number; sub_results: SubResult[];
+}
+export interface VendorBreakdown {
+  vendor_id: number; ten: string; criteria: CriteriaBreakdown[];
+}
+export interface ResultsBreakdown { vendors: VendorBreakdown[]; }
 export const ARTIFACT_TYPES: { value: string; label: string }[] = [
   { value: "don_du_thau", label: "Đơn dự thầu" },
   { value: "bao_dam_du_thau", label: "Bảo đảm dự thầu (thư BL)" },
