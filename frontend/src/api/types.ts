@@ -34,8 +34,11 @@ export interface CriteriaBreakdown {
   criteria_id: number; criteria_ten: string; result: string | null;
   score: number; sub_results: SubResult[];
 }
+export interface Completeness {
+  percent: number; missing: string[]; required: string[];
+}
 export interface VendorBreakdown {
-  vendor_id: number; ten: string; criteria: CriteriaBreakdown[];
+  vendor_id: number; ten: string; completeness: Completeness; criteria: CriteriaBreakdown[];
 }
 export interface ResultsBreakdown { vendors: VendorBreakdown[]; }
 export const ARTIFACT_TYPES: { value: string; label: string }[] = [

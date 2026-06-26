@@ -37,6 +37,7 @@ def test_evaluate_routed_with_subresults(client, monkeypatch):
 
     res = client.get(f"/api/v1/packages/{pid}/results").json()["data"]
     vr = res["vendors"][0]
+    assert "completeness" in vr and "percent" in vr["completeness"] and "missing" in vr["completeness"]
     crit = next(c for c in vr["criteria"] if c["criteria_ten"] == "Bảo đảm dự thầu")
     assert len(crit["sub_results"]) >= 2
     assert any("Giá trị" in s["sub_check_ten"] for s in crit["sub_results"])

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Button, Card, message } from "antd";
 import { useParams } from "react-router-dom";
 import { api, unwrap } from "../api/client";
-import type { ResultsBreakdown } from "../api/types";
+import type { ResultsBreakdown, VendorBreakdown, CriteriaBreakdown } from "../api/types";
 import SubCheckTable from "../components/SubCheckTable";
 
 export default function Evaluation() {
@@ -30,9 +30,10 @@ export default function Evaluation() {
         <Button onClick={() => genReport("word")}>Xuất Word</Button>
         <Button onClick={() => genReport("excel")}>Xuất Excel</Button>
       </div>
-      {data.vendors.map((v: any) => (
+      {data.vendors.map((v: VendorBreakdown) => (
         <Card key={v.vendor_id} title={`Nhà thầu: ${v.ten}`}>
-          {v.criteria.map((c: any) => (
+          <p>Độ đầy đủ hồ sơ: {v.completeness.percent}% {v.completeness.missing.length > 0 && `— thiếu: ${v.completeness.missing.join(", ")}`}</p>
+          {v.criteria.map((c: CriteriaBreakdown) => (
             <Card key={c.criteria_id} type="inner" className="mb-3"
               title={`${c.criteria_ten} — ${c.result ?? "—"} (${c.score})`}>
               <SubCheckTable subs={c.sub_results} onChanged={load} />

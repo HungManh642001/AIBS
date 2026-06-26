@@ -24,6 +24,13 @@ def _persist(db: Session, package_id: int, criteria: list[dict]) -> None:
         models.EvaluationCriteria.package_id == package_id)).all()
     old_ids = [c.id for c in olds]
     if old_ids:
+        old_sub_ids = [s.id for s in db.scalars(select(models.EvaluationSubCheck).where(
+            models.EvaluationSubCheck.criteria_id.in_(old_ids))).all()]
+        if old_sub_ids:
+            db.query(models.SubCheckResult).filter(
+                models.SubCheckResult.sub_check_id.in_(old_sub_ids)).delete(synchronize_session=False)
+        db.query(models.EvaluationResult).filter(
+            models.EvaluationResult.criteria_id.in_(old_ids)).delete(synchronize_session=False)
         db.query(models.EvaluationSubCheck).filter(
             models.EvaluationSubCheck.criteria_id.in_(old_ids)).delete(synchronize_session=False)
     db.query(models.EvaluationCriteria).filter_by(package_id=package_id).delete()

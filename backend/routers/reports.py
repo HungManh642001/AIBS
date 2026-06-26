@@ -91,6 +91,7 @@ async def generate_report(
         return fail("loai phải là 'word' hoặc 'excel'", 422)
 
     # Lấy session đánh giá mới nhất để lấy ranking và financials
+    # Ghi chú: xếp hạng/tài chính tạm thời trống — sẽ có khi các nhóm ngoài Hợp lệ áp dụng pattern artifact.
     session = db.scalars(
         select(models.EvaluationSession)
         .where(models.EvaluationSession.package_id == package_id)

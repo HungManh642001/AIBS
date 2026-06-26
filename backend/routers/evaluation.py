@@ -120,7 +120,10 @@ async def results(package_id: int, db: Session = Depends(get_db)):
                              "sub_results": [{"id": r.id, "sub_check_ten": sub_ten.get(r.sub_check_id, ""),
                                               "result": r.ket_qua, "evidence": r.evidence, "page_ref": r.page_ref,
                                               "nguon_file": r.nguon_file, "overridden": r.overridden} for r in srs]})
-        vendors_out.append({"vendor_id": v.id, "ten": v.ten, "criteria": crit_out})
+        crit_list = [{"required_artifacts": c.required_artifacts} for c in crits]
+        present = {d.artifact_type for d in pkg.documents if d.vendor_id == v.id and d.artifact_type}
+        comp = compute_completeness(crit_list, present)
+        vendors_out.append({"vendor_id": v.id, "ten": v.ten, "completeness": comp, "criteria": crit_out})
     return ok({"vendors": vendors_out})
 
 
