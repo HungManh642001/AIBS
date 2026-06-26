@@ -3,6 +3,7 @@ import { Button, Card, Select, Table, Upload, message } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import type { Package } from "../api/types";
+import { ARTIFACT_TYPES } from "../api/types";
 import StatusTag from "../components/StatusTag";
 
 export default function PackageDetail() {
@@ -13,6 +14,7 @@ export default function PackageDetail() {
   const [loai, setLoai] = useState("HSMT");
   const [vendorId, setVendorId] = useState<number | undefined>();
   const [evaluating, setEvaluating] = useState(false);
+  const [artifactType, setArtifactType] = useState<string | undefined>();
 
   const load = () => {
     api.get(`/packages/${id}`).then((r) => setPkg(unwrap<Package>(r)));
@@ -24,12 +26,17 @@ export default function PackageDetail() {
     const fd = new FormData();
     fd.append("file", file); fd.append("loai", loai);
     if (loai === "HSDT" && vendorId) fd.append("vendor_id", String(vendorId));
+    if (loai === "HSDT" && artifactType) fd.append("artifact_type", artifactType);
     try {
-      await api.post(`/packages/${id}/documents`, fd);
-      message.success("Đã tải lên & xử lý"); load();
-    } catch (e: any) {
-      message.error(e.message);
-    }
+      const res = await api.post(`/packages/${id}/documents`, fd);
+      const doc = res.data.data;
+      if (doc?.artifact_validation && doc.artifact_validation.match === false) {
+        message.warning(`Nghi tải nhầm loại: ${doc.artifact_validation.note}`);
+      } else {
+        message.success("Đã tải lên & xử lý");
+      }
+      load();
+    } catch (e: any) { message.error(e.message); }
     return false;
   };
 
@@ -55,6 +62,10 @@ export default function PackageDetail() {
               className="min-w-48"
               options={pkg.vendors.map((v) => ({ value: v.id, label: v.ten }))} />
           )}
+          {loai === "HSDT" && (
+            <Select placeholder="Loại hồ sơ" value={artifactType} onChange={setArtifactType}
+              className="min-w-48" options={ARTIFACT_TYPES} />
+          )}
           <Upload beforeUpload={upload} showUploadList={false}>
             <Button>Tải tài liệu</Button>
           </Upload>
@@ -65,6 +76,7 @@ export default function PackageDetail() {
       <Card title="Tài liệu">
         <Table rowKey="id" dataSource={docs} pagination={false} columns={[
           { title: "Loại", dataIndex: "loai" },
+          { title: "Loại hồ sơ", dataIndex: "artifact_type" },
           { title: "Định dạng", dataIndex: "file_kind" },
           { title: "Trạng thái OCR", dataIndex: "trang_thai_ocr" },
         ]} />
