@@ -25,6 +25,27 @@ MOCK_RESPONSES: dict[str, dict[str, Any]] = {
     "eval_capacity": {"result": "PASS", "score": 85, "evidence": "Doanh thu 3 năm đạt 1.8 lần giá gói thầu", "page_ref": [4], "note": "Đạt yêu cầu"},
     "eval_technical": {"result": "PARTIAL", "score": 78, "evidence": "Đáp ứng 88% thông số kỹ thuật", "page_ref": [7], "note": "Thiếu 2 thông số phụ"},
     "eval_financial": {"result": "PASS", "score": 0, "evidence": "Bảng chào giá đầy đủ 12 hạng mục", "page_ref": [10], "note": "Cần hậu kiểm số học"},
+    "extract_de_cuong": {
+        "criteria": [
+            {"nhom": "hop_le", "ten": "Đơn dự thầu hợp lệ", "yeu_cau": "Theo mẫu, có chữ ký",
+             "required_artifacts": ["don_du_thau"], "kieu": "pass_fail", "trong_so": 0,
+             "sub_checks": [
+                 {"ten": "Có đơn dự thầu", "check_type": "presence", "thong_so": {}, "required_artifact": "don_du_thau", "blocking": True},
+                 {"ten": "Có chữ ký/đóng dấu", "check_type": "signature_stamp", "thong_so": {}, "required_artifact": "don_du_thau", "blocking": True},
+             ], "proposed_artifacts": []},
+            {"nhom": "hop_le", "ten": "Bảo đảm dự thầu", "yeu_cau": "Giá trị và hiệu lực theo HSMT",
+             "required_artifacts": ["bao_dam_du_thau"], "kieu": "pass_fail", "trong_so": 0,
+             "sub_checks": [
+                 {"ten": "Có bảo đảm dự thầu", "check_type": "presence", "thong_so": {}, "required_artifact": "bao_dam_du_thau", "blocking": True},
+                 {"ten": "Giá trị ≥ ngưỡng", "check_type": "value_threshold",
+                  "thong_so": {"gia_tri_so": 150000000, "don_vi": "VND", "nguon": "BDS", "can_review": False},
+                  "required_artifact": "bao_dam_du_thau", "blocking": True},
+                 {"ten": "Hiệu lực ≥ yêu cầu", "check_type": "date_validity",
+                  "thong_so": {"so_ngay": 120, "nguon": "BDS", "can_review": False},
+                  "required_artifact": "bao_dam_du_thau", "blocking": True},
+             ], "proposed_artifacts": []},
+        ]
+    },
 }
 
 
