@@ -10,6 +10,7 @@ import storage
 from database import get_db
 from responses import ok, fail
 from services import documents
+from services.artifact_classify import validate_artifact
 
 router = APIRouter(prefix="/api/v1/packages", tags=["documents"])
 
@@ -27,6 +28,7 @@ async def upload_document(
     package_id: int,
     loai: str = Form(...),
     vendor_id: int | None = Form(None),
+    artifact_type: str | None = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
@@ -55,6 +57,9 @@ async def upload_document(
         pages = documents.extract_document(content, file_kind)
         doc.extracted_text = json.dumps(pages, ensure_ascii=False)
         doc.trang_thai_ocr = "hoan_thanh"
+        if loai == "HSDT" and artifact_type:
+            doc.artifact_type = artifact_type
+            doc.artifact_validation = await validate_artifact(pages, artifact_type)
     except Exception as exc:  # graceful degradation (NFR 5.3)
         doc.trang_thai_ocr = f"loi: {exc}"
     db.commit()
@@ -82,4 +87,6 @@ def _doc_out(d: models.TenderDocument) -> dict:
         "file_path": d.file_path,
         "file_kind": d.file_kind,
         "trang_thai_ocr": d.trang_thai_ocr,
+        "artifact_type": d.artifact_type,
+        "artifact_validation": d.artifact_validation,
     }
