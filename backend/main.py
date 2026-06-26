@@ -19,11 +19,13 @@ def create_app() -> FastAPI:
     from routers import documents as documents_router
     from routers import evaluation as evaluation_router
     from routers import reports as reports_router
+    from routers import de_cuong as de_cuong_router
     init_db()
     app.include_router(packages.router)
     app.include_router(documents_router.router)
     app.include_router(evaluation_router.router)
     app.include_router(reports_router.router)
+    app.include_router(de_cuong_router.router)
 
     @app.get("/api/v1/health")
     async def health() -> dict:
