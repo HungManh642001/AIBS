@@ -18,18 +18,24 @@ export default function DeCuong() {
   useEffect(() => { load(); }, [id]);
 
   const extract = async () => {
-    setCriteria(unwrap<{ criteria: DeCuongCriteria[] }>(await api.post(`/packages/${id}/de-cuong`)).criteria);
-    message.success("Đã bóc tách đề cương từ HSMT");
+    try {
+      setCriteria(unwrap<{ criteria: DeCuongCriteria[] }>(await api.post(`/packages/${id}/de-cuong`)).criteria);
+      message.success("Đã bóc tách đề cương từ HSMT");
+    } catch (e: any) { message.error(e.message); }
   };
   const save = async () => {
-    await api.put(`/packages/${id}/de-cuong`, { criteria });
-    message.success("Đã lưu đề cương");
+    try {
+      await api.put(`/packages/${id}/de-cuong`, { criteria });
+      message.success("Đã lưu đề cương");
+    } catch (e: any) { message.error(e.message); }
   };
   const confirm = async () => {
-    await api.put(`/packages/${id}/de-cuong`, { criteria });
-    await api.post(`/packages/${id}/de-cuong/confirm`);
-    message.success("Đã chốt đề cương");
-    nav(`/packages/${id}`);
+    try {
+      await api.put(`/packages/${id}/de-cuong`, { criteria });
+      await api.post(`/packages/${id}/de-cuong/confirm`);
+      message.success("Đã chốt đề cương");
+      nav(`/packages/${id}`);
+    } catch (e: any) { message.error(e.message); }
   };
 
   const setSub = (ci: number, si: number, key: string, val: unknown) => {
