@@ -48,7 +48,7 @@ class TenderDocument(Base):
     trang_thai_ocr: Mapped[str] = mapped_column(String(32), default="cho_xu_ly")
     extracted_text: Mapped[str] = mapped_column(Text, default="")
     artifact_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    artifact_validation: Mapped[dict] = mapped_column(JSON, default=dict)
+    artifact_validation: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     package: Mapped[ProcurementPackage] = relationship(back_populates="documents")
 
 
@@ -113,7 +113,7 @@ class EvaluationSubCheck(Base):
     criteria_id: Mapped[int] = mapped_column(ForeignKey("evaluation_criteria.id"))
     ten: Mapped[str] = mapped_column(String(512))
     check_type: Mapped[str] = mapped_column(String(32))
-    thong_so: Mapped[dict] = mapped_column(JSON, default=dict)
+    thong_so: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     required_artifact: Mapped[str] = mapped_column(String(64), default="")
     thu_tu: Mapped[int] = mapped_column(Integer, default=0)
     blocking: Mapped[bool] = mapped_column(default=True)
