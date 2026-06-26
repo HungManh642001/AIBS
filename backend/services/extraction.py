@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from services.ai_client import ai_json
+from services import artifact_catalog
 
 _SYS_EXTRACT = (
     "Bạn là chuyên gia đấu thầu theo Luật Đấu thầu Việt Nam. "
@@ -40,9 +41,6 @@ async def map_hsdt(
     data = await ai_json(_SYS_MAP, prompt, mock_key="map_hsdt")
     return data.get("mappings", [])
 
-
-# --- append to services/extraction.py ---
-from services import artifact_catalog
 
 _SYS_DE_CUONG = (
     "Bạn là chuyên gia đấu thầu theo Luật Đấu thầu Việt Nam. Đọc Tiêu chuẩn đánh giá (TCĐG) "
