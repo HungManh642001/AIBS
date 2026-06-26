@@ -85,7 +85,7 @@ def _price_xlsx() -> bytes:
     return buf.getvalue()
 
 
-def test_financials_persisted_in_report(client, monkeypatch):
+def test_legality_results_in_report(client, monkeypatch):
     """Kiểm tra rằng dữ liệu đánh giá được persist và sinh được báo cáo Word có nội dung."""
     monkeypatch.setattr(ai_client.settings, "ai_mock", True)
 

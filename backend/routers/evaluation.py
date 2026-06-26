@@ -57,7 +57,7 @@ async def evaluate(package_id: int, db: Session = Depends(get_db)):
         crit_dicts.append({"nhom": c.nhom, "ten": c.ten, "required_artifacts": c.required_artifacts,
                            "sub_checks": [{"ten": s.ten, "check_type": s.check_type, "thong_so": s.thong_so,
                                            "required_artifact": s.required_artifact, "blocking": s.blocking} for s in subs]})
-    crit_id_by_ten = {c.ten: c.id for c in crit_rows}
+    crit_id_by_ten = {c.ten: c.id for c in crit_rows if c.nhom == "hop_le"}
     # dọn kết quả cũ
     all_sub_ids = [sid for m in sub_by_crit_ten.values() for sid in m.values()]
     if all_sub_ids:
@@ -74,6 +74,8 @@ async def evaluate(package_id: int, db: Session = Depends(get_db)):
         crit_summ = []
         for r in routed:
             cid = crit_id_by_ten.get(r["criteria_ten"])
+            if cid is None:
+                continue
             db.add(models.EvaluationResult(criteria_id=cid, vendor_id=vendor.id, ket_qua=r["result"],
                                            diem_so=r["score"], dan_chung="; ".join(s["evidence"] for s in r["sub_results"][:3]),
                                            so_trang=[], ghi_chu="", ai_model="mix"))
