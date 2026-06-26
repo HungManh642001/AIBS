@@ -8,7 +8,15 @@ cd backend
 pip install -r requirements.txt
 ABES_AI_MOCK=1 uvicorn main:app --reload --port 8000   # mock, không cần GPU
 ```
-Bỏ `ABES_AI_MOCK=1` và đặt `ABES_AI_BASE_URL` tới LiteLLM proxy (Qwen3 qua vLLM) để chạy AI thật.
+Để chạy AI thật qua **LiteLLM Proxy** (OpenAI-compatible), đặt các biến môi trường (xem `backend/.env.example`):
+```bash
+export ABES_AI_MOCK=0
+export ABES_AI_BASE_URL=https://proxy-cua-ban/v1   # URL kết thúc bằng /v1
+export ABES_AI_API_KEY=sk-...                       # API key của proxy
+export ABES_AI_MODEL=qwen3-27b                       # tên model trên proxy
+uvicorn main:app --reload --port 8000
+```
+Nếu không đặt `ABES_AI_MOCK=0` (hoặc proxy lỗi/không kết nối được), hệ thống tự fallback sang mock.
 
 ## Chạy frontend
 ```bash
