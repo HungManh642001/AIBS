@@ -2,10 +2,12 @@
 import io
 
 import fitz
+import pytest
 from docx import Document
 from openpyxl import Workbook
 
 from services import ai_client
+import services.extraction as _extraction_svc
 
 
 def _text_pdf(t: str) -> bytes:
@@ -88,6 +90,7 @@ def _price_xlsx() -> bytes:
 def test_legality_results_in_report(client, monkeypatch):
     """Kiểm tra rằng dữ liệu đánh giá được persist và sinh được báo cáo Word có nội dung."""
     monkeypatch.setattr(ai_client.settings, "ai_mock", True)
+    monkeypatch.setattr(_extraction_svc._settings, "ai_mock", True)
 
     # Tạo gói thầu với 1 nhà thầu
     p = client.post(
@@ -96,10 +99,10 @@ def test_legality_results_in_report(client, monkeypatch):
     ).json()["data"]
     pid, vid = p["id"], p["vendors"][0]["id"]
 
-    # Upload HSMT
+    # Upload HSMT — phải có heading "Tiêu chuẩn đánh giá" để locator định vị được mục TCĐG
     client.post(
         f"/api/v1/packages/{pid}/documents",
-        files={"file": ("h.pdf", _text_pdf("Tiêu chí đánh giá hợp lệ kỹ thuật tài chính"), "application/pdf")},
+        files={"file": ("h.pdf", _text_pdf("Tiêu chuẩn đánh giá hợp lệ kỹ thuật tài chính"), "application/pdf")},
         data={"loai": "HSMT"},
     )
 
@@ -140,3 +143,78 @@ def test_legality_results_in_report(client, monkeypatch):
     text = "\n".join(p.text for p in doc.paragraphs)
     assert "NhaThuauA" in text, f"Tên nhà thầu không có trong báo cáo. Text:\n{text}"
     assert "Đơn dự thầu hợp lệ" in text, f"Tiêu chí hop_le không có trong báo cáo. Text:\n{text}"
+
+
+@pytest.fixture
+def db_session(client):  # noqa: ARG001 — phụ thuộc client để DB được khởi tạo trước
+    """Session DB dùng trong test cần truy cập trực tiếp (dùng cùng engine với app)."""
+    import database as _db
+    sess = _db.SessionLocal()
+    try:
+        yield sess
+    finally:
+        sess.close()
+
+
+def test_export_blocked_when_unresolved_error(client, db_session, monkeypatch):
+    """Xuất báo cáo phải trả 409 khi còn SubCheckResult ERROR chưa được chuyên gia xử lý."""
+    monkeypatch.setattr(ai_client.settings, "ai_mock", True)
+    monkeypatch.setattr(_extraction_svc._settings, "ai_mock", True)
+
+    # Tạo gói thầu với 1 nhà thầu
+    p = client.post(
+        "/api/v1/packages",
+        json={"ma_so": "G-ERR", "ten": "Gói lỗi AI", "vendors": ["NT-ERR"]},
+    ).json()["data"]
+    pid, vid = p["id"], p["vendors"][0]["id"]
+
+    # Upload HSMT với heading "Tiêu chuẩn đánh giá" để locator định vị được mục TCĐG
+    client.post(
+        f"/api/v1/packages/{pid}/documents",
+        files={"file": ("h.pdf", _text_pdf("Tiêu chuẩn đánh giá hợp lệ kỹ thuật"), "application/pdf")},
+        data={"loai": "HSMT"},
+    )
+
+    # Tạo và chốt tiêu chí (để có EvaluationCriteria + EvaluationSubCheck trong DB)
+    r_rubric = client.post(f"/api/v1/packages/{pid}/rubric")
+    assert r_rubric.status_code == 200, f"rubric extract failed: {r_rubric.json()}"
+    client.post(f"/api/v1/packages/{pid}/rubric/confirm")
+
+    # Lấy sub_check đầu tiên từ DB để gắn SubCheckResult ERROR
+    import models as _models
+    from sqlalchemy import select as _select
+
+    all_criteria = db_session.scalars(
+        _select(_models.EvaluationCriteria).where(
+            _models.EvaluationCriteria.package_id == pid
+        )
+    ).all()
+    sub_check = None
+    for c in all_criteria:
+        sc = db_session.scalars(
+            _select(_models.EvaluationSubCheck).where(
+                _models.EvaluationSubCheck.criteria_id == c.id
+            )
+        ).first()
+        if sc:
+            sub_check = sc
+            break
+
+    assert sub_check is not None, "Cần có ít nhất 1 EvaluationSubCheck sau khi confirm rubric"
+
+    # Dựng SubCheckResult với ket_qua="ERROR" chưa override
+    db_session.add(_models.SubCheckResult(
+        sub_check_id=sub_check.id,
+        vendor_id=vid,
+        ket_qua="ERROR",
+        evidence="AI lỗi",
+        page_ref=[],
+        nguon_file="",
+        ai_model="",
+    ))
+    db_session.commit()
+
+    # Xuất báo cáo phải bị chặn với HTTP 409
+    r = client.post(f"/api/v1/packages/{pid}/reports?loai=excel")
+    assert r.status_code == 409
+    assert "ai lỗi" in r.json()["error"].lower()
