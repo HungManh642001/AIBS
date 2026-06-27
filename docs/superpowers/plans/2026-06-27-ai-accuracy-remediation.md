@@ -784,7 +784,7 @@ git commit -m "feat: locate TCĐG/BDS by section range, no whole-doc fallback"
 - Test: `backend/tests/test_extract_rubric.py` (rewrite), `backend/tests/test_chunking.py` (create)
 
 **Interfaces:**
-- Consumes: `ai_call`/`AiOutcome` (Task 4), `cot_block`/`SCALE_DEF` (Task 5), `validate_criteria_list`/`validate_criterion_detail` (Task 3), `clamp_page_refs` (Task 2), new locator shape (Task 6).
+- Consumes: `ai_call`/`AiOutcome` (Task 4), `cot_block`/`SCALE_DEF` (Task 5), `validate_criteria_list`/`validate_criterion_detail` (Task 3), new locator shape (Task 6).
 - Produces:
   - `async extract_rubric(sections: dict) -> AiOutcome` — `sections` is the new locator output (`{"tcdg":{"located","pages"},"bds":{...}}`). `data={"criteria":[...]}` on ok.
   - `chunk_pages(pages: list[dict], max_chars: int, overlap: int) -> list[str]`.
@@ -889,7 +889,6 @@ In `backend/services/extraction.py`, update the import block at the top (replace
 ```python
 from services.ai_client import ai_json, ai_call, AiOutcome
 from services import artifact_catalog
-from services.json_utils import clamp_page_refs
 from services.prompts import cot_block, SCALE_DEF
 from services.ai_schemas import validate_criteria_list, validate_criterion_detail
 from config import get_settings
@@ -975,11 +974,11 @@ async def _list_criteria(tcdg_pages: list[dict[str, Any]]) -> AiOutcome:
         if out.status == "error":
             return out
         lists.append(out.data.get("criteria", []))
-    return AiOutcome("ok", {"criteria": _merge_criteria(lists)}, chunks and "qwen3-27b" or "qwen3-27b")
+    return AiOutcome("ok", {"criteria": _merge_criteria(lists)}, "qwen3-27b")
 
 
 async def _detail_criterion(
-    crit: dict[str, Any], tcdg_text: str, bds_text: str, max_page: int
+    crit: dict[str, Any], tcdg_text: str, bds_text: str
 ) -> AiOutcome:
     """Bước 2: chi tiết sub_checks + ngưỡng cho MỘT tiêu chí."""
     prompt = (
@@ -1012,7 +1011,6 @@ async def extract_rubric(sections: dict[str, Any]) -> AiOutcome:
     bds = sections.get("bds", {})
     tcdg_pages = tcdg.get("pages", [])
     bds_pages = bds.get("pages", [])
-    max_page = max((int(p.get("page", 0)) for p in tcdg_pages + bds_pages), default=0)
 
     listed = await _list_criteria(tcdg_pages)
     if listed.status == "error":
@@ -1023,7 +1021,7 @@ async def extract_rubric(sections: dict[str, Any]) -> AiOutcome:
 
     detailed: list[dict[str, Any]] = []
     for crit in listed.data.get("criteria", []):
-        d = await _detail_criterion(crit, tcdg_text, bds_text, max_page)
+        d = await _detail_criterion(crit, tcdg_text, bds_text)
         if d.status == "error":
             # Lỗi 1 tiêu chí: đánh dấu can_review, vẫn giữ tiêu chí để chuyên gia xử lý.
             detailed.append({**crit, "sub_checks": [], "proposed_artifacts": [],
@@ -1037,8 +1035,6 @@ async def extract_rubric(sections: dict[str, Any]) -> AiOutcome:
 
     return AiOutcome("ok", {"criteria": detailed}, "qwen3-27b")
 ```
-
-(Note: the `chunks and "qwen3-27b" or "qwen3-27b"` expression in `_list_criteria` simplifies to `"qwen3-27b"`; keep it as the literal `"qwen3-27b"` — replace that return line with `return AiOutcome("ok", {"criteria": _merge_criteria(lists)}, "qwen3-27b")`.)
 
 - [ ] **Step 4: Run tests to verify they pass**
 
