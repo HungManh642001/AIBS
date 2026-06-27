@@ -79,18 +79,18 @@ def extract_tables(pdf_path: str, lines: list[Line]) -> tuple[list[TableRegion],
     for pno in range(doc.page_count):
         try:
             found = doc[pno].find_tables()
+            for tbl in found.tables:
+                x0, y0, x1, y1 = tbl.bbox
+                rows = [[(c or "").strip() for c in row] for row in tbl.extract()]
+                tables.append(TableRegion(page=pno + 1, y0=y0, y1=y1, rows=rows))
+                spans_by_page.setdefault(pno + 1, []).append((y0, y1))
         except Exception:
             continue
-        for tbl in found.tables:
-            x0, y0, x1, y1 = tbl.bbox
-            rows = [[(c or "").strip() for c in row] for row in tbl.extract()]
-            tables.append(TableRegion(page=pno + 1, y0=y0, y1=y1, rows=rows))
-            spans_by_page.setdefault(pno + 1, []).append((y0, y1))
     doc.close()
 
     def _inside(l: Line) -> bool:
-        for y0, y1 in spans_by_page.get(l.page, []):
-            if y0 - 1 <= l.y0 <= y1 + 1:
+        for ty0, ty1 in spans_by_page.get(l.page, []):
+            if ty0 - 1 <= l.y0 <= ty1 + 1:
                 return True
         return False
 
