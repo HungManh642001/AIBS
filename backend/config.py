@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     ai_api_key: str = ""                           # API key của LiteLLM Proxy
     ai_model: str = "qwen3-27b"
     ai_mock: bool = False                          # True -> luôn dùng mock
+    ai_temperature: float = 0.0                    # 0 -> tái lập kết quả
+    ai_max_tokens: int = 4096                       # giới hạn token sinh (đánh giá/sub-check)
+    ai_max_tokens_extract: int = 8192              # token cho bước liệt kê tiêu chí (output dài)
+    ai_chunk_chars: int = 12000                     # ngân sách ký tự mỗi chunk
+    ai_chunk_overlap: int = 800                     # overlap giữa các chunk
 
 
 @lru_cache
