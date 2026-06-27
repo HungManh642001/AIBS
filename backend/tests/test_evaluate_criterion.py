@@ -54,3 +54,38 @@ def test_aggregate_pass_when_all_pass():
             for s in CRIT["sub_checks"]]
     agg = base.aggregate_subresults(CRIT, subs)
     assert agg["result"] == "PASS" and agg["score"] == 100.0
+
+
+@pytest.mark.asyncio
+async def test_ai_error_becomes_error_result(monkeypatch):
+    monkeypatch.setattr(ai_client.settings, "ai_mock", False)
+
+    async def boom(*a, **k):
+        return ai_client.AiOutcome("error", None, "qwen3-27b", "timeout")
+
+    monkeypatch.setattr(base, "ai_call", boom)
+    crit = {"ten": "X", "required_artifacts": ["don_du_thau"], "sub_checks": [
+        {"ten": "Suy xét nội dung", "check_type": "semantic_match", "thong_so": {},
+         "required_artifact": "don_du_thau", "blocking": True}]}
+    subs = await base.evaluate_criterion(crit, {"don_du_thau": "nội dung đơn"})
+    assert subs[0]["result"] == "ERROR"
+    assert "timeout" in subs[0]["evidence"]
+
+
+@pytest.mark.asyncio
+async def test_artifact_outside_catalog_is_error_not_fail():
+    crit = {"ten": "X", "required_artifacts": ["khong_ton_tai"], "sub_checks": [
+        {"ten": "Kiểm tra", "check_type": "presence", "thong_so": {},
+         "required_artifact": "khong_ton_tai", "blocking": True}]}
+    subs = await base.evaluate_criterion(crit, {"khong_ton_tai": "abc"})
+    assert subs[0]["result"] == "ERROR"
+    assert "ngoài danh mục" in subs[0]["evidence"]
+
+
+def test_aggregate_error_takes_precedence():
+    crit = {"sub_checks": [{"ten": "A", "blocking": True}, {"ten": "B", "blocking": True}]}
+    subs = [
+        {"sub_check_ten": "A", "result": "PASS", "evidence": "", "page_ref": [], "nguon_file": "", "ai_model": ""},
+        {"sub_check_ten": "B", "result": "ERROR", "evidence": "", "page_ref": [], "nguon_file": "", "ai_model": ""},
+    ]
+    assert base.aggregate_subresults(crit, subs)["result"] == "ERROR"

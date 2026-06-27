@@ -2,9 +2,12 @@
 from __future__ import annotations
 from typing import Any, TypedDict
 
-from services.ai_client import ai_json
+from services.ai_client import ai_call
 from services.evaluation.checks import run_deterministic_check
 from services import artifact_catalog
+from services.json_utils import clamp_page_refs
+from services.prompts import cot_block, SCALE_DEF
+from services.ai_schemas import validate_eval_verdict, validate_sub_verdict
 
 
 class EvalResult(TypedDict):
@@ -31,10 +34,16 @@ async def eval_one(
         f"Tiêu chí: {criteria.get('ten')}\n"
         f"Yêu cầu HSMT: {criteria.get('yeu_cau', '')}\n"
         f"Nội dung HSDT:\n{content[:8000]}\n\n"
-        'Trả về JSON: {"result":"PASS|FAIL|PARTIAL","score":0-100,'
-        '"evidence":"...","page_ref":[...],"note":"..."}'
+        + cot_block('{"evidence":"...","result":"PASS|FAIL|PARTIAL","score":0-100,"page_ref":[...],"note":"..."}',
+                    scale=SCALE_DEF)
     )
-    data = await ai_json(system, prompt, mock_key=mock_key)
+    out = await ai_call(system, prompt, mock_key=mock_key, validate=validate_eval_verdict)
+    if out.status == "error":
+        return EvalResult(
+            criteria_ten=criteria.get("ten", ""), result="ERROR", score=0.0,
+            evidence=f"AI lỗi: {out.error}", page_ref=[], note="", ai_model="",
+        )
+    data = out.data
     result = data.get("result", "PARTIAL")
     if result not in {"PASS", "FAIL", "PARTIAL"}:
         result = "PARTIAL"
@@ -43,9 +52,9 @@ async def eval_one(
         result=result,
         score=_clamp(data.get("score", 0)),
         evidence=data.get("evidence") or "Không có dẫn chứng",
-        page_ref=data.get("page_ref") or [],
+        page_ref=clamp_page_refs(data.get("page_ref"), 0),
         note=data.get("note", ""),
-        ai_model=data.get("_model", ""),
+        ai_model=out.model,
     )
 
 
@@ -67,49 +76,58 @@ def _label(code: str) -> str:
     return a["label"] if a else code
 
 
-async def evaluate_criterion(criterion: dict[str, Any], artifact_content_map: dict[str, str]) -> list[SubResult]:
+async def evaluate_criterion(
+    criterion: dict[str, Any], artifact_content_map: dict[str, str], max_page: int = 0
+) -> list[SubResult]:
     """Đánh giá từng sub_check của một tiêu chí, routing sang deterministic hoặc AI."""
     out: list[SubResult] = []
+    valid_codes = set(artifact_catalog.all_codes())
     for sc in criterion.get("sub_checks", []):
         art = sc.get("required_artifact", "")
+        if art and art not in valid_codes:
+            # Mã hồ sơ AI đề xuất nằm ngoài danh mục -> cần người xử lý, KHÔNG đổ lỗi nhà thầu.
+            out.append(SubResult(
+                sub_check_ten=sc["ten"], result="ERROR",
+                evidence=f"AI đề xuất loại hồ sơ ngoài danh mục: {art}",
+                page_ref=[], nguon_file=art, ai_model="",
+            ))
+            continue
         if not art or art not in artifact_content_map:
             out.append(SubResult(
-                sub_check_ten=sc["ten"],
-                result="FAIL",
+                sub_check_ten=sc["ten"], result="FAIL",
                 evidence=f"Thiếu hồ sơ: {_label(art)}",
-                page_ref=[],
-                nguon_file=art,
-                ai_model="",
+                page_ref=[], nguon_file=art, ai_model="",
             ))
             continue
         content = artifact_content_map[art]
         det = run_deterministic_check(sc.get("check_type", ""), content, sc.get("thong_so", {}))
         if det is not None:
             out.append(SubResult(
-                sub_check_ten=sc["ten"],
-                result=det["result"],
-                evidence=det["evidence"],
-                page_ref=det.get("page_ref") or [],
-                nguon_file=art,
-                ai_model="python",
+                sub_check_ten=sc["ten"], result=det["result"], evidence=det["evidence"],
+                page_ref=det.get("page_ref") or [], nguon_file=art, ai_model="python",
             ))
             continue
         prompt = (
             f"Điểm kiểm: {sc['ten']} (loại {sc.get('check_type')})\n"
             f"Nội dung hồ sơ '{_label(art)}':\n{content[:6000]}\n\n"
-            'Trả JSON: {"result":"PASS|FAIL|PARTIAL","evidence":"...","page_ref":[...]}'
+            + cot_block('{"evidence":"...","result":"PASS|FAIL|PARTIAL","page_ref":[...]}', scale=SCALE_DEF)
         )
-        data = await ai_json(_SYS_SUB, prompt, mock_key="eval_subcheck")
+        res_out = await ai_call(_SYS_SUB, prompt, mock_key="eval_subcheck", validate=validate_sub_verdict)
+        if res_out.status == "error":
+            out.append(SubResult(
+                sub_check_ten=sc["ten"], result="ERROR",
+                evidence=f"AI lỗi: {res_out.error}", page_ref=[], nguon_file=art, ai_model="",
+            ))
+            continue
+        data = res_out.data
         res = data.get("result", "PARTIAL")
         if res not in {"PASS", "FAIL", "PARTIAL"}:
             res = "PARTIAL"
         out.append(SubResult(
-            sub_check_ten=sc["ten"],
-            result=res,
+            sub_check_ten=sc["ten"], result=res,
             evidence=data.get("evidence") or "Không có dẫn chứng",
-            page_ref=data.get("page_ref") or [],
-            nguon_file=art,
-            ai_model=data.get("_model", ""),
+            page_ref=clamp_page_refs(data.get("page_ref"), max_page),
+            nguon_file=art, ai_model=res_out.model,
         ))
     return out
 
@@ -121,8 +139,11 @@ def aggregate_subresults(criterion: dict[str, Any], sub_results: list[SubResult]
         r["result"] == "FAIL" and by_ten.get(r["sub_check_ten"], {}).get("blocking", True)
         for r in sub_results
     )
+    error_present = any(r["result"] == "ERROR" for r in sub_results)
     all_pass = bool(sub_results) and all(r["result"] == "PASS" for r in sub_results)
-    if blocking_fail:
+    if error_present:
+        result = "ERROR"
+    elif blocking_fail:
         result = "FAIL"
     elif all_pass:
         result = "PASS"
