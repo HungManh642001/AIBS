@@ -8,8 +8,9 @@ import SubCheckTable from "../components/SubCheckTable";
 
 function ResultPill({ result }: { result: string | null }) {
   const v = result ?? "—";
-  const cls = ["PASS", "FAIL", "PARTIAL"].includes(v) ? v : "default";
-  return <span className={`verdict-result-pill ${cls}`}>{v}</span>;
+  const cls = ["PASS", "FAIL", "PARTIAL", "ERROR"].includes(v) ? v : "default";
+  const label = v === "ERROR" ? "AI LỖI" : v;
+  return <span className={`verdict-result-pill ${cls}`}>{label}</span>;
 }
 
 function CompletenessBar({ percent, missing }: { percent: number; missing: string[] }) {
@@ -137,6 +138,13 @@ export default function Evaluation() {
 
   if (!data) return null;
 
+  const hasError = data.vendors.some((v) =>
+    v.criteria.some((c) =>
+      c.result === "ERROR" ||
+      c.sub_results.some((s) => s.result === "ERROR" && !s.overridden)
+    )
+  );
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20 }}>
@@ -145,8 +153,12 @@ export default function Evaluation() {
           <h1 className="page-title" style={{ marginBottom: 0 }}>Phán quyết có dẫn chứng</h1>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Button icon={<DownloadOutlined />} onClick={() => genReport("word")}>Xuất Word</Button>
-          <Button icon={<DownloadOutlined />} onClick={() => genReport("excel")}>Xuất Excel</Button>
+          <Tooltip title={hasError ? "Còn điểm kiểm AI lỗi — hãy xử lý trước khi xuất" : ""}>
+            <span style={{ display: "inline-flex", gap: 8 }}>
+              <Button icon={<DownloadOutlined />} disabled={hasError} onClick={() => genReport("word")}>Xuất Word</Button>
+              <Button icon={<DownloadOutlined />} disabled={hasError} onClick={() => genReport("excel")}>Xuất Excel</Button>
+            </span>
+          </Tooltip>
         </div>
       </div>
 

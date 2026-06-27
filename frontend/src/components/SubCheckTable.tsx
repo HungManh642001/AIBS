@@ -5,11 +5,13 @@ import { api } from "../api/client";
 import type { SubResult } from "../api/types";
 
 function ResultPill({ result }: { result: string }) {
-  const cls = ["PASS", "FAIL", "PARTIAL"].includes(result) ? result : "default";
-  return <span className={`verdict-result-pill ${cls}`}>{result}</span>;
+  const cls = ["PASS", "FAIL", "PARTIAL", "ERROR"].includes(result) ? result : "default";
+  const label = result === "ERROR" ? "AI LỖI" : result;
+  return <span className={`verdict-result-pill ${cls}`}>{label}</span>;
 }
 
-function SourceChip({ model }: { model: string }) {
+function SourceChip({ model, result }: { model: string; result?: string }) {
+  if (result === "ERROR") return <span className="source-chip error">AI lỗi</span>;
   if (!model) return null;
   const cls = model === "mock" ? "mock" : model.startsWith("python") ? "python" : "real";
   return <span className={`source-chip ${cls}`}>{model}</span>;
@@ -95,7 +97,7 @@ export default function SubCheckTable({
             title: "Nguồn AI",
             dataIndex: "ai_model",
             width: 110,
-            render: (m) => <SourceChip model={m ?? ""} />,
+            render: (m, s) => <SourceChip model={m ?? ""} result={s.result} />,
           },
           {
             title: "",
