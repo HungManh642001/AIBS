@@ -4,7 +4,10 @@ import copy
 import json
 import logging
 import os
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Callable
+
+from services.json_utils import extract_json
 
 # Dùng model cost map đóng gói sẵn, KHÔNG fetch từ internet (server on-premise).
 # Phải đặt trước khi import litellm (litellm đọc biến này lúc import).
@@ -66,28 +69,67 @@ MOCK_RESPONSES: dict[str, dict[str, Any]] = {
 }
 
 
-def _litellm_completion(system: str, prompt: str) -> str:
+def _litellm_completion(system: str, prompt: str, max_tokens: int | None = None) -> str:
     """Gọi LiteLLM Proxy (OpenAI-compatible /v1). Tách riêng để test dễ monkeypatch."""
     import litellm
 
-    # LiteLLM Proxy expose endpoint OpenAI-compatible -> route qua provider "openai"
-    # để litellm gọi đúng <api_base>/chat/completions với api_key.
     model = settings.ai_model
     if "/" not in model:
         model = f"openai/{model}"
 
     resp = litellm.completion(
         model=model,
-        api_base=settings.ai_base_url,          # ví dụ: https://proxy.example.com/v1
-        api_key=settings.ai_api_key or "sk-no-key",  # proxy không auth vẫn cần key khác rỗng
+        api_base=settings.ai_base_url,
+        api_key=settings.ai_api_key or "sk-no-key",
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ],
-        response_format={"type": "json_object"},
+        temperature=settings.ai_temperature,
+        max_tokens=max_tokens or settings.ai_max_tokens,
         timeout=300,
     )
     return resp["choices"][0]["message"]["content"]
+
+
+@dataclass
+class AiOutcome:
+    """Kết quả 1 lượt gọi AI. status='error' nghĩa là KHÔNG có dữ liệu thật (không bịa mock)."""
+    status: str            # "ok" | "error"
+    data: dict[str, Any] | None
+    model: str             # tên model thật | "mock"
+    error: str | None = None
+
+
+async def ai_call(
+    system: str,
+    prompt: str,
+    *,
+    mock_key: str,
+    validate: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    max_tokens: int | None = None,
+) -> AiOutcome:
+    """Gọi AI và trả AiOutcome. Mock CHỈ khi ai_mock=1; chế độ thật lỗi -> status='error'."""
+    if settings.ai_mock:
+        data = copy.deepcopy(MOCK_RESPONSES[mock_key])
+        if validate is not None:
+            data = validate(data)
+        return AiOutcome(status="ok", data=data, model="mock")
+
+    last_err = ""
+    for attempt in range(2):  # lần đầu + 1 retry
+        try:
+            raw = _litellm_completion(system, prompt, max_tokens=max_tokens)
+            data = extract_json(raw)
+            if validate is not None:
+                data = validate(data)
+            logger.info("AI[%s]: TRẢ KẾT QUẢ THẬT (model=%s).", mock_key, settings.ai_model)
+            return AiOutcome(status="ok", data=data, model=settings.ai_model)
+        except Exception as exc:
+            last_err = f"{type(exc).__name__}: {exc}"
+            logger.warning("AI[%s]: lượt %d THẤT BẠI: %s", mock_key, attempt + 1, last_err)
+
+    return AiOutcome(status="error", data=None, model=settings.ai_model, error=last_err)
 
 
 async def ai_json(system: str, prompt: str, *, mock_key: str) -> dict[str, Any]:
