@@ -69,3 +69,30 @@ def extract_lines(pdf_path: str) -> list[Line]:
     n_pages = doc.page_count  # capture before close
     doc.close()
     return _strip_furniture(out, n_pages=n_pages or 1)
+
+
+def extract_tables(pdf_path: str, lines: list[Line]) -> tuple[list[TableRegion], list[Line]]:
+    """Phát hiện bảng bằng find_tables(); loại các dòng văn bản nằm trong bbox bảng."""
+    doc = fitz.open(pdf_path)
+    tables: list[TableRegion] = []
+    spans_by_page: dict[int, list[tuple[float, float]]] = {}
+    for pno in range(doc.page_count):
+        try:
+            found = doc[pno].find_tables()
+        except Exception:
+            continue
+        for tbl in found.tables:
+            x0, y0, x1, y1 = tbl.bbox
+            rows = [[(c or "").strip() for c in row] for row in tbl.extract()]
+            tables.append(TableRegion(page=pno + 1, y0=y0, y1=y1, rows=rows))
+            spans_by_page.setdefault(pno + 1, []).append((y0, y1))
+    doc.close()
+
+    def _inside(l: Line) -> bool:
+        for y0, y1 in spans_by_page.get(l.page, []):
+            if y0 - 1 <= l.y0 <= y1 + 1:
+                return True
+        return False
+
+    kept = [l for l in lines if not _inside(l)]
+    return tables, kept
