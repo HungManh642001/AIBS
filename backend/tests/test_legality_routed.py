@@ -37,3 +37,18 @@ def test_compute_completeness():
     out = legality.compute_completeness(CRITERIA, present_artifacts={"bao_dam_du_thau"})
     assert out["required"] == ["bao_dam_du_thau"]
     assert out["missing"] == [] and out["percent"] == 100.0
+
+
+@pytest.mark.asyncio
+async def test_routed_passes_max_page(monkeypatch):
+    seen = {}
+
+    async def fake_eval(criterion, amap, max_page=0):
+        seen["max_page"] = max_page
+        return []
+
+    from services.evaluation import legality as L
+    monkeypatch.setattr(L, "evaluate_criterion", fake_eval)
+    await L.evaluate_legality_routed(
+        [{"nhom": "hop_le", "ten": "X", "sub_checks": []}], {}, max_page=12)
+    assert seen["max_page"] == 12
