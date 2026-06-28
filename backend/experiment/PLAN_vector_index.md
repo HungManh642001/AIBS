@@ -15,7 +15,8 @@ Biến chunk phân cấp đã có thành chỉ mục vector **hybrid** (dense + 
 
 | Trục | Chốt |
 |---|---|
-| Nguồn **dense** embedding | Qua **LiteLLM proxy** `/v1/embeddings` (model `bge-m3`) — như `ai_client` |
+| Orchestration | **LlamaIndex** (TextNode → QdrantVectorStore → VectorStoreIndex) |
+| Nguồn **dense** embedding | Qua **LiteLLM proxy** `/v1/embeddings` (model `bge-m3`), nối bằng LlamaIndex **`OpenAILikeEmbedding`** — KHÔNG dùng lib litellm → giữ pin `litellm==1.41.0` & `ai_client` |
 | Nguồn **sparse** (BM25) | **FastEmbed `Qdrant/bm25`**, chạy local, xác định, KHÔNG cần proxy |
 | Phạm vi index | **Toàn bộ HSMT** (185 chunk) — vì đích tham chiếu nằm NGOÀI Chương III |
 | Kiểu tìm kiếm | **Hybrid** dense + sparse, hợp nhất bằng **RRF** |
@@ -39,51 +40,48 @@ chất lượng **dense + hybrid** soi mắt khi proxy bật (lệnh + kỳ vọ
 
 ```
 index/
-  schema.py        IndexPoint, payload schema, hằng số collection (tên, dim fake, tên vector)
-                   point id = uuid5(NAMESPACE, chunk_id) → upsert idempotent (build lại không nhân đôi)
-  embedder.py      ProxyEmbedder (litellm.embedding; batch; retry 1 lần; raise khi fail; probe dim)
-                   FakeEmbedder (xác định, offline, chỉ test)
-  sparse.py        Bm25Encoder (FastEmbed "Qdrant/bm25") -> SparseVector (indices, values)
-  store.py         VectorStore: create_collection / upsert_points / hybrid_search
-  build_index.py   CLI: chunks.jsonl -> collection + out/index_report.md ; run()/main()
-  query_index.py   CLI: query string -> top-k hybrid ; in score/page/section_path/snippet
+  schema.py        chunk dict -> TextNode (id_=uuid5(chunk_id) → idempotent; metadata = payload;
+                   excluded_embed_metadata_keys = tất cả key metadata → CHỈ embed text chunk).
+                   Hằng số: COLLECTION="hsmt_chunks", FAKE_DIM=256
+  embedder.py      build_embedder(settings) -> OpenAILikeEmbedding(model_name="bge-m3",
+                   api_base=ai_base_url, api_key=…, is_chat_model=False)
+                   DeterministicEmbedding(BaseEmbedding): hash text -> unit vector dim FAKE_DIM (chỉ test)
+  store.py         build_vector_store(client) -> QdrantVectorStore(enable_hybrid=True,
+                   fastembed_sparse_model="Qdrant/bm25"); build_index(nodes, store, embed)
+                   -> VectorStoreIndex; open_index(store, embed) -> from_vector_store;
+                   hybrid_retriever(index, k) -> retriever(vector_store_query_mode="hybrid")
+  build_index.py   CLI: chunks.jsonl -> nodes -> VectorStoreIndex (out/qdrant/) + out/index_report.md
+  query_index.py   CLI: query -> hybrid retrieve top-k ; in score/page/section_path/snippet
   tests/
-    conftest.py        sample_chunks fixture (đọc out/chunks.jsonl, skip nếu vắng); fake_embedder
-    test_schema.py     point id ổn định/idempotent; payload round-trip (inline)
-    test_sparse.py     BM25 ra sparse khác rỗng; cùng input -> cùng output (offline, THẬT)
-    test_store.py      :memory: + FakeEmbedder + BM25 thật: create/upsert/search trả đúng số điểm
-    test_hybrid.py     fusion RRF: điểm khớp keyword nổi lên (BM25 thật, dense fake)
-    test_build_e2e.py  sample-gated, FakeEmbedder: build -> 185 điểm, query trả kết quả, có report
+    conftest.py        sample_chunks fixture (đọc out/chunks.jsonl, skip nếu vắng); det_embedder
+    test_schema.py     uuid5 ổn định/idempotent; metadata round-trip; embed-exclusion phủ hết key
+    test_store.py      :memory: + DeterministicEmbedding + BM25 thật: build + hybrid_retriever trả node
+    test_hybrid.py     node khớp keyword nổi top (BM25 thật, dense xác định) → sparse kéo recall
+    test_build_e2e.py  sample-gated, det embedder: build -> 185 điểm, query trả kết quả, có report
 ```
 
 ## 5. Luồng dữ liệu
 
 ```
 chunks.jsonl ──> [build_index]
-   mỗi chunk: text + payload(metadata)
-        │
-        ├─ dense  = ProxyEmbedder.embed([text...])      (proxy; thật khi bật)
-        ├─ sparse = Bm25Encoder.encode([text...])       (local; luôn chạy)
-        └─ id     = uuid5(chunk_id)
+   mỗi chunk -> TextNode(text, metadata, id_=uuid5(chunk_id))
         ▼
-   VectorStore.upsert_points(points)  ──>  Qdrant on-disk (out/qdrant/)
-                                            collection "hsmt_chunks"
-                                              vectors: { dense: cosine, size=dim }
-                                              sparse_vectors: { sparse: Modifier.IDF }
+   VectorStoreIndex(nodes, storage=QdrantVectorStore(enable_hybrid), embed_model)
+        ├─ dense  = OpenAILikeEmbedding(bge-m3)  (proxy; thật khi bật / det khi test)
+        └─ sparse = FastEmbed Qdrant/bm25        (local; luôn chạy)
+        ▼
+   Qdrant on-disk (out/qdrant/) collection "hsmt_chunks"  (LlamaIndex tự tạo 2 vector + IDF)
 
-query ──> [query_index] ──> VectorStore.hybrid_search(q, k)
-            dense_q  = embed(q)        sparse_q = bm25(q)
-            query_points(prefetch=[dense NN, sparse NN], FusionQuery(RRF))
-          ──> top-k {score, payload}  ──> in bảng người soi
+query ──> [query_index] ──> open_index(store).as_retriever(mode="hybrid", top_k=k)
+          ──> top-k NodeWithScore {score, node.text, node.metadata}  ──> in bảng người soi
 ```
 
-## 6. Cơ chế Hybrid (Qdrant native)
+## 6. Cơ chế Hybrid (LlamaIndex + Qdrant native)
 
-- Collection 2 vector có tên: `dense` (Distance.COSINE, size = dim probe được; Fake=256) và
-  `sparse` (sparse vector với `models.Modifier.IDF` → Qdrant tự tính IDF kiểu BM25 server-side).
-- Truy vấn: `client.query_points(collection, prefetch=[Prefetch(query=dense, using="dense", limit=k*4),
-  Prefetch(query=SparseVector, using="sparse", limit=k*4)], query=FusionQuery(fusion=RRF), limit=k)`.
-- Dim dense **probe** từ 1 lần embed lúc tạo collection (không hardcode), trừ FakeEmbedder = 256.
+- `QdrantVectorStore(enable_hybrid=True, fastembed_sparse_model="Qdrant/bm25")` tự dựng collection 2
+  vector (dense COSINE + sparse BM25/IDF) và hợp nhất bằng **RRF** — không phải tự gọi `query_points`.
+- Truy hồi: `index.as_retriever(vector_store_query_mode="hybrid", similarity_top_k=k)`.
+- Dim dense do LlamaIndex/QdrantVectorStore tự suy từ embedding (không hardcode); DeterministicEmbedding = 256.
 
 ## 7. Payload schema (lưu nguyên metadata chunk để lọc)
 
@@ -100,7 +98,8 @@ Bước sau lọc được: `node_type=="table"`, `group_hint=="ky_thuat"`, theo
 
 ## 8. Config & deps
 
-- `experiment/requirements-experiment.txt`: `qdrant-client`, `fastembed` (CPU; litellm đã có).
+- `experiment/requirements-experiment.txt`: `llama-index-core`, `llama-index-vector-stores-qdrant`,
+  `llama-index-embeddings-openai-like`, `qdrant-client`, `fastembed` (CPU; KHÔNG dùng lib litellm).
 - `config.py`: **chỉ thêm** `ai_embed_model: str = "bge-m3"`; **tái dùng** `ai_base_url`, `ai_api_key`.
   (Lưu ý: `config.py` đang có thay đổi chưa commit — chỉ thêm field, không sửa dòng khác.)
 - FastEmbed `Qdrant/bm25` tải artefact nhỏ (~vài MB) lần đầu (cần internet 1 lần; proxy tắt ≠ mất net).

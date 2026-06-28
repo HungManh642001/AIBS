@@ -1,0 +1,9 @@
+# Deps cho bước 2 (vector index Qdrant + LlamaIndex). Cài RIÊNG, không đụng services/.
+#   pip install -r backend/experiment/requirements-experiment.txt
+# Embedding đi qua endpoint OpenAI-compatible của LiteLLM proxy bằng OpenAILikeEmbedding
+# (KHÔNG dùng lib litellm) -> giữ nguyên pin litellm==1.41.0 ở requirements.txt và ai_client.
+llama-index-core==0.14.23
+llama-index-vector-stores-qdrant==0.10.1
+llama-index-embeddings-openai-like==0.3.1
+qdrant-client==1.18.0
+fastembed==0.8.0
