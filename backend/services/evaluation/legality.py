@@ -26,14 +26,14 @@ async def evaluate_legality(
 
 
 async def evaluate_legality_routed(
-    criteria: list[dict[str, Any]], artifact_content_map: dict[str, str]
+    criteria: list[dict[str, Any]], artifact_content_map: dict[str, str], max_page: int = 0
 ) -> list[dict[str, Any]]:
     """Đánh giá tiêu chí hợp lệ theo artifact routing (chỉ nhóm hop_le)."""
     out: list[dict[str, Any]] = []
     for c in criteria:
         if c.get("nhom") != "hop_le":
             continue
-        subs = await evaluate_criterion(c, artifact_content_map)
+        subs = await evaluate_criterion(c, artifact_content_map, max_page)
         agg = aggregate_subresults(c, subs)
         out.append({"criteria_ten": c["ten"], "result": agg["result"],
                     "score": agg["score"], "sub_results": subs})

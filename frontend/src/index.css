@@ -218,6 +218,7 @@ body {
 .verdict-result-pill.FAIL    { background: var(--fail-bg);    color: var(--fail); }
 .verdict-result-pill.PARTIAL { background: var(--partial-bg); color: var(--partial); }
 .verdict-result-pill.default { background: #F0F0F0; color: #666; }
+.verdict-result-pill.ERROR   { background: #FBE3E1; color: var(--seal); font-weight: 700; }
 
 .verdict-ten {
   font-weight: 600;
@@ -253,6 +254,7 @@ body {
 .source-chip.real   { border-color: var(--teal);  color: var(--teal);  background: var(--teal-tint); }
 .source-chip.mock   { border-color: #aaa;          color: #777;         background: #F5F5F5; }
 .source-chip.python { border-color: #6B7AE0;       color: #4B5CC4;      background: #EEEFFE; }
+.source-chip.error  { border-color: var(--fail);   color: var(--fail);  background: var(--fail-bg); }
 
 /* ── Completeness bar ───────────────────────────────────── */
 .completeness-bar-track {

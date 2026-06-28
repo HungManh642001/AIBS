@@ -2,6 +2,7 @@
 import fitz
 
 from services import ai_client
+import services.extraction as _extraction_svc
 
 
 def _text_pdf(t: str) -> bytes:
@@ -12,13 +13,14 @@ def _text_pdf(t: str) -> bytes:
 
 def _setup(client, monkeypatch):
     monkeypatch.setattr(ai_client.settings, "ai_mock", True)
+    monkeypatch.setattr(_extraction_svc._settings, "ai_mock", True)
     pid = client.post("/api/v1/packages",
                       json={"ma_so": "G-9", "ten": "G", "vendors": ["A"]}).json()["data"]
     package_id = pid["id"]
     vendor_id = pid["vendors"][0]["id"]
     client.post(f"/api/v1/packages/{package_id}/documents",
                 files={"file": ("hsmt.pdf",
-                                _text_pdf("Tiêu chí đánh giá hợp lệ kỹ thuật năng lực"),
+                                _text_pdf("Tiêu chuẩn đánh giá hợp lệ kỹ thuật năng lực"),
                                 "application/pdf")},
                 data={"loai": "HSMT"})
     client.post(f"/api/v1/packages/{package_id}/documents",

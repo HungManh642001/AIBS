@@ -1,6 +1,7 @@
 """Tests cho evaluation router (Task 11 TDD): artifact routing + sub-check results."""
 import fitz
 from services import ai_client
+import services.extraction as _extraction_svc
 
 
 def _pdf(t):
@@ -26,6 +27,7 @@ def _setup(client):
 
 def test_evaluate_routed_with_subresults(client, monkeypatch):
     monkeypatch.setattr(ai_client.settings, "ai_mock", True)
+    monkeypatch.setattr(_extraction_svc._settings, "ai_mock", True)
     pid, vid = _setup(client)
     client.post(f"/api/v1/packages/{pid}/rubric")            # tạo tiêu chí đánh giá từ HSMT (mock)
     client.post(f"/api/v1/packages/{pid}/rubric/confirm")

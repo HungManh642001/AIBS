@@ -3,7 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 from services import artifact_catalog
-from services.ai_client import ai_json, settings
+from services.ai_client import ai_call, settings
+from services.prompts import cot_block
+from services.ai_schemas import validate_validate_artifact
 
 _SYS = "Bạn là trợ lý phân loại hồ sơ thầu. Chỉ trả JSON."
 
@@ -23,5 +25,9 @@ async def validate_artifact(file_pages: list[dict[str, Any]], declared_type: str
     declared = artifact_catalog.get_artifact(declared_type)
     label = declared["label"] if declared else declared_type
     prompt = (f"Loại khai báo: {label}. Nội dung file:\n{text}\n\n"
-              'Trả JSON: {"match":true|false,"suggested_type":"<code hoặc rỗng>","confidence":0-1,"note":"..."}')
-    return await ai_json(_SYS, prompt, mock_key="validate_artifact")
+              + cot_block('{"match":true|false,"suggested_type":"<code hoặc rỗng>","confidence":0-1,"note":"..."}'))
+    out = await ai_call(_SYS, prompt, mock_key="validate_artifact", validate=validate_validate_artifact)
+    if out.status == "error":
+        return {"match": False, "suggested_type": "", "confidence": 0.0,
+                "note": f"AI lỗi khi kiểm tra loại hồ sơ: {out.error}", "_model": out.model}
+    return {**out.data, "_model": out.model}

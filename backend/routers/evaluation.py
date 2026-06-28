@@ -69,7 +69,13 @@ async def evaluate(package_id: int, db: Session = Depends(get_db)):
     vendors_out = []
     for vendor in pkg.vendors:
         amap, present = _artifact_map(pkg, vendor.id)
-        routed = await evaluate_legality_routed(crit_dicts, amap)
+        max_page = 0
+        for d in pkg.documents:
+            if d.vendor_id != vendor.id:
+                continue
+            for p in _pages(d):
+                max_page = max(max_page, int(p.get("page", 0)))
+        routed = await evaluate_legality_routed(crit_dicts, amap, max_page)
         comp = compute_completeness(crit_dicts, present)
         crit_summ = []
         for r in routed:

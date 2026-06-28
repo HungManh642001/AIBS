@@ -1,10 +1,12 @@
 """Client gọi LiteLLM proxy -> Qwen3 27B, tự động fallback sang mock JSON."""
 from __future__ import annotations
 import copy
-import json
 import logging
 import os
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Callable
+
+from services.json_utils import extract_json
 
 # Dùng model cost map đóng gói sẵn, KHÔNG fetch từ internet (server on-premise).
 # Phải đặt trước khi import litellm (litellm đọc biến này lúc import).
@@ -24,18 +26,6 @@ else:
     )
 
 MOCK_RESPONSES: dict[str, dict[str, Any]] = {
-    "extract_criteria": {
-        "criteria": [
-            {"nhom": "hop_le", "ten": "Đơn dự thầu hợp lệ", "yeu_cau": "Mẫu đúng, có chữ ký", "kieu": "pass_fail", "trong_so": 0},
-            {"nhom": "hop_le", "ten": "Bảo lãnh dự thầu", "yeu_cau": "Giá trị >= 3% giá gói thầu", "kieu": "pass_fail", "trong_so": 0},
-            {"nhom": "nang_luc", "ten": "Doanh thu 3 năm", "yeu_cau": ">= 1.5 lần giá gói thầu", "kieu": "pass_fail", "trong_so": 0},
-            {"nhom": "nang_luc", "ten": "Hợp đồng tương tự", "yeu_cau": ">= 1 hợp đồng tương tự", "kieu": "pass_fail", "trong_so": 0},
-            {"nhom": "ky_thuat", "ten": "Đáp ứng thông số kỹ thuật", "yeu_cau": "Khớp >= 90% thông số", "kieu": "score", "trong_so": 60},
-            {"nhom": "ky_thuat", "ten": "Tiến độ cung cấp", "yeu_cau": "<= 60 ngày", "kieu": "score", "trong_so": 40},
-            {"nhom": "tai_chinh", "ten": "Giá dự thầu", "yeu_cau": "Bảng chào giá chi tiết", "kieu": "score", "trong_so": 0},
-        ]
-    },
-    "map_hsdt": {"mappings": [{"criteria_ten": "Đơn dự thầu hợp lệ", "page_ref": [1], "content": "Đơn dự thầu ký ngày 01/06/2026"}]},
     "eval_legality": {"result": "PASS", "score": 100, "evidence": "Đơn dự thầu có chữ ký hợp lệ", "page_ref": [1], "note": "Đầy đủ"},
     "eval_capacity": {"result": "PASS", "score": 85, "evidence": "Doanh thu 3 năm đạt 1.8 lần giá gói thầu", "page_ref": [4], "note": "Đạt yêu cầu"},
     "eval_technical": {"result": "PARTIAL", "score": 78, "evidence": "Đáp ứng 88% thông số kỹ thuật", "page_ref": [7], "note": "Thiếu 2 thông số phụ"},
@@ -66,50 +56,64 @@ MOCK_RESPONSES: dict[str, dict[str, Any]] = {
 }
 
 
-def _litellm_completion(system: str, prompt: str) -> str:
+def _litellm_completion(system: str, prompt: str, max_tokens: int | None = None) -> str:
     """Gọi LiteLLM Proxy (OpenAI-compatible /v1). Tách riêng để test dễ monkeypatch."""
     import litellm
 
-    # LiteLLM Proxy expose endpoint OpenAI-compatible -> route qua provider "openai"
-    # để litellm gọi đúng <api_base>/chat/completions với api_key.
     model = settings.ai_model
     if "/" not in model:
         model = f"openai/{model}"
 
     resp = litellm.completion(
         model=model,
-        api_base=settings.ai_base_url,          # ví dụ: https://proxy.example.com/v1
-        api_key=settings.ai_api_key or "sk-no-key",  # proxy không auth vẫn cần key khác rỗng
+        api_base=settings.ai_base_url,
+        api_key=settings.ai_api_key or "sk-no-key",
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ],
-        response_format={"type": "json_object"},
+        temperature=settings.ai_temperature,
+        max_tokens=max_tokens or settings.ai_max_tokens,
         timeout=300,
     )
     return resp["choices"][0]["message"]["content"]
 
 
-async def ai_json(system: str, prompt: str, *, mock_key: str) -> dict[str, Any]:
+@dataclass
+class AiOutcome:
+    """Kết quả 1 lượt gọi AI. status='error' nghĩa là KHÔNG có dữ liệu thật (không bịa mock)."""
+    status: str            # "ok" | "error"
+    data: dict[str, Any] | None
+    model: str             # tên model thật | "mock"
+    error: str | None = None
+
+
+async def ai_call(
+    system: str,
+    prompt: str,
+    *,
+    mock_key: str,
+    validate: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    max_tokens: int | None = None,
+) -> AiOutcome:
+    """Gọi AI và trả AiOutcome. Mock CHỈ khi ai_mock=1; chế độ thật lỗi -> status='error'."""
     if settings.ai_mock:
-        logger.info("AI[%s]: dùng MOCK (ai_mock=1).", mock_key)
-        return _mock(mock_key)
-    try:
-        logger.info("AI[%s]: gọi LiteLLM model=%s ...", mock_key, settings.ai_model)
-        raw = _litellm_completion(system, prompt)
-        data = json.loads(raw)
-        data["_model"] = settings.ai_model
-        logger.info("AI[%s]: LiteLLM TRẢ KẾT QUẢ THẬT (model=%s).", mock_key, settings.ai_model)
-        return data
-    except Exception as exc:
-        logger.warning(
-            "AI[%s]: gọi LiteLLM THẤT BẠI -> fallback MOCK. Lý do: %s: %s",
-            mock_key, type(exc).__name__, exc,
-        )
-        return _mock(mock_key)
+        data = copy.deepcopy(MOCK_RESPONSES[mock_key])
+        if validate is not None:
+            data = validate(data)
+        return AiOutcome(status="ok", data=data, model="mock")
 
+    last_err = ""
+    for attempt in range(2):  # lần đầu + 1 retry
+        try:
+            raw = _litellm_completion(system, prompt, max_tokens=max_tokens)
+            data = extract_json(raw)
+            if validate is not None:
+                data = validate(data)
+            logger.info("AI[%s]: TRẢ KẾT QUẢ THẬT (model=%s).", mock_key, settings.ai_model)
+            return AiOutcome(status="ok", data=data, model=settings.ai_model)
+        except Exception as exc:
+            last_err = f"{type(exc).__name__}: {exc}"
+            logger.warning("AI[%s]: lượt %d THẤT BẠI: %s", mock_key, attempt + 1, last_err)
 
-def _mock(mock_key: str) -> dict[str, Any]:
-    data = copy.deepcopy(MOCK_RESPONSES[mock_key])
-    data["_model"] = "mock"
-    return data
+    return AiOutcome(status="error", data=None, model=settings.ai_model, error=last_err)

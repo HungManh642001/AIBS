@@ -68,7 +68,7 @@ def _rebuild_evals(
                 else 0.0
             ),
             "passed_legality": bool(groups["hop_le"] + groups["nang_luc"]) and all(
-                x["result"] != "FAIL"
+                x["result"] not in ("FAIL", "ERROR")
                 for x in groups["hop_le"] + groups["nang_luc"]
             ),
         }
@@ -89,6 +89,23 @@ async def generate_report(
 
     if loai not in ("word", "excel"):
         return fail("loai phải là 'word' hoặc 'excel'", 422)
+
+    # Chặn xuất khi còn điểm kiểm AI lỗi chưa được chuyên gia xử lý.
+    sub_ids = [
+        s.id for c in pkg.criteria
+        for s in db.scalars(select(models.EvaluationSubCheck).where(
+            models.EvaluationSubCheck.criteria_id == c.id)).all()
+    ]
+    if sub_ids:
+        n_err = db.scalar(
+            select(models.SubCheckResult).where(
+                models.SubCheckResult.sub_check_id.in_(sub_ids),
+                models.SubCheckResult.ket_qua == "ERROR",
+                models.SubCheckResult.overridden.is_(False),
+            )
+        )
+        if n_err is not None:
+            return fail("Còn điểm kiểm AI lỗi chưa xử lý — hãy điều chỉnh trước khi xuất báo cáo", 409)
 
     # Lấy session đánh giá mới nhất để lấy ranking và financials
     # Ghi chú: xếp hạng/tài chính tạm thời trống — sẽ có khi các nhóm ngoài Hợp lệ áp dụng pattern artifact.
