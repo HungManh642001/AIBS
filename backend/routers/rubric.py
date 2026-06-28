@@ -105,6 +105,7 @@ async def extract(package_id: int, db: Session = Depends(get_db)):
     sections = locate_hsmt_sections(_pages(hsmt))
     if not sections["tcdg"]["located"]:
         return fail("Không định vị được mục Tiêu chuẩn đánh giá trong HSMT — kiểm tra lại file HSMT", 422)
+    print(sections)
     outcome = await extract_rubric(sections)
     if outcome.status == "error":
         return fail(f"Trích xuất tiêu chí thất bại: {outcome.error}", 502)

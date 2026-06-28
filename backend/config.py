@@ -13,7 +13,8 @@ class Settings(BaseSettings):
     db_url: str = f"sqlite:///{BASE_DIR / 'abes_demo.db'}"
     ai_base_url: str = "http://localhost:4000/v1"  # LiteLLM Proxy (OpenAI-compatible, kết thúc bằng /v1)
     ai_api_key: str = ""                           # API key của LiteLLM Proxy
-    ai_model: str = "qwen3-27b"
+    ai_model: str = "qwen3.6-27b"
+    ai_embed_model: str = "bge-m3"                  # model embedding qua LiteLLM proxy (bước index)
     ai_mock: bool = False                          # True -> luôn dùng mock
     ai_temperature: float = 0.0                    # 0 -> tái lập kết quả
     ai_max_tokens: int = 4096                       # giới hạn token sinh (đánh giá/sub-check)
