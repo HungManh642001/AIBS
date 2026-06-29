@@ -48,13 +48,23 @@ StartEvent(group)
 [CritiqueCoverage]  LLM đối chiếu LẠI nguồn vs danh sách -> trả missing[] + ghi chú
                 (chặn recall). Gộp missing vào danh sách (đánh dấu added_by_critique).
   ▼  fan-out: mỗi tiêu chí -> DetailEvent
-[DetailCriterion] (song song)  LLM bóc sub_checks + ngưỡng (CriterionDetailModel).
-                Khi cần số "theo HSMT": sinh **sub-query** -> retrieve_fn(BDS) -> có thì
-                điền value+nguon; KHÔNG có/mơ hồ -> thong_so.can_review=true (KHÔNG bịa).
-                Lỗi LLM -> giữ tiêu chí + can_review + loi_ai.
+[DetailCriterion] (song song) — 3 lượt, RETRIEVAL THEO CÁI CÒN THIẾU (không theo tên tiêu chí):
+   3a structure : LLM bóc sub_checks + check_type; điền thong_so KHI nguồn có sẵn số; sub_check
+                  cần số mà nguồn không nêu -> đánh dấu **thong_so._need='<mô tả>'** (KHÔNG bịa).
+   3b sub-query : CHỈ cho các sub_check có _need -> LLM **sinh sub-query** theo từng _need ->
+                  retrieve_fn(query) nhắm đúng số thiếu (TCĐG→BDS). (bỏ qua nếu không có _need)
+   3c resolve   : CHỈ khi có _need VÀ có bằng chứng -> LLM điền thong_so từ bằng chứng, bỏ _need;
+                  không thấy/mơ hồ -> thong_so.can_review=true (KHÔNG bịa).
+                  _need còn sót (không bằng chứng) -> ép can_review. Lỗi LLM -> giữ tiêu chí +
+                  can_review + loi_ai.
   ▼  collect tất cả DetailDoneEvent
 [Assemble] -> StopEvent(GroupDecomposition)
 ```
+
+> **Sửa (2026-06-29):** bản đầu dùng MỘT truy vấn ghép từ `crit.ten` *trước khi* biết sub_check
+> nào cần ngưỡng -> query quá chung, không kéo đúng số, LLM phải vừa-đoán-cấu-trúc-vừa-điền ->
+> kết quả kém. Bản này tách structure → sub-query theo `_need` → resolve để truy hồi bám đúng
+> tham số còn thiếu. Có **logging tiến độ** ra console (stderr, `--quiet` để tắt).
 
 `run_decompose` lặp 4 nhóm, gọi workflow mỗi nhóm, gom thành `DecomposeResult`.
 
@@ -96,7 +106,7 @@ decompose/
   llm.py           LlmFn protocol; default_llm_fn (bọc ai_call, no-silent-mock); ScriptedLlm (test)
   retrieval.py     RetrieveFn; default từ experiment.index (open index 1 lần, hybrid top-k);
                    resolve_reference(ref_target)->text ; subquery_bds(query)->hits
-  prompts.py       system prompt: list / critique / detail / subquery (dùng cot_block + SCALE_DEF)
+  prompts.py       system prompt: list / critique / structure / subquery / resolve (cot_block + SCALE_DEF)
   workflow.py      DecomposeWorkflow (LlamaIndex Workflow): ListCriteria/CritiqueCoverage/
                    DetailCriterion(fan-out)/Assemble + events
   run_decompose.py CLI: chuong3_groups.json + index -> decomposition.json/.md + report ; run()/main()

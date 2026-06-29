@@ -19,11 +19,11 @@ async def test_run_e2e_with_scripted(sample_groups, tmp_path):
     """Sample-gated: chạy run() trên chuong3_groups.json thật với LLM kịch bản -> 4 nhóm + artefact."""
     n_groups = len(sample_groups["data"]["groups"])
 
-    # Khớp theo prefix tag: mọi lời gọi detail trả 1 tiêu chí mẫu hợp lệ.
+    # Khớp theo prefix tag: structure trả 1 tiêu chí mẫu (không _need -> bỏ query/resolve).
     llm = ScriptedLlm({
         "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Tiêu chí mẫu"}]},
         "[TAG:CRITIQUE]": {"criteria": []},
-        "[TAG:DETAIL:": _generic_detail(),
+        "[TAG:STRUCT:": _generic_detail(),
     })
     out = tmp_path / "out"
     metrics = await decompose_run(
