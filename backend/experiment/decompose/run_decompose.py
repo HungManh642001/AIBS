@@ -42,8 +42,10 @@ def _to_markdown(r: DecomposeResult) -> str:
             flag = " ⚠️cần soi" if c.get("can_review") else ""
             lines.append(f"- **{c.get('ten')}** ({c.get('nhom')}/{c.get('kieu')}){flag}")
             for sc in c.get("sub_checks", []):
-                cr = " [can_review]" if sc.get("thong_so", {}).get("can_review") else ""
-                lines.append(f"    - {sc.get('ten')} · {sc.get('check_type')}{cr}")
+                ts = sc.get("thong_so", {})
+                cr = " [can_review]" if ts.get("can_review") else ""
+                later = " [đánh giá sau·HSDT]" if ts.get("_danh_gia_sau") else ""
+                lines.append(f"    - {sc.get('ten')} · {sc.get('check_type')}{cr}{later}")
         if g.needs_review:
             lines.append(f"- needs_review: {g.needs_review}")
         lines.append("")

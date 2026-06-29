@@ -43,19 +43,26 @@ StartEvent(group)
   │  (nếu group.is_reference, vd Mục 3→Phần 4: retrieve_fn(ref_target) kéo nội dung Phần 4 làm nguồn)
   ▼
 [ListCriteria]  LLM đọc TRỌN nội dung nhóm (text + bảng nguyên văn) -> liệt kê tiêu chí
-                (nhom, ten, required_artifacts). validate_criteria_list.
+                NGUYÊN TỬ: mỗi tiêu chí = ĐÁNH GIÁ 1 loại hồ sơ (required_artifacts = 1 mã) ứng
+                với 1 nội dung kiểm; 1 loại hồ sơ nhiều nội dung -> TÁCH nhiều tiêu chí; không
+                gộp, không trùng. (nhom, ten, required_artifacts). validate_criteria_list.
   ▼  ListEvent(criteria, source_text)
 [CritiqueCoverage]  LLM đối chiếu LẠI nguồn vs danh sách -> trả missing[] + ghi chú
                 (chặn recall). Gộp missing vào danh sách (đánh dấu added_by_critique).
   ▼  fan-out: mỗi tiêu chí -> DetailEvent
 [DetailCriterion] (song song) — 3 lượt, RETRIEVAL THEO CÁI CÒN THIẾU (không theo tên tiêu chí):
-   3a structure : LLM bóc sub_checks + check_type; điền thong_so KHI nguồn có sẵn số; sub_check
-                  cần số mà nguồn không nêu -> đánh dấu **thong_so._need='<mô tả>'** (KHÔNG bịa).
-   3b sub-query : CHỈ cho các sub_check có _need -> LLM **sinh sub-query** theo từng _need ->
-                  retrieve_fn(query) nhắm đúng số thiếu (TCĐG→BDS). (bỏ qua nếu không có _need)
-   3c resolve   : CHỈ khi có _need VÀ có bằng chứng -> LLM điền thong_so từ bằng chứng, bỏ _need;
-                  không thấy/mơ hồ -> thong_so.can_review=true (KHÔNG bịa).
-                  _need còn sót (không bằng chứng) -> ép can_review. Lỗi LLM -> giữ tiêu chí +
+   3a structure : LLM bóc sub_checks + check_type; điền thong_so KHI nguồn có sẵn số; số còn thiếu
+                  -> đánh dấu **thong_so._need='<mô tả>'** + **_need_source** (PHÂN BIỆT NGUỒN):
+                    · 'hsmt' = giá trị THAM CHIẾU do HSMT quy định (mốc/ngưỡng, vd thời điểm phát
+                      hành HSMT) -> truy hồi bổ sung ở 3b/3c.
+                    · 'hsdt' = dữ liệu NHÀ THẦU nộp (vd thời gian ký đơn dự thầu) -> ĐÁNH GIÁ Ở
+                      BƯỚC SAU, hiện chưa có -> KHÔNG coi là thiếu, đặt thong_so._danh_gia_sau=true.
+                  (KHÔNG bịa số.)
+   3b sub-query : CHỈ cho sub_check có _need nguồn **hsmt** -> LLM **sinh sub-query** theo từng _need
+                  -> retrieve_fn(query) nhắm đúng số thiếu (TCĐG→BDS). (bỏ qua nếu không có)
+   3c resolve   : CHỈ khi có _need(hsmt) VÀ có bằng chứng -> LLM điền thong_so, bỏ _need; không
+                  thấy/mơ hồ -> thong_so.can_review=true. _need(hsmt) còn sót -> ép can_review;
+                  sub_check hsdt -> _danh_gia_sau (KHÔNG can_review). Lỗi LLM -> giữ tiêu chí +
                   can_review + loi_ai.
   ▼  collect tất cả DetailDoneEvent
 [Assemble] -> StopEvent(GroupDecomposition)

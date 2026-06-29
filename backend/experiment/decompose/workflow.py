@@ -179,9 +179,19 @@ class DecomposeWorkflow(Workflow):
             return _DetailDone(detail=item, needs_review={"ten": ten, "ly_do": f"lỗi AI: {out.error}"})
 
         item = out.data
-        needs = [sc for sc in item.get("sub_checks", []) if sc.get("thong_so", {}).get("_need")]
+        # Phân loại _need theo nguồn: chỉ giá trị HSMT mới truy hồi; dữ liệu HSDT -> đánh giá sau.
+        needs: list[dict] = []
+        hsdt_names: set[str] = set()
+        for sc in item.get("sub_checks", []):
+            ts = sc.get("thong_so", {}) or {}
+            if not ts.get("_need"):
+                continue
+            if ts.get("_need_source", "hsmt") == "hsmt":
+                needs.append(sc)
+            else:
+                hsdt_names.add(norm_ten(sc.get("ten", "")))
 
-        # 3b — sinh sub-query cho từng cái thiếu rồi truy hồi nhắm vào nó
+        # 3b — sinh sub-query cho từng cái thiếu (phía HSMT) rồi truy hồi nhắm vào nó
         evidence_text = ""
         if needs and self._retrieve:
             log.info("    [detail] %s -> %d sub_check thiếu số, sinh sub-query", ten, len(needs))
@@ -211,10 +221,18 @@ class DecomposeWorkflow(Workflow):
                 else:
                     log.warning("    [detail] %s -> lỗi resolve: %s", ten, rout.error)
 
-        # No-fabrication: _need còn sót (chưa giải quyết) -> ép can_review; gom needs_review.
+        # Dọn marker + no-fabrication. Áp lại _danh_gia_sau theo tên (bền với resolve thay item):
+        #  - sub_check HSDT -> đánh giá sau, KHÔNG can_review.
+        #  - _need HSMT còn sót (chưa resolve được) -> ép can_review.
         flagged: list[str] = []
         for sc in item.get("sub_checks", []):
             ts = sc.setdefault("thong_so", {})
+            if norm_ten(sc.get("ten", "")) in hsdt_names:
+                ts.pop("_need", None)
+                ts.pop("_need_source", None)
+                ts["_danh_gia_sau"] = True
+                continue
+            ts.pop("_need_source", None)
             if ts.pop("_need", None):
                 ts["can_review"] = True
             if ts.get("can_review"):

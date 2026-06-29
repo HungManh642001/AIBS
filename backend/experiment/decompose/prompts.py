@@ -12,19 +12,34 @@ from services.prompts import SCALE_DEF, cot_block
 
 SYS_LIST = (
     "Bạn là chuyên gia đấu thầu theo Luật Đấu thầu Việt Nam. Đọc nội dung TIÊU CHUẨN ĐÁNH GIÁ của "
-    "MỘT nhóm và LIỆT KÊ ĐẦY ĐỦ các tiêu chí đánh giá nguyên tử (đừng bỏ sót). Mỗi tiêu chí gồm: "
-    "nhom (hop_le/nang_luc/ky_thuat/tai_chinh), ten, required_artifacts (mã loại hồ sơ)."
+    "MỘT nhóm và LIỆT KÊ ĐẦY ĐỦ các tiêu chí (đừng bỏ sót). "
+    "QUY TẮC NGUYÊN TỬ — bắt buộc: mỗi tiêu chí chỉ hướng tới ĐÁNH GIÁ MỘT loại hồ sơ dự thầu "
+    "(required_artifacts = ĐÚNG 1 mã loại hồ sơ chính) ứng với MỘT nội dung cần kiểm tra. Nếu một "
+    "loại hồ sơ có NHIỀU nội dung kiểm tra độc lập → TÁCH thành nhiều tiêu chí riêng. KHÔNG gộp "
+    "nhiều vấn đề vào một tiêu chí; KHÔNG để hai tiêu chí trùng/đè nội dung nhau. "
+    "Mỗi tiêu chí gồm: nhom (hop_le/nang_luc/ky_thuat/tai_chinh), ten (ngắn, nêu RÕ nội dung kiểm), "
+    "required_artifacts (1 mã loại hồ sơ)."
 )
 SYS_CRITIQUE = (
     "Bạn là chuyên gia rà soát. So sánh DANH SÁCH tiêu chí đã liệt kê với NGUỒN gốc và chỉ ra các "
-    "tiêu chí BỊ SÓT (chỉ trả tiêu chí còn THIẾU, không lặp lại tiêu chí đã có). Mục tiêu: không sót."
+    "tiêu chí BỊ SÓT (chỉ trả tiêu chí còn THIẾU, không lặp lại tiêu chí đã có). Giữ QUY TẮC NGUYÊN "
+    "TỬ: mỗi tiêu chí = 1 loại hồ sơ + 1 nội dung kiểm; tách nếu cần. Mục tiêu: không sót."
 )
 SYS_STRUCT = (
     "Bạn là chuyên gia đấu thầu. Với MỘT tiêu chí, phân rã thành sub_checks (ten, check_type, "
-    "thong_so, required_artifact, blocking). Điền thong_so KHI NGUỒN có sẵn số. Với sub_check cần "
-    "một con số/ngưỡng mà NGUỒN KHÔNG nêu rõ (thường trỏ sang BDS/HSMT), đặt "
-    "thong_so._need = mô tả NGẮN giá trị còn thiếu (vd '_need':'giá trị bảo đảm dự thầu (đồng)'). "
-    "TUYỆT ĐỐI KHÔNG bịa số — thiếu thì để _need, đừng đoán."
+    "thong_so, required_artifact, blocking). Điền thong_so KHI NGUỒN có sẵn số.\n"
+    "PHÂN BIỆT NGUỒN GIÁ TRỊ khi đánh dấu thiếu:\n"
+    "(a) Giá trị THAM CHIẾU do HSMT quy định — mốc/ngưỡng/giá trị chuẩn để đối chiếu (vd thời điểm "
+    "phát hành HSMT, giá trị & số ngày hiệu lực bảo đảm dự thầu tối thiểu, doanh thu yêu cầu). Nếu "
+    "NGUỒN không nêu rõ -> đặt thong_so._need='<mô tả>' và thong_so._need_source='hsmt' (sẽ truy hồi "
+    "bổ sung từ HSMT/BDS).\n"
+    "(b) Dữ liệu do NHÀ THẦU nộp trong HSDT — thứ sẽ ĐÁNH GIÁ Ở BƯỚC SAU, HIỆN CHƯA CÓ (vd thời gian "
+    "ký đơn dự thầu, giá dự thầu, số liệu năng lực thực tế của nhà thầu). TUYỆT ĐỐI KHÔNG coi là "
+    "thiếu, KHÔNG đặt _need cho nó; chỉ đặt thong_so._danh_gia_sau=true để bước đánh giá sau lấy từ HSDT.\n"
+    "VÍ DỤ — tiêu chí 'thời gian ký đơn dự thầu phải SAU thời điểm phát hành HSMT': chỉ THIẾU 'thời "
+    "điểm phát hành HSMT' (_need + _need_source='hsmt'); còn 'thời gian ký đơn dự thầu' là dữ liệu "
+    "HSDT (_danh_gia_sau=true), KHÔNG phải thiếu.\n"
+    "TUYỆT ĐỐI KHÔNG bịa số — thiếu (phía HSMT) thì để _need, đừng đoán."
 )
 SYS_QUERY = (
     "Bạn tạo câu truy vấn tìm kiếm. Cho danh sách THÔNG TIN CÒN THIẾU của một tiêu chí, mỗi mục "
@@ -32,10 +47,11 @@ SYS_QUERY = (
     'Trả đúng dạng {"queries":[{"ten","query"}]} — ten khớp tên sub_check.'
 )
 SYS_RESOLVE = (
-    "Bạn là chuyên gia đấu thầu. Cho tiêu chí đã phân rã (có sub_check còn thiếu số, đánh dấu "
-    "thong_so._need) và PHẦN BẰNG CHỨNG truy hồi, hãy ĐIỀN thong_so cho các sub_check còn thiếu "
+    "Bạn là chuyên gia đấu thầu. Cho tiêu chí đã phân rã (có sub_check còn thiếu số phía HSMT, đánh "
+    "dấu thong_so._need) và PHẦN BẰNG CHỨNG truy hồi, hãy ĐIỀN thong_so cho các sub_check còn thiếu "
     "DỰA TRÊN bằng chứng rồi BỎ khoá _need. Nếu bằng chứng không có/không chắc, đặt "
-    "thong_so.can_review=true và BỎ _need. TUYỆT ĐỐI KHÔNG bịa số."
+    "thong_so.can_review=true và BỎ _need. GIỮ NGUYÊN các khoá thong_so khác (kể cả _danh_gia_sau). "
+    "TUYỆT ĐỐI KHÔNG bịa số."
 )
 
 _DETAIL_SCHEMA = (
