@@ -8,10 +8,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import sys
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger("experiment.decompose")
 
 from config import get_settings
 
@@ -69,7 +72,9 @@ async def run(
 
     try:
         result = DecomposeResult(doc=data.get("doc", "HSMT"))
-        for g in data.get("groups", []):
+        groups = data.get("groups", [])
+        for i, g in enumerate(groups, 1):
+            log.info("=== Nhóm %d/%d: %s ===", i, len(groups), g.get("group", ""))
             wf = DecomposeWorkflow(llm_fn=llm_fn, retrieve_fn=retrieve_fn, timeout=600)
             gd: GroupDecomposition = await wf.run(group=g)
             result.groups.append(gd)
@@ -96,7 +101,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--groups", default=_DEFAULT_GROUPS)
     ap.add_argument("--db", default=_DEFAULT_DB)
     ap.add_argument("--out", default=_DEFAULT_OUT)
+    ap.add_argument("--quiet", action="store_true", help="tắt log tiến độ")
     args = ap.parse_args(argv)
+    logging.basicConfig(
+        level=logging.WARNING if args.quiet else logging.INFO,
+        format="%(message)s",
+        stream=sys.stderr,
+    )
     try:
         metrics = asyncio.run(run(groups_path=args.groups, db_path=args.db, out_dir=args.out))
     except Exception as exc:  # no-silent-mock: báo lỗi rõ

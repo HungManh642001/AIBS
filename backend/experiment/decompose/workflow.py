@@ -1,6 +1,11 @@
-"""Agentic Workflow (LlamaIndex) phân rã 1 nhóm: list -> critique-coverage -> detail (fan-out)."""
+"""Agentic Workflow (LlamaIndex) phân rã 1 nhóm: list -> critique-coverage -> detail (fan-out).
+
+Bước detail (mỗi tiêu chí) gồm 3 lượt: structure (3a) -> sinh sub-query + truy hồi (3b) ->
+resolve (3c, chỉ khi có thong_so._need và có bằng chứng). Còn _need sót -> ép can_review.
+"""
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from llama_index.core.workflow import Context, Event, StartEvent, StopEvent, Workflow, step
@@ -10,17 +15,32 @@ from services.ai_schemas import validate_criteria_list, validate_criterion_detai
 from experiment.decompose.llm import LlmFn
 from experiment.decompose.prompts import (
     SYS_CRITIQUE,
-    SYS_DETAIL,
     SYS_LIST,
+    SYS_QUERY,
+    SYS_RESOLVE,
+    SYS_STRUCT,
     critique_prompt,
-    detail_prompt,
     list_prompt,
+    query_prompt,
+    resolve_prompt,
+    struct_prompt,
 )
 from experiment.decompose.retrieval import RetrieveFn
 from experiment.decompose.schema import Coverage, GroupDecomposition, norm_ten
 
-# check_type cần ngưỡng số -> khi thiếu bằng chứng phải can_review (không bịa).
-_THRESHOLD_TYPES = {"value_threshold", "date_validity"}
+log = logging.getLogger("experiment.decompose")
+
+
+def _validate_queries(d: Any) -> dict[str, Any]:
+    """Chuẩn hoá output sinh sub-query: {queries:[{ten,query}]}."""
+    qs = d.get("queries", []) if isinstance(d, dict) else []
+    return {
+        "queries": [
+            {"ten": str(q.get("ten", "")), "query": str(q.get("query", ""))}
+            for q in qs
+            if isinstance(q, dict)
+        ]
+    }
 
 
 class _Critiqued(Event):
@@ -91,6 +111,7 @@ class DecomposeWorkflow(Workflow):
     @step
     async def list_and_critique(self, ctx: Context, ev: StartEvent) -> _Critiqued | StopEvent:
         group = ev.group
+        log.info("[nhóm %s] %s", group.get("group", ""), group.get("muc", ""))
         source = self._build_source(group)
         await ctx.store.set("group", group)
         await ctx.store.set("source", source)
@@ -114,6 +135,7 @@ class DecomposeWorkflow(Workflow):
                     seen.add(key)
                     listed.append(m)
                     added.append(m.get("ten", ""))
+        log.info("  [list] %d tiêu chí; [critique] +%d sót", listed_n, len(added))
         return _Critiqued(crits=listed, added=added, listed_n=listed_n)
 
     # ---- bước 2: fan-out chi tiết từng tiêu chí ----
@@ -124,27 +146,24 @@ class DecomposeWorkflow(Workflow):
         group = await ctx.store.get("group")
         if not ev.crits:
             return StopEvent(result=self._assemble(group, [], ev.added, ev.listed_n))
+        log.info("  [fan-out] %d tiêu chí -> detail", len(ev.crits))
         await ctx.store.set("n", len(ev.crits))
         for c in ev.crits:
             ctx.send_event(_DetailReq(crit=c))
         return None
 
-    # ---- bước 3: chi tiết 1 tiêu chí (retrieval bằng chứng + no-fabrication) ----
+    # ---- bước 3: chi tiết 1 tiêu chí: structure -> sub-query+truy hồi -> resolve ----
     @step
     async def detail(self, ctx: Context, ev: _DetailReq) -> _DetailDone:
         crit = ev.crit
         source = await ctx.store.get("source")
         ten = crit.get("ten", "")
+        log.info("    [detail] %s", ten)
 
-        evidence: list[dict] = []
-        if self._retrieve:
-            evidence = self._retrieve(f"{ten} giá trị hiệu lực yêu cầu HSMT", k=3)
-        ev_text = "\n".join(h["text"][:300] for h in evidence)
-
-        out = await self._llm(
-            SYS_DETAIL, detail_prompt(crit, source, ev_text), validate=validate_criterion_detail
-        )
+        # 3a — phân rã cấu trúc (đánh dấu thong_so._need cho số còn thiếu)
+        out = await self._llm(SYS_STRUCT, struct_prompt(crit, source), validate=validate_criterion_detail)
         if out.status == "error":
+            log.warning("    [detail] %s -> lỗi structure: %s", ten, out.error)
             item = {
                 "nhom": crit.get("nhom", "hop_le"),
                 "ten": ten,
@@ -160,16 +179,49 @@ class DecomposeWorkflow(Workflow):
             return _DetailDone(detail=item, needs_review={"ten": ten, "ly_do": f"lỗi AI: {out.error}"})
 
         item = out.data
+        needs = [sc for sc in item.get("sub_checks", []) if sc.get("thong_so", {}).get("_need")]
+
+        # 3b — sinh sub-query cho từng cái thiếu rồi truy hồi nhắm vào nó
+        evidence_text = ""
+        if needs and self._retrieve:
+            log.info("    [detail] %s -> %d sub_check thiếu số, sinh sub-query", ten, len(needs))
+            queries: dict[str, str] = {}
+            qout = await self._llm(SYS_QUERY, query_prompt(crit, needs), validate=_validate_queries)
+            if qout.status == "ok":
+                for q in qout.data.get("queries", []):
+                    queries[norm_ten(q.get("ten", ""))] = q.get("query", "")
+            lines: list[str] = []
+            for sc in needs:
+                q = queries.get(norm_ten(sc.get("ten", ""))) or f"{ten} {sc.get('ten', '')}"
+                log.info("      [retrieve] %s", q)
+                hits = self._retrieve(q, k=3)
+                if hits:
+                    body = "\n".join(h["text"][:300] for h in hits)
+                    lines.append(f"[{sc.get('ten')}]\n{body}")
+            evidence_text = "\n\n".join(lines)
+
+            # 3c — resolve CHỈ khi có bằng chứng (không có thì để _need -> ép can_review)
+            if evidence_text:
+                log.info("    [detail] %s -> resolve từ bằng chứng", ten)
+                rout = await self._llm(
+                    SYS_RESOLVE, resolve_prompt(item, evidence_text), validate=validate_criterion_detail
+                )
+                if rout.status == "ok":
+                    item = rout.data
+                else:
+                    log.warning("    [detail] %s -> lỗi resolve: %s", ten, rout.error)
+
+        # No-fabrication: _need còn sót (chưa giải quyết) -> ép can_review; gom needs_review.
+        flagged: list[str] = []
+        for sc in item.get("sub_checks", []):
+            ts = sc.setdefault("thong_so", {})
+            if ts.pop("_need", None):
+                ts["can_review"] = True
+            if ts.get("can_review"):
+                flagged.append(sc.get("ten", ""))
         nr = None
-        if not evidence:
-            # Thiếu bằng chứng -> mọi sub_check cần ngưỡng phải can_review (KHÔNG bịa số).
-            flagged = False
-            for sc in item.get("sub_checks", []):
-                if sc.get("check_type") in _THRESHOLD_TYPES:
-                    sc.setdefault("thong_so", {})["can_review"] = True
-                    flagged = True
-            if flagged:
-                nr = {"ten": ten, "ly_do": "không truy được số ngưỡng (BDS) — cần soi"}
+        if flagged:
+            nr = {"ten": ten, "ly_do": f"không truy được số ngưỡng (BDS) cho: {', '.join(flagged)} — cần soi"}
         return _DetailDone(detail=item, needs_review=nr)
 
     # ---- bước 4: gom ----
@@ -184,4 +236,5 @@ class DecomposeWorkflow(Workflow):
         listed_n = await ctx.store.get("listed_n")
         criteria = [d.detail for d in done]
         needs = [d.needs_review for d in done if d.needs_review]
+        log.info("  [collect] %d tiêu chí, %d cần soi", len(criteria), len(needs))
         return StopEvent(result=self._assemble(group, criteria, added, listed_n, needs))
