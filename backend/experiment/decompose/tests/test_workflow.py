@@ -11,9 +11,9 @@ _GROUP = {
 }
 
 
-def _detail(ten, check_type, need=None):
-    """Tiêu chí chi tiết hợp lệ; need != None -> đánh dấu thong_so._need (số còn thiếu)."""
-    thong_so = {"_need": need} if need else {}
+def _detail(ten, check_type, need=None, source="hsmt"):
+    """Tiêu chí chi tiết hợp lệ; need != None -> thong_so._need + _need_source (số còn thiếu)."""
+    thong_so = {"_need": need, "_need_source": source} if need else {}
     return {
         "nhom": "hop_le", "ten": ten, "yeu_cau": "theo HSMT", "required_artifacts": [],
         "kieu": "pass_fail", "trong_so": 0.0,
@@ -82,6 +82,67 @@ async def test_evidence_present_resolves_no_review():
     # Đã gọi đủ 3 lượt: STRUCT -> QUERY -> RESOLVE.
     assert any("[TAG:QUERY:Bảo đảm dự thầu]" in c for c in llm.calls)
     assert any("[TAG:RESOLVE:Bảo đảm dự thầu]" in c for c in llm.calls)
+
+
+async def test_hsdt_need_deferred_not_can_review():
+    """Phân biệt nguồn: HSMT thiếu -> truy hồi/điền; HSDT -> đánh giá sau, KHÔNG can_review/truy hồi."""
+    # Tiêu chí: thời gian ký đơn (HSDT) phải sau thời điểm phát hành HSMT (HSMT, thiếu trong nguồn).
+    struct = {
+        "nhom": "hop_le", "ten": "Thời gian ký đơn dự thầu sau phát hành HSMT",
+        "yeu_cau": "theo HSMT", "required_artifacts": [], "kieu": "pass_fail", "trong_so": 0.0,
+        "sub_checks": [
+            {"ten": "Thời điểm phát hành HSMT", "check_type": "date_validity",
+             "thong_so": {"_need": "thời điểm phát hành HSMT", "_need_source": "hsmt"},
+             "required_artifact": "", "blocking": True},
+            {"ten": "Thời gian ký đơn dự thầu", "check_type": "date_validity",
+             "thong_so": {"_need": "thời gian ký đơn dự thầu", "_need_source": "hsdt"},
+             "required_artifact": "", "blocking": True},
+        ],
+        "proposed_artifacts": [],
+    }
+    resolved = {
+        "nhom": "hop_le", "ten": "Thời gian ký đơn dự thầu sau phát hành HSMT",
+        "yeu_cau": "theo HSMT", "required_artifacts": [], "kieu": "pass_fail", "trong_so": 0.0,
+        "sub_checks": [
+            {"ten": "Thời điểm phát hành HSMT", "check_type": "date_validity",
+             "thong_so": {"value": "01/06/2026 08:00"}, "required_artifact": "", "blocking": True},
+            {"ten": "Thời gian ký đơn dự thầu", "check_type": "date_validity",
+             "thong_so": {}, "required_artifact": "", "blocking": True},
+        ],
+        "proposed_artifacts": [],
+    }
+    captured: list[str] = []
+
+    def retrieve_fn(q, k=5):
+        captured.append(q)
+        return [{"text": "HSMT phát hành lúc 08:00 ngày 01/06/2026", "metadata": {}, "score": 1.0}]
+
+    llm = ScriptedLlm({
+        "[TAG:LIST]": {"criteria": [
+            {"nhom": "hop_le", "ten": "Thời gian ký đơn dự thầu sau phát hành HSMT"}]},
+        "[TAG:CRITIQUE]": {"criteria": []},
+        "[TAG:STRUCT:": struct,
+        "[TAG:QUERY:": {"queries": [
+            {"ten": "Thời điểm phát hành HSMT", "query": "thời điểm phát hành hồ sơ mời thầu"}]},
+        "[TAG:RESOLVE:": resolved,
+    })
+    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=retrieve_fn, timeout=30)
+    gd = await wf.run(group=_GROUP)
+
+    c = gd.criteria[0]
+    sc_hsmt = next(s for s in c["sub_checks"] if s["ten"] == "Thời điểm phát hành HSMT")
+    sc_hsdt = next(s for s in c["sub_checks"] if s["ten"] == "Thời gian ký đơn dự thầu")
+
+    # HSMT: đã resolve từ bằng chứng -> không còn _need, không can_review.
+    assert "_need" not in sc_hsmt["thong_so"]
+    assert "can_review" not in sc_hsmt["thong_so"]
+    # HSDT: đánh giá sau, KHÔNG bị coi là thiếu/can_review.
+    assert sc_hsdt["thong_so"].get("_danh_gia_sau") is True
+    assert "can_review" not in sc_hsdt["thong_so"]
+    assert "_need" not in sc_hsdt["thong_so"]
+    assert gd.needs_review == []
+    # Chỉ truy hồi giá trị HSMT, KHÔNG truy hồi dữ liệu HSDT.
+    assert captured == ["thời điểm phát hành hồ sơ mời thầu"]
 
 
 async def test_no_need_skips_query_and_resolve():
