@@ -34,11 +34,33 @@ def test_make_chunks_text_section_carries_section_path():
 
 
 def test_make_chunks_large_table_splits_into_row_groups_with_header():
-    headings = [_h("chuong", LEVEL_CHUONG, "II", "Chương II. BẢNG DỮ LIỆU", 23)]
+    # Bảng thường (KHÔNG phải E-BDL/E-CDNT) -> vẫn nhóm hàng, lặp header.
+    headings = [_h("chuong", LEVEL_CHUONG, "III", "Chương III. TIÊU CHUẨN ĐÁNH GIÁ", 30)]
     header = ["Mã", "Giá trị"]
-    rows = [header] + [[f"E-CDNT {i}", f"giá trị {i}"] for i in range(30)]
-    tbl = TableRegion(page=23, y0=60.0, y1=700.0, rows=rows)
+    rows = [header] + [[f"TT {i}", f"giá trị {i}"] for i in range(30)]
+    tbl = TableRegion(page=30, y0=60.0, y1=700.0, rows=rows)
     chunks = make_chunks(headings, [], [tbl], doc="hsmt", table_rows_per_group=12)
     groups = [c for c in chunks if c.node_type == "table_row_group"]
     assert len(groups) >= 2
     assert all("Mã" in c.text and "Giá trị" in c.text for c in groups)  # header lặp mỗi nhóm
+
+
+def test_make_chunks_clause_chapter_splits_per_row():
+    """E-BDL/E-CDNT -> mỗi hàng = 1 chunk 'clause' kèm clause_id (KHÔNG gói nhiều điều khoản)."""
+    # E-BDL: col0 = "E-CDNT <id>"
+    bdl_heading = [_h("chuong", LEVEL_CHUONG, "II", "Chương II. BẢNG DỮ LIỆU ĐẤU THẦU", 23)]
+    bdl_rows = [["E-CDNT 18.2", "Giá trị bảo đảm dự thầu: 6.100.000 VNĐ"],
+                ["E-CDNT 17.1", "Thời hạn hiệu lực E-HSDT: ≥ 90 ngày"]]
+    tbl = TableRegion(page=23, y0=60.0, y1=700.0, rows=bdl_rows)
+    chunks = make_chunks(bdl_heading, [], [tbl], doc="hsmt", table_rows_per_group=12)
+    assert len(chunks) == 2 and all(c.node_type == "clause" for c in chunks)
+    assert [c.clause_id for c in chunks] == ["18.2", "17.1"]
+    assert all(c.clause_doc == "bdl" for c in chunks)
+    assert "6.100.000" in chunks[0].text
+
+    # E-CDNT: col0 = "<id>. Tiêu đề"
+    cdnt_heading = [_h("chuong", LEVEL_CHUONG, "I", "Chương I. CHỈ DẪN NHÀ THẦU", 5)]
+    cdnt_rows = [["4. Hành vi bị\ncấm", "4.1. Đưa, nhận hối lộ; 4.2. ..."]]
+    tbl2 = TableRegion(page=5, y0=60.0, y1=200.0, rows=cdnt_rows)
+    c2 = make_chunks(cdnt_heading, [], [tbl2], doc="hsmt")
+    assert c2[0].node_type == "clause" and c2[0].clause_id == "4" and c2[0].clause_doc == "cdnt"

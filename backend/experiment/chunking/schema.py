@@ -64,10 +64,12 @@ class Chunk:
     heading_number: str | None
     page_start: int
     page_end: int
-    node_type: str              # text | table | table_row_group
+    node_type: str              # text | table | table_row_group | clause
     group_hint: str             # hop_le | nang_luc | ky_thuat | tai_chinh | unknown
     char_len: int
     overlap_prev: int
+    clause_id: str | None = None   # mã điều khoản (E-BDL/E-CDNT), vd "18.2", "4" — để tra theo mã
+    clause_doc: str | None = None  # "bdl" | "cdnt" — chương dữ liệu/chỉ dẫn
 
 
 def chunks_to_jsonl(chunks: list[Chunk]) -> str:

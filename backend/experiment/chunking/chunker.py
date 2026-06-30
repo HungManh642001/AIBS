@@ -1,10 +1,41 @@
 # backend/experiment/chunking/chunker.py
-"""Phát chunk lá: text theo ngân sách ký tự + overlap; bảng theo nhóm hàng lặp header."""
+"""Phát chunk lá: text theo ngân sách ký tự + overlap; bảng theo nhóm hàng lặp header.
+
+E-BDL (Bảng dữ liệu) & E-CDNT (Chỉ dẫn nhà thầu) là bảng khoá-điều-khoản -> tách MỖI HÀNG 1 CHUNK
+(1 điều khoản) kèm clause_id, để truy hồi theo mã chính xác (không gói nhiều điều khoản 1 chunk).
+"""
 from __future__ import annotations
+
+import re
 
 from .schema import Heading, Line, TableRegion, Chunk
 from .headings import _norm
 from .tree import iter_blocks_with_context
+
+# Phát hiện 2 chương cần tách theo điều khoản, qua tiêu đề (bền hơn số chương).
+_CLAUSE_DOCS = [("bang du lieu", "bdl"), ("chi dan nha thau", "cdnt")]
+# Lấy mã điều khoản từ ô đầu hàng. E-BDL: "E-CDNT 18.2" / "E-CDNT 5.1 (c)"; E-CDNT: "4. Hành vi...".
+_RE_BDL = re.compile(r"E-?CDNT\s+([\d.]+(?:\s*\([a-zđ]\))?)", re.I)
+_RE_CDNT = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*\.")
+
+
+def _clause_doc(stack: list[Heading]) -> str | None:
+    """'bdl' | 'cdnt' nếu block thuộc chương Bảng dữ liệu / Chỉ dẫn nhà thầu; None nếu khác."""
+    for h in stack:
+        norm = _norm(h.title)
+        for needle, label in _CLAUSE_DOCS:
+            if needle in norm:
+                return label
+    return None
+
+
+def _clause_id(cell0: str, clause_doc: str) -> str | None:
+    """Trích mã điều khoản từ ô đầu hàng theo loại chương."""
+    flat = " ".join((cell0 or "").split())
+    m = _RE_BDL.search(flat) if clause_doc == "bdl" else _RE_CDNT.match(flat)
+    if not m:
+        return None
+    return re.sub(r"\s+", "", m.group(1))
 
 _GROUP_RULES = [
     ("hop le", "hop_le"),
@@ -82,7 +113,8 @@ def make_chunks(headings: list[Heading], body_lines: list[Line], tables: list[Ta
         buf_text.clear()
         buf_pages.clear()
 
-    def _make(text, stack, p0, p1, node_type, overlap_prev) -> Chunk:
+    def _make(text, stack, p0, p1, node_type, overlap_prev,
+              clause_id=None, clause_doc=None) -> Chunk:
         return Chunk(
             chunk_id=f"{doc}-{counter:04d}", doc=doc, text=text,
             section_path=[h.title for h in stack],
@@ -91,6 +123,7 @@ def make_chunks(headings: list[Heading], body_lines: list[Line], tables: list[Ta
             heading_number=stack[-1].number if stack else None,
             page_start=p0, page_end=p1, node_type=node_type,
             group_hint=group_hint(stack), char_len=len(text), overlap_prev=overlap_prev,
+            clause_id=clause_id, clause_doc=clause_doc,
         )
 
     def _stack_key(s: list[Heading]) -> tuple:
@@ -101,6 +134,15 @@ def make_chunks(headings: list[Heading], body_lines: list[Line], tables: list[Ta
             _flush_text()
             rows = block.rows
             if not rows:
+                continue
+            # E-BDL / E-CDNT: mỗi HÀNG = 1 điều khoản -> 1 chunk riêng kèm clause_id.
+            cdoc = _clause_doc(stack)
+            if cdoc:
+                for row in rows:
+                    cid = _clause_id(row[0] if row else "", cdoc)
+                    counter += 1
+                    chunks.append(_make(_table_text([row]), stack, block.page, block.page,
+                                        "clause", 0, clause_id=cid, clause_doc=cdoc))
                 continue
             header = rows[0]
             body = rows[1:]
