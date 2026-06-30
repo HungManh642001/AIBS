@@ -117,6 +117,31 @@ async def test_search_per_need_independent_resolve():
     assert sum("[TAG:RESOLVE:" in c for c in llm.calls) == 2
 
 
+async def test_search_query_anchored_with_clause_ref():
+    """Neo mã điều khoản: query truy hồi phải chứa mã (18.3 + 18) trích từ yeu_cau_goc + thiên vị E-BDL."""
+    captured: list[str] = []
+
+    def retrieve_fn(q, k=5):
+        captured.append(q)
+        return [{"text": "E-CDNT 18.2 | Giá trị bảo đảm: 6.100.000 VNĐ", "metadata": {}, "score": 1.0}]
+
+    struct = _crit("Bảo đảm dự thầu", [_nd("Giá trị bảo lãnh")])
+    struct["yeu_cau_goc"] = "Bảo đảm dự thầu không vi phạm Mục 18.3 E-CDNT"
+    llm = ScriptedLlm({
+        "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Bảo đảm dự thầu"}]},
+        "[TAG:STRUCT:Bảo đảm dự thầu]": struct,
+        "[TAG:QUERY:Giá trị bảo lãnh]": {"query": "giá trị bảo đảm dự thầu"},
+        "[TAG:RESOLVE:Giá trị bảo lãnh]": {"yeu_cau": "6.100.000 VNĐ", "can_review": False},
+    })
+    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=retrieve_fn, timeout=30)
+    await wf.run(group=_GROUP)
+
+    q = captured[0]
+    assert "18.3" in q and " 18 " in f" {q} "   # mã đầy đủ + mã lớn (cho điều khoản con lân cận)
+    assert "giá trị bảo đảm dự thầu" in q        # giữ query ngữ nghĩa từ LLM
+    assert "bảng dữ liệu" in q.lower()           # thiên vị mục dữ liệu
+
+
 async def test_no_lookup_item_not_searched_or_flagged():
     """Nội dung can_tra_cuu=false (kiểm tồn tại/điều kiện) -> KHÔNG tra cứu, KHÔNG can_review."""
     captured: list[str] = []
@@ -144,8 +169,9 @@ async def test_no_lookup_item_not_searched_or_flagged():
     assert nb["can_review"] is False  # can_tra_cuu=false -> không bao giờ bị flag
     assert nb["yeu_cau"] == "sau thời điểm phát hành HSMT"  # giữ nguyên điều kiện
     assert gd.needs_review == []
-    # CHỈ truy hồi nội dung can_tra_cuu=true.
-    assert captured == ["thời điểm phát hành hồ sơ mời thầu"]
+    # CHỈ truy hồi nội dung can_tra_cuu=true (1 lượt, base query giữ nguyên + enrich).
+    assert len(captured) == 1
+    assert "thời điểm phát hành hồ sơ mời thầu" in captured[0]
 
 
 async def test_no_need_skips_search():

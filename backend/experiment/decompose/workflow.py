@@ -28,6 +28,7 @@ from experiment.decompose.prompts import (
     resolve_prompt,
     struct_prompt,
 )
+from experiment.decompose.refs import extract_clause_refs
 from experiment.decompose.retrieval import RetrieveFn
 from experiment.decompose.schema import (
     Coverage,
@@ -211,20 +212,26 @@ class DecomposeWorkflow(Workflow):
             if n.get("can_tra_cuu") and not (n.get("yeu_cau") or "").strip()
         ]
 
+        # Neo mã điều khoản (trích từ yêu cầu gốc) -> nhồi vào query giúp BM25 khớp đúng dòng E-BDL.
+        crit_refs = extract_clause_refs(f"{item.get('yeu_cau_goc', '')} {ten}")
+
         if needs and self._retrieve:
             log.info("    [search] %s -> %d nội dung cần tra cứu", ten, len(needs))
             for n in needs:
                 nd = n.get("noi_dung", "")
-                # 1) sinh query RIÊNG cho need này
+                # 1) sinh query RIÊNG cho need này (LLM mở rộng theo nghiệp vụ: đồng nghĩa/nơi nằm)
                 qout = await self._llm(SYS_QUERY, query_prompt(crit, n), validate=validate_query)
-                query = (qout.data.get("query") if qout.status == "ok" else "") or f"{ten} {nd}"
+                base = (qout.data.get("query") if qout.status == "ok" else "") or f"{ten} {nd}"
+                # 2) neo mã điều khoản (need + tiêu chí) + thiên vị mục dữ liệu
+                refs = list(dict.fromkeys(extract_clause_refs(nd) + crit_refs))
+                query = " ".join([base, *refs, "bảng dữ liệu E-BDL"]).strip()
                 log.info("      [retrieve] %s", query)
-                # 2) truy hồi RIÊNG -> bằng chứng riêng của need
+                # 3) truy hồi RIÊNG -> bằng chứng riêng của need
                 hits = self._retrieve(query, k=3)
                 if not hits:
                     continue
                 body = "\n".join(h["text"][:300] for h in hits)
-                # 3) resolve RIÊNG: trích đúng 1 giá trị từ bằng chứng của need (không nhiễu chéo)
+                # 4) resolve RIÊNG: trích đúng 1 giá trị từ bằng chứng của need (không nhiễu chéo)
                 rout = await self._llm(SYS_RESOLVE, resolve_prompt(crit, n, body),
                                        validate=validate_resolved_value, max_tokens=_STRUCT_MAX_TOKENS)
                 if rout.status == "ok" and not rout.data.get("can_review") \

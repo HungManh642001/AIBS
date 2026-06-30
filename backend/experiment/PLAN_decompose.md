@@ -52,8 +52,10 @@ StartEvent(group)
                 nếu là giá trị HSMT định nghĩa ở CHỖ KHÁC (E-BDL) -> để trống yeu_cau + can_tra_cuu=true.
                 (KHÔNG bịa số.)
   ▼  SearchEvent(crit, item)
-[Step 3 search] (song song)  Với MỖI nội dung can_tra_cuu còn TRỐNG yeu_cau -> ĐỘC LẬP: sinh 1 query ->
-                retrieve RIÊNG -> resolve RIÊNG (1 call/1 need, không nhiễu chéo) -> điền yeu_cau.
+[Step 3 search] (song song)  Với MỖI nội dung can_tra_cuu còn TRỐNG yeu_cau -> ĐỘC LẬP: sinh 1 query
+                (LLM MỞ RỘNG nghiệp vụ: từ đồng nghĩa/nơi-thông-tin-nằm, vd 'đơn vị thụ hưởng'≈'chủ đầu
+                tư') + NEO mã điều khoản trích từ yeu_cau_goc (vd '18.3'+'18') + 'bảng dữ liệu E-BDL'
+                -> retrieve RIÊNG -> resolve RIÊNG (1 call/1 need) -> điền yeu_cau.
                 Vẫn trống -> can_review (no-fab). Lỗi LLM ở analyze -> giữ tiêu chí + loi_ai.
   ▼  collect tất cả DoneEvent
 [Step 4 collect] -> StopEvent(GroupDecomposition)
@@ -114,8 +116,8 @@ decompose/
   schema.py        Schema PHẲNG experiment-local: CriterionModel/NoiDungKiemTra + validate_*;
                    GroupDecomposition, DecomposeResult, to_json helpers (KHÔNG dùng CriterionDetailModel)
   llm.py           LlmFn protocol; default_llm_fn (bọc ai_call, no-silent-mock); ScriptedLlm (test)
-  retrieval.py     RetrieveFn; default từ experiment.index (open index 1 lần, hybrid top-k);
-                   resolve_reference(ref_target)->text ; subquery_bds(query)->hits
+  retrieval.py     RetrieveFn; default từ experiment.index (open index 1 lần, hybrid top-k)
+  refs.py          extract_clause_refs(text) -> mã điều khoản (E-CDNT/E-BDL/Mục N) để neo vào query
   prompts.py       system prompt: list / critique / structure / subquery / resolve (cot_block)
   workflow.py      DecomposeWorkflow (LlamaIndex Workflow): list(+critique nếu bảng)/fan_out/
                    analyze/search/collect + events

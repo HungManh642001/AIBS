@@ -43,7 +43,12 @@ SYS_STRUCT = (
 )
 SYS_QUERY = (
     "Bạn tạo MỘT câu truy vấn tìm kiếm tiếng Việt NGẮN, giàu từ khoá để tra GIÁ TRỊ mà HSMT quy định "
-    'cho MỘT nội dung (thường nằm trong E-BDL / E-CDNT). Trả đúng dạng {"query":"..."}.'
+    "cho MỘT nội dung (thường nằm trong E-BDL / E-CDNT).\n"
+    "QUAN TRỌNG — MỞ RỘNG THEO NGHIỆP VỤ: thông tin có thể được HSMT ghi dưới MỘT KHÁI NIỆM KHÁC; "
+    "hãy THÊM từ đồng nghĩa / nơi thông tin thường nằm. Ví dụ: 'đơn vị thụ hưởng (của) bảo đảm dự "
+    "thầu' THƯỜNG CHÍNH LÀ 'Chủ đầu tư / Bên mời thầu'; 'thời hạn hiệu lực bảo đảm' nằm cùng mục bảo "
+    "đảm dự thầu. Query nên gồm CẢ từ gốc LẪN từ đồng nghĩa/khái niệm tương đương.\n"
+    'Trả đúng dạng {"query":"..."}.'
 )
 SYS_RESOLVE = (
     "Bạn là chuyên gia đấu thầu. Cho MỘT nội dung cần xác định giá trị và PHẦN BẰNG CHỨNG truy hồi từ "
@@ -101,10 +106,11 @@ def struct_prompt(crit: dict[str, Any]) -> str:
 
 
 def query_prompt(crit: dict[str, Any], need: dict[str, Any]) -> str:
-    """Step search — sinh 1 truy vấn cho MỘT nội dung cần tra cứu."""
+    """Step search — sinh 1 truy vấn cho MỘT nội dung cần tra cứu (kèm ngữ cảnh yêu cầu gốc)."""
     return (
         f"[TAG:QUERY:{need.get('noi_dung', '')}]\n"
         f"TIÊU CHÍ: {crit.get('ten')}\n"
+        f"YÊU CẦU GỐC (HSMT): {crit.get('yeu_cau_goc', '')}\n"
         f"NỘI DUNG CẦN TRA GIÁ TRỊ (do HSMT quy định): {need.get('noi_dung', '')}\n\n"
         + cot_block('{"query":"..."}')
     )
