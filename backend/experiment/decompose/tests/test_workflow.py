@@ -27,21 +27,32 @@ def _by_name(criteria, ten):
     return next(c for c in criteria if c["ten"] == ten)
 
 
+# Nhóm có BẢNG -> critique được bật (chống sót cho nơi liệt kê 1 lượt dễ sót dòng).
+_TABLE_GROUP = {
+    "group": "nang_luc",
+    "muc": "Mục 2. Năng lực và kinh nghiệm",
+    "is_reference": False,
+    "ref_target": None,
+    "blocks": [{"type": "table", "page": [30, 30],
+                "rows": [["TT", "Mô tả", "Yêu cầu"], ["1", "Bảo đảm dự thầu", "theo BDS"]]}],
+}
+
+
 async def test_critique_adds_missing_and_no_fabrication():
-    """Recall guard: critique thêm tiêu chí sót. No-fab: nội dung hsmt không tra được -> can_review."""
+    """Recall guard (nhóm bảng): critique thêm tiêu chí sót. No-fab: hsmt không tra được -> can_review."""
     llm = ScriptedLlm({
-        "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Đơn dự thầu hợp lệ"}]},
-        "[TAG:CRITIQUE]": {"criteria": [{"nhom": "hop_le", "ten": "Bảo đảm dự thầu"}]},
+        "[TAG:LIST]": {"criteria": [{"nhom": "nang_luc", "ten": "Đơn dự thầu hợp lệ"}]},
+        "[TAG:CRITIQUE]": {"criteria": [{"nhom": "nang_luc", "ten": "Bảo đảm dự thầu"}]},
         "[TAG:STRUCT:Đơn dự thầu hợp lệ]": _crit(
-            "Đơn dự thầu hợp lệ", [_nd("Có đơn dự thầu", nguon="hsdt", kieu="tồn tại")]),
+            "Đơn dự thầu hợp lệ", [_nd("Có đơn dự thầu", nguon="hsdt", kieu="tồn tại")], nhom="nang_luc"),
         "[TAG:STRUCT:Bảo đảm dự thầu]": _crit(
-            "Bảo đảm dự thầu", [_nd("Giá trị bảo lãnh")]),  # nguon=hsmt, gia_tri trống
+            "Bảo đảm dự thầu", [_nd("Giá trị bảo lãnh")], nhom="nang_luc"),  # nguon=hsmt, gia_tri trống
         "[TAG:QUERY:Bảo đảm dự thầu]": {"queries": [
             {"ten": "Giá trị bảo lãnh", "query": "giá trị bảo đảm dự thầu"}]},
     })
     # retrieve rỗng -> không bằng chứng -> không resolve -> gia_tri vẫn trống -> can_review.
     wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5: [], timeout=30)
-    gd = await wf.run(group=_GROUP)
+    gd = await wf.run(group=_TABLE_GROUP)
 
     assert gd.coverage.listed_n == 1
     assert gd.coverage.final_n == 2
@@ -56,6 +67,21 @@ async def test_critique_adds_missing_and_no_fabrication():
     # Nội dung phía HSDT -> không bị ép can_review.
     dd = _by_name(gd.criteria, "Đơn dự thầu hợp lệ")
     assert dd["noi_dung_can_kiem_tra"][0]["can_review"] is False
+
+
+async def test_critique_skipped_for_free_text():
+    """Nhóm free-text (không bảng) -> KHÔNG gọi critique (tránh lan man)."""
+    llm = ScriptedLlm({
+        "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Đơn dự thầu hợp lệ"}]},
+        "[TAG:STRUCT:Đơn dự thầu hợp lệ]": _crit(
+            "Đơn dự thầu hợp lệ", [_nd("Có đơn dự thầu", nguon="hsdt", kieu="tồn tại")]),
+    })
+    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5: [], timeout=30)
+    gd = await wf.run(group=_GROUP)
+
+    assert not any("[TAG:CRITIQUE]" in c for c in llm.calls)
+    assert gd.coverage.added_by_critique == []
+    assert gd.coverage.final_n == 1
 
 
 async def test_evidence_present_resolves_no_review():

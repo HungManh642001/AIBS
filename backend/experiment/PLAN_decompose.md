@@ -42,32 +42,29 @@ các bước rõ ràng, orchestration xác định (đảm bảo MỌI nhóm + b
 StartEvent(group)
   │  (nếu group.is_reference, vd Mục 3→Phần 4: retrieve_fn(ref_target) kéo nội dung Phần 4 làm nguồn)
   ▼
-[ListCriteria]  LLM đọc TRỌN nội dung nhóm (text + bảng nguyên văn) -> liệt kê tiêu chí
-                NGUYÊN TỬ: mỗi tiêu chí = kiểm tra 1 loại hồ sơ HSDT + 1 nội dung; 1 loại hồ sơ
-                nhiều nội dung -> TÁCH; không gộp, không trùng. (nhom, ten, hsdt_can_kiem_tra).
-  ▼  ListEvent(criteria, source_text)
-[CritiqueCoverage]  LLM đối chiếu LẠI nguồn vs danh sách -> trả missing[] (chặn recall).
-                Gộp missing vào danh sách (đánh dấu added_by_critique).
-  ▼  fan-out: mỗi tiêu chí -> DetailEvent
-[DetailCriterion] (song song) — 3 lượt; OUTPUT PHẲNG (không sub_checks/thong_so máy-so-sánh):
-   structure : LLM xác định yeu_cau_goc, hsdt_can_kiem_tra, tien_quyet, và **noi_dung_can_kiem_tra**
-               — ô HẠNG NHẤT buộc model liệt kê "cần kiểm tra nội dung gì". Mỗi nội dung:
-               {ten, gia_tri, nguon, kieu_check}. nguon='hsmt' = giá trị HSMT quy định để đối chiếu
-               (gia_tri để TRỐNG nếu nguồn chưa có); nguon='hsdt' = dữ liệu nhà thầu (đánh giá sau).
-               (KHÔNG bịa số.)
-   sub-query : CHỈ cho nội dung nguon='hsmt' còn TRỐNG gia_tri -> LLM **sinh sub-query** -> retrieve.
-   resolve   : CHỈ khi có bằng chứng -> LLM **điền gia_tri**; không thấy -> can_review.
-               Nội dung hsmt vẫn trống -> ép can_review (no-fab). Lỗi LLM -> giữ tiêu chí + loi_ai.
-  ▼  collect tất cả DetailDoneEvent
-[Assemble] -> StopEvent(GroupDecomposition)
+[Step 1 list]   LLM liệt kê tiêu chí cụ thể: {nhom, ten, yeu_cau_goc (trích HSMT), hsdt_can_kiem_tra}.
+                NGUYÊN TỬ: 1 loại hồ sơ + 1 nội dung; 1 loại hồ sơ nhiều nội dung -> TÁCH; không trùng.
+                + critique (chống sót) CHỈ khi nhóm có BẢNG (vd năng lực) — free-text thì BỎ.
+  ▼  fan-out: mỗi tiêu chí -> AnalyzeEvent
+[Step 2 analyze] (song song)  LLM xác định tien_quyet + **noi_dung_can_kiem_tra** — ô HẠNG NHẤT buộc
+                model liệt kê "cần kiểm tra nội dung gì". Mỗi nội dung {ten, gia_tri, nguon, kieu_check}:
+                nguon='hsmt' = giá trị HSMT quy định để đối chiếu (gia_tri TRỐNG nếu nguồn chưa có = "chưa
+                đủ"); nguon='hsdt' = dữ liệu nhà thầu (đánh giá sau). (KHÔNG bịa số.)
+  ▼  SearchEvent(crit, item)
+[Step 3 search] (song song)  Với nội dung nguon='hsmt' còn TRỐNG gia_tri -> LLM **sinh query** -> retrieve
+                -> **điền gia_tri** (chỉ khi có bằng chứng). Vẫn trống -> can_review (no-fab).
+                Lỗi LLM ở analyze -> giữ tiêu chí + loi_ai.
+  ▼  collect tất cả DoneEvent
+[Step 4 collect] -> StopEvent(GroupDecomposition)
 ```
 
-> **Sửa (2026-06-30):** output đổi sang PHẲNG theo yêu cầu — bỏ `sub_checks/thong_so` máy-so-sánh
-> (Qwen3 tự đánh giá thông số, không cần code). Mỗi tiêu chí: nhom, ten, **yeu_cau_goc**,
-> **hsdt_can_kiem_tra**, tien_quyet, **noi_dung_can_kiem_tra**[{ten, gia_tri, nguon, kieu_check,
-> can_review}]. Đưa "cần kiểm tra gì" thành trường BẮT BUỘC (sửa bug step 3 không xác định được
-> nội dung cần bổ sung — trước đây bị chôn trong thong_so._need). Step structure/resolve nâng
-> max_tokens=8192 (Qwen3 có khối &lt;think&gt;). Logging tiến độ ra console (stderr, `--quiet`).
+> **Sửa (2026-06-30):** (a) output PHẲNG — bỏ `sub_checks/thong_so` máy-so-sánh (Qwen3 tự đánh giá
+> thông số). Mỗi tiêu chí: nhom, ten, **yeu_cau_goc**, **hsdt_can_kiem_tra**, tien_quyet,
+> **noi_dung_can_kiem_tra**[{ten, gia_tri, nguon, kieu_check, can_review}]. Đưa "cần kiểm tra gì" thành
+> trường BẮT BUỘC (sửa bug step không xác định được nội dung — trước bị chôn trong thong_so._need).
+> (b) workflow gọn lại theo phản hồi "lan man": `yeu_cau_goc` chuyển lên **step 1**; tách `detail` thành
+> **analyze (step 2)** + **search (step 3)** (mỗi step một việc); **critique có điều kiện** (chỉ nhóm
+> bảng lớn — nơi liệt kê 1 lượt dễ sót; free-text bỏ). max_tokens=8192 (Qwen3 có khối &lt;think&gt;).
 
 `run_decompose` lặp 4 nhóm, gọi workflow mỗi nhóm, gom thành `DecomposeResult`.
 
@@ -118,8 +115,8 @@ decompose/
   retrieval.py     RetrieveFn; default từ experiment.index (open index 1 lần, hybrid top-k);
                    resolve_reference(ref_target)->text ; subquery_bds(query)->hits
   prompts.py       system prompt: list / critique / structure / subquery / resolve (cot_block)
-  workflow.py      DecomposeWorkflow (LlamaIndex Workflow): ListCriteria/CritiqueCoverage/
-                   DetailCriterion(fan-out)/Assemble + events
+  workflow.py      DecomposeWorkflow (LlamaIndex Workflow): list(+critique nếu bảng)/fan_out/
+                   analyze/search/collect + events
   run_decompose.py CLI: chuong3_groups.json + index -> decomposition.json/.md + report ; run()/main()
   tests/
     conftest.py        scripted_llm, scripted_retrieve, sample_groups (chuong3_groups.json) fixtures

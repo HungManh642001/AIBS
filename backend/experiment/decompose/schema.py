@@ -26,9 +26,10 @@ def norm_ten(ten: str) -> str:
 
 # ---- schema validate output từng step ----
 class CriterionListItemModel(_Base):
-    """Output step list/critique."""
+    """Output step list/critique: tiêu chí cụ thể + yêu cầu gốc trích từ HSMT."""
     nhom: str = "hop_le"
     ten: str
+    yeu_cau_goc: str = ""
     hsdt_can_kiem_tra: list[Any] = []
 
 

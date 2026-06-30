@@ -15,12 +15,12 @@ from services.prompts import cot_block
 
 SYS_LIST = (
     "Bạn là chuyên gia đấu thầu theo Luật Đấu thầu Việt Nam. Đọc nội dung TIÊU CHUẨN ĐÁNH GIÁ của "
-    "MỘT nhóm và LIỆT KÊ ĐẦY ĐỦ các tiêu chí (đừng bỏ sót). "
+    "MỘT nhóm và LIỆT KÊ ĐẦY ĐỦ các tiêu chí cụ thể (đừng bỏ sót). "
     "QUY TẮC NGUYÊN TỬ — bắt buộc: mỗi tiêu chí chỉ hướng tới kiểm tra MỘT loại hồ sơ dự thầu ứng "
     "với MỘT nội dung. Nếu một loại hồ sơ có NHIỀU nội dung kiểm tra độc lập → TÁCH thành nhiều tiêu "
     "chí; KHÔNG gộp nhiều vấn đề vào một tiêu chí; KHÔNG để hai tiêu chí trùng/đè nội dung nhau. "
-    "Mỗi tiêu chí: nhom (hop_le/nang_luc/ky_thuat/tai_chinh), ten (nhãn NGẮN), hsdt_can_kiem_tra "
-    "(loại hồ sơ HSDT cần xem)."
+    "Mỗi tiêu chí: nhom (hop_le/nang_luc/ky_thuat/tai_chinh), ten (nhãn NGẮN), yeu_cau_goc (trích "
+    "NGUYÊN VĂN/NGẮN GỌN câu yêu cầu gốc trong HSMT), hsdt_can_kiem_tra (loại hồ sơ HSDT cần xem)."
 )
 SYS_CRITIQUE = (
     "Bạn là chuyên gia rà soát. So sánh DANH SÁCH tiêu chí đã liệt kê với NGUỒN gốc và chỉ ra các "
@@ -28,9 +28,8 @@ SYS_CRITIQUE = (
     "TỬ: mỗi tiêu chí = 1 loại hồ sơ + 1 nội dung. Mục tiêu: không sót."
 )
 SYS_STRUCT = (
-    "Bạn là chuyên gia đấu thầu. Với MỘT tiêu chí, xác định:\n"
-    "1) yeu_cau_goc: trích NGẮN yêu cầu gốc từ NGUỒN.\n"
-    "2) hsdt_can_kiem_tra: (các) loại hồ sơ HSDT cần xem để kiểm tra.\n"
+    "Bạn là chuyên gia đấu thầu. Cho MỘT tiêu chí (đã có yeu_cau_goc trích từ HSMT), xác định:\n"
+    "1) giữ nguyên yeu_cau_goc, hsdt_can_kiem_tra đã cho.\n"
     "3) tien_quyet: true nếu là tiêu chí loại/cổng (vi phạm là loại HSDT).\n"
     "4) noi_dung_can_kiem_tra — QUAN TRỌNG NHẤT: liệt kê ĐẦY ĐỦ từng NỘI DUNG cần kiểm tra trên "
     "HSDT, đừng bỏ sót. Mỗi nội dung gồm: ten; nguon; kieu_check; gia_tri. Trong đó:\n"
@@ -73,7 +72,7 @@ def list_prompt(source_text: str) -> str:
         "[TAG:LIST]\n"
         f"Danh mục loại hồ sơ (code=label): {catalog_codes()}\n\n"
         f"NỘI DUNG TIÊU CHUẨN ĐÁNH GIÁ (nhóm):\n{source_text}\n\n"
-        + cot_block('{"criteria":[{"nhom","ten","hsdt_can_kiem_tra":[...]}]}')
+        + cot_block('{"criteria":[{"nhom","ten","yeu_cau_goc","hsdt_can_kiem_tra":[...]}]}')
     )
 
 
@@ -83,7 +82,7 @@ def critique_prompt(source_text: str, listed: list[dict[str, Any]]) -> str:
         "[TAG:CRITIQUE]\n"
         f"NGUỒN:\n{source_text}\n\n"
         f"ĐÃ LIỆT KÊ: {names}\n\n"
-        + cot_block('{"criteria":[{"nhom","ten","hsdt_can_kiem_tra":[...]}]}  // CHỈ tiêu chí còn thiếu')
+        + cot_block('{"criteria":[{"nhom","ten","yeu_cau_goc","hsdt_can_kiem_tra":[...]}]}  // CHỈ tiêu chí còn thiếu')
     )
 
 
@@ -92,8 +91,10 @@ def struct_prompt(crit: dict[str, Any], source_text: str) -> str:
     return (
         f"[TAG:STRUCT:{crit.get('ten', '')}]\n"
         f"Danh mục loại hồ sơ (code=label): {catalog_codes()}\n\n"
-        f"TIÊU CHÍ: {crit.get('ten')} (nhóm {crit.get('nhom', 'hop_le')})\n\n"
-        f"NGUỒN TCĐG:\n{source_text}\n\n"
+        f"TIÊU CHÍ: {crit.get('ten')} (nhóm {crit.get('nhom', 'hop_le')})\n"
+        f"YÊU CẦU GỐC (HSMT): {crit.get('yeu_cau_goc', '')}\n"
+        f"HSDT cần kiểm tra: {crit.get('hsdt_can_kiem_tra', [])}\n\n"
+        f"NGUỒN TCĐG (tham khảo thêm):\n{source_text}\n\n"
         "VÍ DỤ noi_dung_can_kiem_tra cho tiêu chí về bảo đảm dự thầu:\n"
         '  [{"ten":"Giá trị bảo lãnh","gia_tri":"","nguon":"hsmt","kieu_check":"đối chiếu"},\n'
         '   {"ten":"Thời gian hiệu lực","gia_tri":"","nguon":"hsmt","kieu_check":"đối chiếu"},\n'
