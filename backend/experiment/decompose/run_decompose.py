@@ -50,14 +50,14 @@ def _to_markdown(r: DecomposeResult) -> str:
             for n in nds:
                 if n.get("can_review"):
                     gv = "⚠️cần soi"
-                elif n.get("gia_tri"):
-                    gv = n.get("gia_tri")
-                elif n.get("nguon") == "hsdt":
-                    gv = "(đánh giá sau · HSDT)"
+                elif n.get("yeu_cau"):
+                    gv = n.get("yeu_cau")
+                elif n.get("can_tra_cuu"):
+                    gv = "(cần tra cứu)"
                 else:
                     gv = "—"
                 kc = f" · {n.get('kieu_check')}" if n.get("kieu_check") else ""
-                lines.append(f"        - {n.get('ten')}: {gv}{kc}")
+                lines.append(f"        - {n.get('noi_dung')}: {gv}{kc}")
         if g.needs_review:
             lines.append(f"- needs_review: {g.needs_review}")
         lines.append("")

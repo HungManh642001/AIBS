@@ -38,16 +38,16 @@ def test_validate_criterion_shape():
         "yeu_cau_goc": "Giá trị, hiệu lực theo HSMT",
         "hsdt_can_kiem_tra": ["Thư bảo lãnh"], "tien_quyet": True,
         "noi_dung_can_kiem_tra": [
-            {"ten": "Giá trị bảo lãnh", "gia_tri": "6.100.000 VNĐ", "nguon": "hsmt",
+            {"noi_dung": "Giá trị bảo lãnh", "yeu_cau": "6.100.000 VNĐ", "can_tra_cuu": True,
              "kieu_check": "đối chiếu"},
-            {"ten": "Thời gian hiệu lực", "nguon": "hsmt"},  # thiếu field -> default
+            {"noi_dung": "Thời gian hiệu lực", "can_tra_cuu": True},  # thiếu field -> default
         ],
         "field_la": "bị bỏ",  # extra="ignore"
     }
     out = validate_criterion(crit)
     assert out["tien_quyet"] is True
     assert out["hsdt_can_kiem_tra"] == ["Thư bảo lãnh"]
-    assert out["noi_dung_can_kiem_tra"][0]["gia_tri"] == "6.100.000 VNĐ"
-    assert out["noi_dung_can_kiem_tra"][1]["gia_tri"] == ""  # default
+    assert out["noi_dung_can_kiem_tra"][0]["yeu_cau"] == "6.100.000 VNĐ"
+    assert out["noi_dung_can_kiem_tra"][1]["yeu_cau"] == ""  # default
     assert out["noi_dung_can_kiem_tra"][1]["can_review"] is False
     assert "field_la" not in out

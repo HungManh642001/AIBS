@@ -10,7 +10,8 @@ def _generic_detail():
         "nhom": "hop_le", "ten": "Tiêu chí mẫu", "yeu_cau_goc": "theo HSMT",
         "hsdt_can_kiem_tra": ["don_du_thau"], "tien_quyet": False,
         "noi_dung_can_kiem_tra": [
-            {"ten": "Có tài liệu", "gia_tri": "", "nguon": "hsdt", "kieu_check": "tồn tại"}],
+            {"noi_dung": "Có tài liệu", "yeu_cau": "phải có", "can_tra_cuu": False,
+             "kieu_check": "tồn tại"}],
     }
 
 

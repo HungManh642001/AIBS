@@ -46,25 +46,27 @@ StartEvent(group)
                 NGUYÊN TỬ: 1 loại hồ sơ + 1 nội dung; 1 loại hồ sơ nhiều nội dung -> TÁCH; không trùng.
                 + critique (chống sót) CHỈ khi nhóm có BẢNG (vd năng lực) — free-text thì BỎ.
   ▼  fan-out: mỗi tiêu chí -> AnalyzeEvent
-[Step 2 analyze] (song song)  LLM xác định tien_quyet + **noi_dung_can_kiem_tra** — ô HẠNG NHẤT buộc
-                model liệt kê "cần kiểm tra nội dung gì". Mỗi nội dung {ten, gia_tri, nguon, kieu_check}:
-                nguon='hsmt' = giá trị HSMT quy định để đối chiếu (gia_tri TRỐNG nếu nguồn chưa có = "chưa
-                đủ"); nguon='hsdt' = dữ liệu nhà thầu (đánh giá sau). (KHÔNG bịa số.)
+[Step 2 analyze] (song song)  CHỈ từ tiêu chí (KHÔNG đưa source toàn nhóm -> tránh nhiễu). LLM xác định
+                tien_quyet + **noi_dung_can_kiem_tra** — checklist cần kiểm trên hsdt_can_kiem_tra. Mỗi
+                nội dung {noi_dung, yeu_cau, can_tra_cuu, kieu_check}: yeu_cau = chuẩn HSMT để đối chiếu;
+                nếu là giá trị HSMT định nghĩa ở CHỖ KHÁC (E-BDL) -> để trống yeu_cau + can_tra_cuu=true.
+                (KHÔNG bịa số.)
   ▼  SearchEvent(crit, item)
-[Step 3 search] (song song)  Với nội dung nguon='hsmt' còn TRỐNG gia_tri -> LLM **sinh query** -> retrieve
-                -> **điền gia_tri** (chỉ khi có bằng chứng). Vẫn trống -> can_review (no-fab).
-                Lỗi LLM ở analyze -> giữ tiêu chí + loi_ai.
+[Step 3 search] (song song)  Với MỖI nội dung can_tra_cuu còn TRỐNG yeu_cau -> ĐỘC LẬP: sinh 1 query ->
+                retrieve RIÊNG -> resolve RIÊNG (1 call/1 need, không nhiễu chéo) -> điền yeu_cau.
+                Vẫn trống -> can_review (no-fab). Lỗi LLM ở analyze -> giữ tiêu chí + loi_ai.
   ▼  collect tất cả DoneEvent
 [Step 4 collect] -> StopEvent(GroupDecomposition)
 ```
 
 > **Sửa (2026-06-30):** (a) output PHẲNG — bỏ `sub_checks/thong_so` máy-so-sánh (Qwen3 tự đánh giá
-> thông số). Mỗi tiêu chí: nhom, ten, **yeu_cau_goc**, **hsdt_can_kiem_tra**, tien_quyet,
-> **noi_dung_can_kiem_tra**[{ten, gia_tri, nguon, kieu_check, can_review}]. Đưa "cần kiểm tra gì" thành
-> trường BẮT BUỘC (sửa bug step không xác định được nội dung — trước bị chôn trong thong_so._need).
-> (b) workflow gọn lại theo phản hồi "lan man": `yeu_cau_goc` chuyển lên **step 1**; tách `detail` thành
-> **analyze (step 2)** + **search (step 3)** (mỗi step một việc); **critique có điều kiện** (chỉ nhóm
-> bảng lớn — nơi liệt kê 1 lượt dễ sót; free-text bỏ). max_tokens=8192 (Qwen3 có khối &lt;think&gt;).
+> thông số). Tiêu chí: nhom, ten, **yeu_cau_goc**, **hsdt_can_kiem_tra**, tien_quyet,
+> **noi_dung_can_kiem_tra**[{noi_dung, yeu_cau, can_tra_cuu, kieu_check, can_review}]. (b) workflow gọn:
+> `yeu_cau_goc` lên **step 1**; tách `detail` thành **analyze**+**search**; **critique có điều kiện**
+> (chỉ nhóm bảng). (c) **step 2 bỏ source** (chỉ dùng yeu_cau_goc của tiêu chí — source toàn nhóm gây
+> nhiễu); `noi_dung` schema dùng **can_tra_cuu** (bool) thay `nguon` (trigger tra cứu rõ ràng, vẫn chỉ
+> tra phía HSMT). (d) **step 3 tra ĐỘC LẬP từng need** (query+retrieve+resolve riêng mỗi need, 1 call 1
+> việc — hết nhiễu chéo do gộp evidence). max_tokens=8192 (Qwen3 có khối &lt;think&gt;).
 
 `run_decompose` lặp 4 nhóm, gọi workflow mỗi nhóm, gom thành `DecomposeResult`.
 

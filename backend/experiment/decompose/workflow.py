@@ -35,24 +35,14 @@ from experiment.decompose.schema import (
     norm_ten,
     validate_criteria_list,
     validate_criterion,
+    validate_query,
+    validate_resolved_value,
 )
 
 log = logging.getLogger("experiment.decompose")
 
-# Step structure/resolve sinh JSON dài + Qwen3 có khối <think> -> cần budget rộng (mặc định chỉ 4096).
+# Step analyze/search sinh JSON + Qwen3 có khối <think> -> cần budget rộng (mặc định chỉ 4096).
 _STRUCT_MAX_TOKENS = 8192
-
-
-def _validate_queries(d: Any) -> dict[str, Any]:
-    """Chuẩn hoá output sinh sub-query: {queries:[{ten,query}]}."""
-    qs = d.get("queries", []) if isinstance(d, dict) else []
-    return {
-        "queries": [
-            {"ten": str(q.get("ten", "")), "query": str(q.get("query", ""))}
-            for q in qs
-            if isinstance(q, dict)
-        ]
-    }
 
 
 class _Listed(Event):
@@ -180,15 +170,14 @@ class DecomposeWorkflow(Workflow):
             ctx.send_event(_AnalyzeReq(crit=c))
         return None
 
-    # ---- Step 2: phân tích 1 tiêu chí -> noi_dung_can_kiem_tra (mục hsmt trống = chưa đủ) ----
+    # ---- Step 2: phân tích 1 tiêu chí -> noi_dung_can_kiem_tra (CHỈ từ tiêu chí, không source) ----
     @step
     async def analyze(self, ctx: Context, ev: _AnalyzeReq) -> _SearchReq | _Done:
         crit = ev.crit
-        source = await ctx.store.get("source")
         ten = crit.get("ten", "")
         log.info("    [analyze] %s", ten)
 
-        out = await self._llm(SYS_STRUCT, struct_prompt(crit, source),
+        out = await self._llm(SYS_STRUCT, struct_prompt(crit),
                               validate=validate_criterion, max_tokens=_STRUCT_MAX_TOKENS)
         if out.status == "error":
             log.warning("    [analyze] %s -> lỗi: %s", ten, out.error)
@@ -211,7 +200,7 @@ class DecomposeWorkflow(Workflow):
             item["hsdt_can_kiem_tra"] = crit.get("hsdt_can_kiem_tra", [])
         return _SearchReq(crit=crit, item=item)
 
-    # ---- Step 3: tìm kiếm giá trị cho nội dung chưa đủ (nguon=hsmt, gia_tri trống) ----
+    # ---- Step 3: tìm giá trị cho nội dung can_tra_cuu — ĐỘC LẬP từng need, 1 call/1 việc ----
     @step
     async def search(self, ctx: Context, ev: _SearchReq) -> _Done:
         crit, item = ev.crit, ev.item
@@ -219,42 +208,37 @@ class DecomposeWorkflow(Workflow):
 
         needs = [
             n for n in item.get("noi_dung_can_kiem_tra", [])
-            if n.get("nguon", "hsmt") == "hsmt" and not (n.get("gia_tri") or "").strip()
+            if n.get("can_tra_cuu") and not (n.get("yeu_cau") or "").strip()
         ]
 
         if needs and self._retrieve:
-            log.info("    [search] %s -> %d nội dung cần tra giá trị", ten, len(needs))
-            queries: dict[str, str] = {}
-            qout = await self._llm(SYS_QUERY, query_prompt(crit, needs), validate=_validate_queries)
-            if qout.status == "ok":
-                for q in qout.data.get("queries", []):
-                    queries[norm_ten(q.get("ten", ""))] = q.get("query", "")
-            lines: list[str] = []
+            log.info("    [search] %s -> %d nội dung cần tra cứu", ten, len(needs))
             for n in needs:
-                q = queries.get(norm_ten(n.get("ten", ""))) or f"{ten} {n.get('ten', '')}"
-                log.info("      [retrieve] %s", q)
-                hits = self._retrieve(q, k=3)
-                if hits:
-                    body = "\n".join(h["text"][:300] for h in hits)
-                    lines.append(f"[{n.get('ten')}]\n{body}")
-            evidence_text = "\n\n".join(lines)
+                nd = n.get("noi_dung", "")
+                # 1) sinh query RIÊNG cho need này
+                qout = await self._llm(SYS_QUERY, query_prompt(crit, n), validate=validate_query)
+                query = (qout.data.get("query") if qout.status == "ok" else "") or f"{ten} {nd}"
+                log.info("      [retrieve] %s", query)
+                # 2) truy hồi RIÊNG -> bằng chứng riêng của need
+                hits = self._retrieve(query, k=3)
+                if not hits:
+                    continue
+                body = "\n".join(h["text"][:300] for h in hits)
+                # 3) resolve RIÊNG: trích đúng 1 giá trị từ bằng chứng của need (không nhiễu chéo)
+                rout = await self._llm(SYS_RESOLVE, resolve_prompt(crit, n, body),
+                                       validate=validate_resolved_value, max_tokens=_STRUCT_MAX_TOKENS)
+                if rout.status == "ok" and not rout.data.get("can_review") \
+                        and (rout.data.get("yeu_cau") or "").strip():
+                    n["yeu_cau"] = rout.data["yeu_cau"]
+                elif rout.status == "error":
+                    log.warning("    [search] %s/%s -> lỗi resolve: %s", ten, nd, rout.error)
 
-            # resolve — điền gia_tri từ bằng chứng (chỉ khi có bằng chứng).
-            if evidence_text:
-                log.info("    [search] %s -> điền giá trị từ bằng chứng", ten)
-                rout = await self._llm(SYS_RESOLVE, resolve_prompt(item, evidence_text),
-                                       validate=validate_criterion, max_tokens=_STRUCT_MAX_TOKENS)
-                if rout.status == "ok":
-                    item = rout.data
-                else:
-                    log.warning("    [search] %s -> lỗi resolve: %s", ten, rout.error)
-
-        # No-fab: nội dung nguon=hsmt vẫn trống gia_tri -> can_review (KHÔNG bịa).
+        # No-fab: nội dung can_tra_cuu vẫn trống yeu_cau -> can_review (KHÔNG bịa).
         flagged: list[str] = []
         for n in item.get("noi_dung_can_kiem_tra", []):
-            if n.get("nguon", "hsmt") == "hsmt" and not (n.get("gia_tri") or "").strip():
+            if n.get("can_tra_cuu") and not (n.get("yeu_cau") or "").strip():
                 n["can_review"] = True
-                flagged.append(n.get("ten", ""))
+                flagged.append(n.get("noi_dung", ""))
         nr = None
         if flagged:
             nr = {"ten": ten, "ly_do": f"chưa tra được giá trị HSMT cho: {', '.join(flagged)} — cần soi"}

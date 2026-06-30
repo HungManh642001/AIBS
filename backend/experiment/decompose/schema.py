@@ -38,12 +38,23 @@ class CriteriaListModel(_Base):
 
 
 class NoiDungKiemTra(_Base):
-    """Một nội dung cần kiểm trên HSDT. gia_tri = giá trị HSMT yêu cầu (đã resolve) | ''."""
-    ten: str
-    gia_tri: str = ""           # giá trị HSMT yêu cầu, hoặc mô tả điều kiện (với nguon=hsdt)
-    nguon: str = "hsmt"         # hsmt = HSMT quy định (cần tra) | hsdt = nhà thầu nộp (đánh giá sau)
-    kieu_check: str = ""        # tồn tại | đối chiếu | so sánh ngày ... (nhãn nhẹ, không dispatch code)
-    can_review: bool = False    # True nếu nguon=hsmt mà không tra được giá trị (KHÔNG bịa)
+    """Một nội dung cần kiểm trên HSDT của tiêu chí."""
+    noi_dung: str = ""          # điều cần kiểm trên HSDT
+    yeu_cau: str = ""           # CHUẨN HSMT để đối chiếu (số/điều kiện); '' nếu cần tra cứu
+    can_tra_cuu: bool = False   # yeu_cau là giá trị HSMT định nghĩa ở CHỖ KHÁC -> step 3 tra cứu
+    kieu_check: str = ""        # tồn tại | đối chiếu | so sánh ngày | định dạng ... (nhãn nhẹ)
+    can_review: bool = False    # True nếu can_tra_cuu mà tra không ra (KHÔNG bịa)
+
+
+class ResolvedValue(_Base):
+    """Output step search (resolve 1 need): giá trị tìm được hoặc cần soi."""
+    yeu_cau: str = ""
+    can_review: bool = False
+
+
+class QueryOut(_Base):
+    """Output step search (sinh query 1 need)."""
+    query: str = ""
 
 
 class CriterionModel(_Base):
@@ -63,6 +74,14 @@ def validate_criteria_list(d: dict[str, Any]) -> dict[str, Any]:
 
 def validate_criterion(d: dict[str, Any]) -> dict[str, Any]:
     return CriterionModel(**d).model_dump()
+
+
+def validate_query(d: dict[str, Any]) -> dict[str, Any]:
+    return QueryOut(**d).model_dump()
+
+
+def validate_resolved_value(d: dict[str, Any]) -> dict[str, Any]:
+    return ResolvedValue(**d).model_dump()
 
 
 # ---- gom kết quả 1 nhóm / cả tài liệu ----
