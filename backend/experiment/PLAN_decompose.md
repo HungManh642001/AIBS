@@ -43,35 +43,31 @@ StartEvent(group)
   │  (nếu group.is_reference, vd Mục 3→Phần 4: retrieve_fn(ref_target) kéo nội dung Phần 4 làm nguồn)
   ▼
 [ListCriteria]  LLM đọc TRỌN nội dung nhóm (text + bảng nguyên văn) -> liệt kê tiêu chí
-                NGUYÊN TỬ: mỗi tiêu chí = ĐÁNH GIÁ 1 loại hồ sơ (required_artifacts = 1 mã) ứng
-                với 1 nội dung kiểm; 1 loại hồ sơ nhiều nội dung -> TÁCH nhiều tiêu chí; không
-                gộp, không trùng. (nhom, ten, required_artifacts). validate_criteria_list.
+                NGUYÊN TỬ: mỗi tiêu chí = kiểm tra 1 loại hồ sơ HSDT + 1 nội dung; 1 loại hồ sơ
+                nhiều nội dung -> TÁCH; không gộp, không trùng. (nhom, ten, hsdt_can_kiem_tra).
   ▼  ListEvent(criteria, source_text)
-[CritiqueCoverage]  LLM đối chiếu LẠI nguồn vs danh sách -> trả missing[] + ghi chú
-                (chặn recall). Gộp missing vào danh sách (đánh dấu added_by_critique).
+[CritiqueCoverage]  LLM đối chiếu LẠI nguồn vs danh sách -> trả missing[] (chặn recall).
+                Gộp missing vào danh sách (đánh dấu added_by_critique).
   ▼  fan-out: mỗi tiêu chí -> DetailEvent
-[DetailCriterion] (song song) — 3 lượt, RETRIEVAL THEO CÁI CÒN THIẾU (không theo tên tiêu chí):
-   3a structure : LLM bóc sub_checks + check_type; điền thong_so KHI nguồn có sẵn số; số còn thiếu
-                  -> đánh dấu **thong_so._need='<mô tả>'** + **_need_source** (PHÂN BIỆT NGUỒN):
-                    · 'hsmt' = giá trị THAM CHIẾU do HSMT quy định (mốc/ngưỡng, vd thời điểm phát
-                      hành HSMT) -> truy hồi bổ sung ở 3b/3c.
-                    · 'hsdt' = dữ liệu NHÀ THẦU nộp (vd thời gian ký đơn dự thầu) -> ĐÁNH GIÁ Ở
-                      BƯỚC SAU, hiện chưa có -> KHÔNG coi là thiếu, đặt thong_so._danh_gia_sau=true.
-                  (KHÔNG bịa số.)
-   3b sub-query : CHỈ cho sub_check có _need nguồn **hsmt** -> LLM **sinh sub-query** theo từng _need
-                  -> retrieve_fn(query) nhắm đúng số thiếu (TCĐG→BDS). (bỏ qua nếu không có)
-   3c resolve   : CHỈ khi có _need(hsmt) VÀ có bằng chứng -> LLM điền thong_so, bỏ _need; không
-                  thấy/mơ hồ -> thong_so.can_review=true. _need(hsmt) còn sót -> ép can_review;
-                  sub_check hsdt -> _danh_gia_sau (KHÔNG can_review). Lỗi LLM -> giữ tiêu chí +
-                  can_review + loi_ai.
+[DetailCriterion] (song song) — 3 lượt; OUTPUT PHẲNG (không sub_checks/thong_so máy-so-sánh):
+   structure : LLM xác định yeu_cau_goc, hsdt_can_kiem_tra, tien_quyet, và **noi_dung_can_kiem_tra**
+               — ô HẠNG NHẤT buộc model liệt kê "cần kiểm tra nội dung gì". Mỗi nội dung:
+               {ten, gia_tri, nguon, kieu_check}. nguon='hsmt' = giá trị HSMT quy định để đối chiếu
+               (gia_tri để TRỐNG nếu nguồn chưa có); nguon='hsdt' = dữ liệu nhà thầu (đánh giá sau).
+               (KHÔNG bịa số.)
+   sub-query : CHỈ cho nội dung nguon='hsmt' còn TRỐNG gia_tri -> LLM **sinh sub-query** -> retrieve.
+   resolve   : CHỈ khi có bằng chứng -> LLM **điền gia_tri**; không thấy -> can_review.
+               Nội dung hsmt vẫn trống -> ép can_review (no-fab). Lỗi LLM -> giữ tiêu chí + loi_ai.
   ▼  collect tất cả DetailDoneEvent
 [Assemble] -> StopEvent(GroupDecomposition)
 ```
 
-> **Sửa (2026-06-29):** bản đầu dùng MỘT truy vấn ghép từ `crit.ten` *trước khi* biết sub_check
-> nào cần ngưỡng -> query quá chung, không kéo đúng số, LLM phải vừa-đoán-cấu-trúc-vừa-điền ->
-> kết quả kém. Bản này tách structure → sub-query theo `_need` → resolve để truy hồi bám đúng
-> tham số còn thiếu. Có **logging tiến độ** ra console (stderr, `--quiet` để tắt).
+> **Sửa (2026-06-30):** output đổi sang PHẲNG theo yêu cầu — bỏ `sub_checks/thong_so` máy-so-sánh
+> (Qwen3 tự đánh giá thông số, không cần code). Mỗi tiêu chí: nhom, ten, **yeu_cau_goc**,
+> **hsdt_can_kiem_tra**, tien_quyet, **noi_dung_can_kiem_tra**[{ten, gia_tri, nguon, kieu_check,
+> can_review}]. Đưa "cần kiểm tra gì" thành trường BẮT BUỘC (sửa bug step 3 không xác định được
+> nội dung cần bổ sung — trước đây bị chôn trong thong_so._need). Step structure/resolve nâng
+> max_tokens=8192 (Qwen3 có khối &lt;think&gt;). Logging tiến độ ra console (stderr, `--quiet`).
 
 `run_decompose` lặp 4 nhóm, gọi workflow mỗi nhóm, gom thành `DecomposeResult`.
 
@@ -92,28 +88,36 @@ xác định offline; nghiệm thu ngữ nghĩa khi proxy bật:
   "groups": [
     {
       "group": "hop_le", "muc": "Mục 1...", "is_reference": false, "ref_target": null,
-      "criteria": [ /* CriterionDetailModel: nhom,ten,yeu_cau,required_artifacts,kieu,trong_so,
-                       sub_checks:[{ten,check_type,thong_so,required_artifact,blocking}],proposed_artifacts */ ],
+      "criteria": [{
+        "nhom": "hop_le", "ten": "Bảo đảm dự thầu đúng yêu cầu E-HSMT",
+        "yeu_cau_goc": "Giá trị bảo lãnh, thời gian hiệu lực, đơn vị thụ hưởng theo E-HSMT",
+        "hsdt_can_kiem_tra": ["Thư bảo lãnh"], "tien_quyet": true,
+        "noi_dung_can_kiem_tra": [
+          {"ten":"Giá trị bảo lãnh","gia_tri":"6.100.000 VNĐ","nguon":"hsmt","kieu_check":"đối chiếu","can_review":false},
+          {"ten":"Thời gian hiệu lực","gia_tri":">= 120 ngày","nguon":"hsmt","kieu_check":"đối chiếu","can_review":false},
+          {"ten":"Đơn vị thụ hưởng","gia_tri":"Liên doanh Việt Nga Vietsovpetro","nguon":"hsmt","kieu_check":"đối chiếu","can_review":false}
+        ]
+      }],
       "coverage": {"listed_n": 5, "final_n": 6, "added_by_critique": ["..."], "notes": "..."},
-      "needs_review": [{"ten": "...", "ly_do": "không tra được giá trị bảo đảm dự thầu"}]
+      "needs_review": [{"ten": "...", "ly_do": "chưa tra được giá trị HSMT cho: ..."}]
     }
     // nang_luc, ky_thuat (is_reference=true, criteria từ Phần 4), tai_chinh
   ],
   "summary": {"n_groups": 4, "n_criteria": 0, "n_needs_review": 0}
 }
 ```
-Kèm `decomposition.md` (người soi: mỗi nhóm → tiêu chí + sub_checks + cờ needs-review) và `decompose_report.md`.
+Kèm `decomposition.md` (người soi: mỗi nhóm → tiêu chí + noi_dung_can_kiem_tra + cờ cần soi) và `decompose_report.md`.
 
 ## 7. Bố cục module — `backend/experiment/decompose/`
 
 ```
 decompose/
-  schema.py        GroupDecomposition, DecomposeResult, to_json/markdown helpers;
-                   re-dùng CriterionDetailModel/validate_* từ services.ai_schemas
+  schema.py        Schema PHẲNG experiment-local: CriterionModel/NoiDungKiemTra + validate_*;
+                   GroupDecomposition, DecomposeResult, to_json helpers (KHÔNG dùng CriterionDetailModel)
   llm.py           LlmFn protocol; default_llm_fn (bọc ai_call, no-silent-mock); ScriptedLlm (test)
   retrieval.py     RetrieveFn; default từ experiment.index (open index 1 lần, hybrid top-k);
                    resolve_reference(ref_target)->text ; subquery_bds(query)->hits
-  prompts.py       system prompt: list / critique / structure / subquery / resolve (cot_block + SCALE_DEF)
+  prompts.py       system prompt: list / critique / structure / subquery / resolve (cot_block)
   workflow.py      DecomposeWorkflow (LlamaIndex Workflow): ListCriteria/CritiqueCoverage/
                    DetailCriterion(fan-out)/Assemble + events
   run_decompose.py CLI: chuong3_groups.json + index -> decomposition.json/.md + report ; run()/main()

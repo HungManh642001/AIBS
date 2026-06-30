@@ -4,7 +4,7 @@ from experiment.decompose.schema import (
     GroupDecomposition,
     norm_ten,
     result_to_json,
-    validate_criteria,
+    validate_criterion,
 )
 
 
@@ -31,13 +31,23 @@ def test_result_to_json_shape():
     assert d["summary"]["n_groups"] == 1
 
 
-def test_validate_criteria_keeps_extra_flags():
+def test_validate_criterion_shape():
+    """validate_criterion chuẩn hoá output phẳng: noi_dung_can_kiem_tra + defaults, no-fab giữ nguyên."""
     crit = {
-        "nhom": "hop_le", "ten": "Bảo đảm dự thầu", "kieu": "pass_fail",
-        "sub_checks": [{"ten": "có bảo đảm", "check_type": "presence"}],
-        "can_review": True, "loi_ai": "proxy down",  # field thêm phải GIỮ lại
+        "nhom": "hop_le", "ten": "Bảo đảm dự thầu",
+        "yeu_cau_goc": "Giá trị, hiệu lực theo HSMT",
+        "hsdt_can_kiem_tra": ["Thư bảo lãnh"], "tien_quyet": True,
+        "noi_dung_can_kiem_tra": [
+            {"ten": "Giá trị bảo lãnh", "gia_tri": "6.100.000 VNĐ", "nguon": "hsmt",
+             "kieu_check": "đối chiếu"},
+            {"ten": "Thời gian hiệu lực", "nguon": "hsmt"},  # thiếu field -> default
+        ],
+        "field_la": "bị bỏ",  # extra="ignore"
     }
-    out = validate_criteria([crit])
-    assert out[0]["can_review"] is True
-    assert out[0]["loi_ai"] == "proxy down"
-    assert out[0]["sub_checks"][0]["ten"] == "có bảo đảm"
+    out = validate_criterion(crit)
+    assert out["tien_quyet"] is True
+    assert out["hsdt_can_kiem_tra"] == ["Thư bảo lãnh"]
+    assert out["noi_dung_can_kiem_tra"][0]["gia_tri"] == "6.100.000 VNĐ"
+    assert out["noi_dung_can_kiem_tra"][1]["gia_tri"] == ""  # default
+    assert out["noi_dung_can_kiem_tra"][1]["can_review"] is False
+    assert "field_la" not in out

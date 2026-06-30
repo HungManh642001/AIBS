@@ -1,7 +1,8 @@
 """Agentic Workflow (LlamaIndex) phân rã 1 nhóm: list -> critique-coverage -> detail (fan-out).
 
-Bước detail (mỗi tiêu chí) gồm 3 lượt: structure (3a) -> sinh sub-query + truy hồi (3b) ->
-resolve (3c, chỉ khi có thong_so._need và có bằng chứng). Còn _need sót -> ép can_review.
+Bước detail (mỗi tiêu chí) gồm 3 lượt: structure (liệt kê noi_dung_can_kiem_tra) -> sinh sub-query
++ truy hồi (cho nội dung nguon=hsmt còn trống gia_tri) -> resolve (điền gia_tri, chỉ khi có bằng
+chứng). Nội dung hsmt vẫn trống -> ép can_review (no-fab). Nội dung hsdt -> đánh giá sau.
 """
 from __future__ import annotations
 
@@ -9,8 +10,6 @@ import logging
 from typing import Any
 
 from llama_index.core.workflow import Context, Event, StartEvent, StopEvent, Workflow, step
-
-from services.ai_schemas import validate_criteria_list, validate_criterion_detail
 
 from experiment.decompose.llm import LlmFn
 from experiment.decompose.prompts import (
@@ -26,9 +25,18 @@ from experiment.decompose.prompts import (
     struct_prompt,
 )
 from experiment.decompose.retrieval import RetrieveFn
-from experiment.decompose.schema import Coverage, GroupDecomposition, norm_ten
+from experiment.decompose.schema import (
+    Coverage,
+    GroupDecomposition,
+    norm_ten,
+    validate_criteria_list,
+    validate_criterion,
+)
 
 log = logging.getLogger("experiment.decompose")
+
+# Step structure/resolve sinh JSON dài + Qwen3 có khối <think> -> cần budget rộng (mặc định chỉ 4096).
+_STRUCT_MAX_TOKENS = 8192
 
 
 def _validate_queries(d: Any) -> dict[str, Any]:
@@ -116,7 +124,8 @@ class DecomposeWorkflow(Workflow):
         await ctx.store.set("group", group)
         await ctx.store.set("source", source)
 
-        out = await self._llm(SYS_LIST, list_prompt(source), validate=validate_criteria_list)
+        out = await self._llm(SYS_LIST, list_prompt(source), validate=validate_criteria_list,
+                              max_tokens=_STRUCT_MAX_TOKENS)
         if out.status == "error":
             # Cả nhóm lỗi liệt kê -> không bịa, trả needs_review.
             gd = self._assemble(group, [], [], 0, [{"ten": "(toàn nhóm)", "ly_do": f"lỗi AI liệt kê: {out.error}"}])
@@ -160,86 +169,66 @@ class DecomposeWorkflow(Workflow):
         ten = crit.get("ten", "")
         log.info("    [detail] %s", ten)
 
-        # 3a — phân rã cấu trúc (đánh dấu thong_so._need cho số còn thiếu)
-        out = await self._llm(SYS_STRUCT, struct_prompt(crit, source), validate=validate_criterion_detail)
+        # structure — liệt kê noi_dung_can_kiem_tra (gia_tri để trống nếu nguồn chưa có)
+        out = await self._llm(SYS_STRUCT, struct_prompt(crit, source),
+                              validate=validate_criterion, max_tokens=_STRUCT_MAX_TOKENS)
         if out.status == "error":
             log.warning("    [detail] %s -> lỗi structure: %s", ten, out.error)
             item = {
                 "nhom": crit.get("nhom", "hop_le"),
                 "ten": ten,
-                "yeu_cau": "",
-                "required_artifacts": crit.get("required_artifacts", []),
-                "kieu": "pass_fail",
-                "trong_so": 0.0,
-                "sub_checks": [],
-                "proposed_artifacts": [],
-                "can_review": True,
+                "yeu_cau_goc": "",
+                "hsdt_can_kiem_tra": crit.get("hsdt_can_kiem_tra", []),
+                "tien_quyet": False,
+                "noi_dung_can_kiem_tra": [],
                 "loi_ai": out.error,
             }
             return _DetailDone(detail=item, needs_review={"ten": ten, "ly_do": f"lỗi AI: {out.error}"})
 
         item = out.data
-        # Phân loại _need theo nguồn: chỉ giá trị HSMT mới truy hồi; dữ liệu HSDT -> đánh giá sau.
-        needs: list[dict] = []
-        hsdt_names: set[str] = set()
-        for sc in item.get("sub_checks", []):
-            ts = sc.get("thong_so", {}) or {}
-            if not ts.get("_need"):
-                continue
-            if ts.get("_need_source", "hsmt") == "hsmt":
-                needs.append(sc)
-            else:
-                hsdt_names.add(norm_ten(sc.get("ten", "")))
+        # Cần tra: nội dung nguon=hsmt mà chưa có gia_tri. (hsdt -> đánh giá sau, không tra.)
+        needs = [
+            n for n in item.get("noi_dung_can_kiem_tra", [])
+            if n.get("nguon", "hsmt") == "hsmt" and not (n.get("gia_tri") or "").strip()
+        ]
 
-        # 3b — sinh sub-query cho từng cái thiếu (phía HSMT) rồi truy hồi nhắm vào nó
-        evidence_text = ""
+        # sub-query + truy hồi nhắm đúng nội dung còn thiếu giá trị
         if needs and self._retrieve:
-            log.info("    [detail] %s -> %d sub_check thiếu số, sinh sub-query", ten, len(needs))
+            log.info("    [detail] %s -> %d nội dung cần tra giá trị", ten, len(needs))
             queries: dict[str, str] = {}
             qout = await self._llm(SYS_QUERY, query_prompt(crit, needs), validate=_validate_queries)
             if qout.status == "ok":
                 for q in qout.data.get("queries", []):
                     queries[norm_ten(q.get("ten", ""))] = q.get("query", "")
             lines: list[str] = []
-            for sc in needs:
-                q = queries.get(norm_ten(sc.get("ten", ""))) or f"{ten} {sc.get('ten', '')}"
+            for n in needs:
+                q = queries.get(norm_ten(n.get("ten", ""))) or f"{ten} {n.get('ten', '')}"
                 log.info("      [retrieve] %s", q)
                 hits = self._retrieve(q, k=3)
                 if hits:
                     body = "\n".join(h["text"][:300] for h in hits)
-                    lines.append(f"[{sc.get('ten')}]\n{body}")
+                    lines.append(f"[{n.get('ten')}]\n{body}")
             evidence_text = "\n\n".join(lines)
 
-            # 3c — resolve CHỈ khi có bằng chứng (không có thì để _need -> ép can_review)
+            # resolve — điền gia_tri từ bằng chứng (chỉ khi có bằng chứng; không có -> can_review bên dưới)
             if evidence_text:
                 log.info("    [detail] %s -> resolve từ bằng chứng", ten)
-                rout = await self._llm(
-                    SYS_RESOLVE, resolve_prompt(item, evidence_text), validate=validate_criterion_detail
-                )
+                rout = await self._llm(SYS_RESOLVE, resolve_prompt(item, evidence_text),
+                                       validate=validate_criterion, max_tokens=_STRUCT_MAX_TOKENS)
                 if rout.status == "ok":
                     item = rout.data
                 else:
                     log.warning("    [detail] %s -> lỗi resolve: %s", ten, rout.error)
 
-        # Dọn marker + no-fabrication. Áp lại _danh_gia_sau theo tên (bền với resolve thay item):
-        #  - sub_check HSDT -> đánh giá sau, KHÔNG can_review.
-        #  - _need HSMT còn sót (chưa resolve được) -> ép can_review.
+        # No-fab: nội dung nguon=hsmt vẫn trống gia_tri -> can_review (KHÔNG bịa).
         flagged: list[str] = []
-        for sc in item.get("sub_checks", []):
-            ts = sc.setdefault("thong_so", {})
-            if norm_ten(sc.get("ten", "")) in hsdt_names:
-                ts.pop("_need", None)
-                ts.pop("_need_source", None)
-                ts["_danh_gia_sau"] = True
-                continue
-            ts.pop("_need_source", None)
-            if ts.pop("_need", None):
-                ts["can_review"] = True
-            if ts.get("can_review"):
-                flagged.append(sc.get("ten", ""))
+        for n in item.get("noi_dung_can_kiem_tra", []):
+            if n.get("nguon", "hsmt") == "hsmt" and not (n.get("gia_tri") or "").strip():
+                n["can_review"] = True
+                flagged.append(n.get("ten", ""))
         nr = None
         if flagged:
-            nr = {"ten": ten, "ly_do": f"không truy được số ngưỡng (BDS) cho: {', '.join(flagged)} — cần soi"}
+            nr = {"ten": ten, "ly_do": f"chưa tra được giá trị HSMT cho: {', '.join(flagged)} — cần soi"}
         return _DetailDone(detail=item, needs_review=nr)
 
     # ---- bước 4: gom ----

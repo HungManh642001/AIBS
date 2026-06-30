@@ -39,13 +39,25 @@ def _to_markdown(r: DecomposeResult) -> str:
             f"added={g.coverage.added_by_critique}"
         )
         for c in g.criteria:
-            flag = " ⚠️cần soi" if c.get("can_review") else ""
-            lines.append(f"- **{c.get('ten')}** ({c.get('nhom')}/{c.get('kieu')}){flag}")
-            for sc in c.get("sub_checks", []):
-                ts = sc.get("thong_so", {})
-                cr = " [can_review]" if ts.get("can_review") else ""
-                later = " [đánh giá sau·HSDT]" if ts.get("_danh_gia_sau") else ""
-                lines.append(f"    - {sc.get('ten')} · {sc.get('check_type')}{cr}{later}")
+            nds = c.get("noi_dung_can_kiem_tra", [])
+            flag = " ⚠️cần soi" if (any(n.get("can_review") for n in nds) or c.get("loi_ai")) else ""
+            tq = " [tiên quyết]" if c.get("tien_quyet") else ""
+            lines.append(f"- **{c.get('ten')}** ({c.get('nhom')}){tq}{flag}")
+            if c.get("yeu_cau_goc"):
+                lines.append(f"    - yêu cầu gốc: {c.get('yeu_cau_goc')}")
+            if c.get("hsdt_can_kiem_tra"):
+                lines.append(f"    - HSDT cần kiểm tra: {', '.join(map(str, c.get('hsdt_can_kiem_tra')))}")
+            for n in nds:
+                if n.get("can_review"):
+                    gv = "⚠️cần soi"
+                elif n.get("gia_tri"):
+                    gv = n.get("gia_tri")
+                elif n.get("nguon") == "hsdt":
+                    gv = "(đánh giá sau · HSDT)"
+                else:
+                    gv = "—"
+                kc = f" · {n.get('kieu_check')}" if n.get("kieu_check") else ""
+                lines.append(f"        - {n.get('ten')}: {gv}{kc}")
         if g.needs_review:
             lines.append(f"- needs_review: {g.needs_review}")
         lines.append("")

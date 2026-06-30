@@ -1,14 +1,20 @@
-"""Schema đầu ra bước phân rã. Tái dùng CriterionDetailModel của services (read-only)."""
+"""Schema đầu ra bước phân rã (experiment-local, output phẳng).
+
+Bỏ CriterionDetailModel/sub_checks máy-so-sánh: Qwen3 tự đánh giá thông số, không cần code.
+Mỗi tiêu chí: nhom, ten (nhãn ngắn), yeu_cau_goc, hsdt_can_kiem_tra, tien_quyet,
+noi_dung_can_kiem_tra[{ten, gia_tri, nguon hsmt|hsdt, kieu_check, can_review}].
+"""
 from __future__ import annotations
 
 import unicodedata
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from services.ai_schemas import validate_criterion_detail  # read-only reuse
+from pydantic import BaseModel, ConfigDict
 
-# Field thêm (ngoài CriterionDetailModel) được giữ qua validate -> đánh dấu cần soi, không bịa.
-_EXTRA_KEYS = ("can_review", "loi_ai")
+
+class _Base(BaseModel):
+    model_config = ConfigDict(extra="ignore")
 
 
 def norm_ten(ten: str) -> str:
@@ -18,6 +24,47 @@ def norm_ten(ten: str) -> str:
     return "".join(c for c in nfd if unicodedata.category(c) != "Mn")
 
 
+# ---- schema validate output từng step ----
+class CriterionListItemModel(_Base):
+    """Output step list/critique."""
+    nhom: str = "hop_le"
+    ten: str
+    hsdt_can_kiem_tra: list[Any] = []
+
+
+class CriteriaListModel(_Base):
+    criteria: list[CriterionListItemModel] = []
+
+
+class NoiDungKiemTra(_Base):
+    """Một nội dung cần kiểm trên HSDT. gia_tri = giá trị HSMT yêu cầu (đã resolve) | ''."""
+    ten: str
+    gia_tri: str = ""           # giá trị HSMT yêu cầu, hoặc mô tả điều kiện (với nguon=hsdt)
+    nguon: str = "hsmt"         # hsmt = HSMT quy định (cần tra) | hsdt = nhà thầu nộp (đánh giá sau)
+    kieu_check: str = ""        # tồn tại | đối chiếu | so sánh ngày ... (nhãn nhẹ, không dispatch code)
+    can_review: bool = False    # True nếu nguon=hsmt mà không tra được giá trị (KHÔNG bịa)
+
+
+class CriterionModel(_Base):
+    """Output step structure/resolve — tiêu chí hoàn chỉnh."""
+    nhom: str = "hop_le"
+    ten: str
+    yeu_cau_goc: str = ""
+    hsdt_can_kiem_tra: list[Any] = []
+    tien_quyet: bool = False
+    noi_dung_can_kiem_tra: list[NoiDungKiemTra] = []
+    loi_ai: str = ""            # != '' nếu lỗi AI cả tiêu chí
+
+
+def validate_criteria_list(d: dict[str, Any]) -> dict[str, Any]:
+    return CriteriaListModel(**d).model_dump()
+
+
+def validate_criterion(d: dict[str, Any]) -> dict[str, Any]:
+    return CriterionModel(**d).model_dump()
+
+
+# ---- gom kết quả 1 nhóm / cả tài liệu ----
 @dataclass
 class Coverage:
     listed_n: int = 0
@@ -49,18 +96,6 @@ class DecomposeResult:
             "n_criteria": sum(len(g.criteria) for g in self.groups),
             "n_needs_review": sum(len(g.needs_review) for g in self.groups),
         }
-
-
-def validate_criteria(criteria: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Validate từng tiêu chí qua schema production, GIỮ field thêm (can_review/loi_ai)."""
-    out: list[dict[str, Any]] = []
-    for c in criteria:
-        extra = {k: c[k] for k in _EXTRA_KEYS if k in c}
-        base = {k: v for k, v in c.items() if k not in _EXTRA_KEYS}
-        v = validate_criterion_detail(base)
-        v.update(extra)
-        out.append(v)
-    return out
 
 
 def result_to_json(r: DecomposeResult) -> dict[str, Any]:

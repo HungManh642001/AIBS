@@ -11,15 +11,15 @@ _GROUP = {
 }
 
 
-def _detail(ten, check_type, need=None, source="hsmt"):
-    """Tiêu chí chi tiết hợp lệ; need != None -> thong_so._need + _need_source (số còn thiếu)."""
-    thong_so = {"_need": need, "_need_source": source} if need else {}
+def _nd(ten, gia_tri="", nguon="hsmt", kieu="đối chiếu"):
+    return {"ten": ten, "gia_tri": gia_tri, "nguon": nguon, "kieu_check": kieu}
+
+
+def _crit(ten, contents, nhom="hop_le", tien_quyet=False, hsdt=None):
     return {
-        "nhom": "hop_le", "ten": ten, "yeu_cau": "theo HSMT", "required_artifacts": [],
-        "kieu": "pass_fail", "trong_so": 0.0,
-        "sub_checks": [{"ten": f"kiểm {ten}", "check_type": check_type, "thong_so": thong_so,
-                        "required_artifact": "", "blocking": True}],
-        "proposed_artifacts": [],
+        "nhom": nhom, "ten": ten, "yeu_cau_goc": f"{ten} theo HSMT",
+        "hsdt_can_kiem_tra": hsdt or [], "tien_quyet": tien_quyet,
+        "noi_dung_can_kiem_tra": contents,
     }
 
 
@@ -28,17 +28,18 @@ def _by_name(criteria, ten):
 
 
 async def test_critique_adds_missing_and_no_fabrication():
-    """Recall guard: critique thêm tiêu chí sót. No-fab: thiếu số + KHÔNG có bằng chứng -> can_review."""
+    """Recall guard: critique thêm tiêu chí sót. No-fab: nội dung hsmt không tra được -> can_review."""
     llm = ScriptedLlm({
         "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Đơn dự thầu hợp lệ"}]},
         "[TAG:CRITIQUE]": {"criteria": [{"nhom": "hop_le", "ten": "Bảo đảm dự thầu"}]},
-        "[TAG:STRUCT:Đơn dự thầu hợp lệ]": _detail("Đơn dự thầu hợp lệ", "presence"),
-        "[TAG:STRUCT:Bảo đảm dự thầu]": _detail("Bảo đảm dự thầu", "value_threshold",
-                                                need="giá trị bảo đảm dự thầu (đồng)"),
+        "[TAG:STRUCT:Đơn dự thầu hợp lệ]": _crit(
+            "Đơn dự thầu hợp lệ", [_nd("Có đơn dự thầu", nguon="hsdt", kieu="tồn tại")]),
+        "[TAG:STRUCT:Bảo đảm dự thầu]": _crit(
+            "Bảo đảm dự thầu", [_nd("Giá trị bảo lãnh")]),  # nguon=hsmt, gia_tri trống
         "[TAG:QUERY:Bảo đảm dự thầu]": {"queries": [
-            {"ten": "kiểm Bảo đảm dự thầu", "query": "giá trị bảo đảm dự thầu"}]},
+            {"ten": "Giá trị bảo lãnh", "query": "giá trị bảo đảm dự thầu"}]},
     })
-    # retrieve rỗng -> không có bằng chứng -> không resolve -> _need còn -> can_review.
+    # retrieve rỗng -> không bằng chứng -> không resolve -> gia_tri vẫn trống -> can_review.
     wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5: [], timeout=30)
     gd = await wf.run(group=_GROUP)
 
@@ -47,79 +48,67 @@ async def test_critique_adds_missing_and_no_fabrication():
     assert "Bảo đảm dự thầu" in gd.coverage.added_by_critique
 
     bd = _by_name(gd.criteria, "Bảo đảm dự thầu")
-    ts = bd["sub_checks"][0]["thong_so"]
-    assert ts["can_review"] is True  # KHÔNG bịa số
-    assert "_need" not in ts  # marker đã được dọn
+    nd = bd["noi_dung_can_kiem_tra"][0]
+    assert nd["can_review"] is True  # KHÔNG bịa số
+    assert not nd["gia_tri"]
     assert any(n["ten"] == "Bảo đảm dự thầu" for n in gd.needs_review)
 
-    # Tiêu chí không thiếu số -> không bị ép can_review.
+    # Nội dung phía HSDT -> không bị ép can_review.
     dd = _by_name(gd.criteria, "Đơn dự thầu hợp lệ")
-    assert "can_review" not in dd["sub_checks"][0]["thong_so"]
+    assert dd["noi_dung_can_kiem_tra"][0]["can_review"] is False
 
 
 async def test_evidence_present_resolves_no_review():
-    """Thiếu số NHƯNG có bằng chứng -> sinh query, retrieve, resolve điền số (KHÔNG can_review)."""
-    resolved = _detail("Bảo đảm dự thầu", "value_threshold")
-    resolved["sub_checks"][0]["thong_so"] = {"value": 150000000, "days": 120}
+    """Thiếu giá trị NHƯNG có bằng chứng -> sinh query, retrieve, resolve điền gia_tri (KHÔNG can_review)."""
+    resolved = _crit("Bảo đảm dự thầu", [_nd("Giá trị bảo lãnh", gia_tri="6.100.000 VNĐ")])
     llm = ScriptedLlm({
         "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Bảo đảm dự thầu"}]},
         "[TAG:CRITIQUE]": {"criteria": []},
-        "[TAG:STRUCT:Bảo đảm dự thầu]": _detail("Bảo đảm dự thầu", "value_threshold",
-                                                need="giá trị bảo đảm dự thầu"),
+        "[TAG:STRUCT:Bảo đảm dự thầu]": _crit("Bảo đảm dự thầu", [_nd("Giá trị bảo lãnh")]),
         "[TAG:QUERY:Bảo đảm dự thầu]": {"queries": [
-            {"ten": "kiểm Bảo đảm dự thầu", "query": "giá trị bảo đảm dự thầu"}]},
+            {"ten": "Giá trị bảo lãnh", "query": "giá trị bảo đảm dự thầu"}]},
         "[TAG:RESOLVE:Bảo đảm dự thầu]": resolved,
     })
-    ev = [{"text": "Bảo đảm dự thầu 150 triệu, 120 ngày", "metadata": {}, "score": 1.0}]
+    ev = [{"text": "Giá trị bảo đảm dự thầu: 6.100.000 VNĐ", "metadata": {}, "score": 1.0}]
     wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5: ev, timeout=30)
     gd = await wf.run(group=_GROUP)
 
     bd = _by_name(gd.criteria, "Bảo đảm dự thầu")
-    ts = bd["sub_checks"][0]["thong_so"]
-    assert ts.get("value") == 150000000
-    assert "_need" not in ts and "can_review" not in ts
+    nd = bd["noi_dung_can_kiem_tra"][0]
+    assert nd["gia_tri"] == "6.100.000 VNĐ"
+    assert nd["can_review"] is False
     assert gd.needs_review == []
-    # Đã gọi đủ 3 lượt: STRUCT -> QUERY -> RESOLVE.
     assert any("[TAG:QUERY:Bảo đảm dự thầu]" in c for c in llm.calls)
     assert any("[TAG:RESOLVE:Bảo đảm dự thầu]" in c for c in llm.calls)
 
 
-async def test_hsdt_need_deferred_not_can_review():
-    """Phân biệt nguồn: HSMT thiếu -> truy hồi/điền; HSDT -> đánh giá sau, KHÔNG can_review/truy hồi."""
-    # Tiêu chí: thời gian ký đơn (HSDT) phải sau thời điểm phát hành HSMT (HSMT, thiếu trong nguồn).
-    struct = {
-        "nhom": "hop_le", "ten": "Thời gian ký đơn dự thầu sau phát hành HSMT",
-        "yeu_cau": "theo HSMT", "required_artifacts": [], "kieu": "pass_fail", "trong_so": 0.0,
-        "sub_checks": [
-            {"ten": "Thời điểm phát hành HSMT", "check_type": "date_validity",
-             "thong_so": {"_need": "thời điểm phát hành HSMT", "_need_source": "hsmt"},
-             "required_artifact": "", "blocking": True},
-            {"ten": "Thời gian ký đơn dự thầu", "check_type": "date_validity",
-             "thong_so": {"_need": "thời gian ký đơn dự thầu", "_need_source": "hsdt"},
-             "required_artifact": "", "blocking": True},
+async def test_hsdt_content_deferred_not_can_review():
+    """Phân biệt nguồn: hsmt thiếu -> tra/điền; hsdt -> đánh giá sau, KHÔNG tra/can_review."""
+    struct = _crit(
+        "Thời gian ký đơn sau phát hành HSMT",
+        [
+            _nd("Thời điểm phát hành HSMT", nguon="hsmt"),
+            _nd("Ngày ký đơn dự thầu", gia_tri="sau thời điểm phát hành HSMT",
+                nguon="hsdt", kieu="so sánh ngày"),
         ],
-        "proposed_artifacts": [],
-    }
-    resolved = {
-        "nhom": "hop_le", "ten": "Thời gian ký đơn dự thầu sau phát hành HSMT",
-        "yeu_cau": "theo HSMT", "required_artifacts": [], "kieu": "pass_fail", "trong_so": 0.0,
-        "sub_checks": [
-            {"ten": "Thời điểm phát hành HSMT", "check_type": "date_validity",
-             "thong_so": {"value": "01/06/2026 08:00"}, "required_artifact": "", "blocking": True},
-            {"ten": "Thời gian ký đơn dự thầu", "check_type": "date_validity",
-             "thong_so": {}, "required_artifact": "", "blocking": True},
+    )
+    resolved = _crit(
+        "Thời gian ký đơn sau phát hành HSMT",
+        [
+            _nd("Thời điểm phát hành HSMT", gia_tri="04/06/2025", nguon="hsmt"),
+            _nd("Ngày ký đơn dự thầu", gia_tri="sau thời điểm phát hành HSMT",
+                nguon="hsdt", kieu="so sánh ngày"),
         ],
-        "proposed_artifacts": [],
-    }
+    )
     captured: list[str] = []
 
     def retrieve_fn(q, k=5):
         captured.append(q)
-        return [{"text": "HSMT phát hành lúc 08:00 ngày 01/06/2026", "metadata": {}, "score": 1.0}]
+        return [{"text": "HSMT phát hành ngày 04/06/2025", "metadata": {}, "score": 1.0}]
 
     llm = ScriptedLlm({
         "[TAG:LIST]": {"criteria": [
-            {"nhom": "hop_le", "ten": "Thời gian ký đơn dự thầu sau phát hành HSMT"}]},
+            {"nhom": "hop_le", "ten": "Thời gian ký đơn sau phát hành HSMT"}]},
         "[TAG:CRITIQUE]": {"criteria": []},
         "[TAG:STRUCT:": struct,
         "[TAG:QUERY:": {"queries": [
@@ -130,27 +119,25 @@ async def test_hsdt_need_deferred_not_can_review():
     gd = await wf.run(group=_GROUP)
 
     c = gd.criteria[0]
-    sc_hsmt = next(s for s in c["sub_checks"] if s["ten"] == "Thời điểm phát hành HSMT")
-    sc_hsdt = next(s for s in c["sub_checks"] if s["ten"] == "Thời gian ký đơn dự thầu")
-
-    # HSMT: đã resolve từ bằng chứng -> không còn _need, không can_review.
-    assert "_need" not in sc_hsmt["thong_so"]
-    assert "can_review" not in sc_hsmt["thong_so"]
-    # HSDT: đánh giá sau, KHÔNG bị coi là thiếu/can_review.
-    assert sc_hsdt["thong_so"].get("_danh_gia_sau") is True
-    assert "can_review" not in sc_hsdt["thong_so"]
-    assert "_need" not in sc_hsdt["thong_so"]
+    nds = {n["ten"]: n for n in c["noi_dung_can_kiem_tra"]}
+    # HSMT: resolve điền giá trị, không can_review.
+    assert nds["Thời điểm phát hành HSMT"]["gia_tri"] == "04/06/2025"
+    assert nds["Thời điểm phát hành HSMT"]["can_review"] is False
+    # HSDT: đánh giá sau, KHÔNG can_review.
+    assert nds["Ngày ký đơn dự thầu"]["nguon"] == "hsdt"
+    assert nds["Ngày ký đơn dự thầu"]["can_review"] is False
     assert gd.needs_review == []
-    # Chỉ truy hồi giá trị HSMT, KHÔNG truy hồi dữ liệu HSDT.
+    # Chỉ truy hồi nội dung HSMT.
     assert captured == ["thời điểm phát hành hồ sơ mời thầu"]
 
 
 async def test_no_need_skips_query_and_resolve():
-    """Structure không có _need -> bỏ qua sinh query & resolve (tiết kiệm call)."""
+    """Không có nội dung hsmt thiếu giá trị -> bỏ qua sinh query & resolve (tiết kiệm call)."""
     llm = ScriptedLlm({
         "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Đơn dự thầu hợp lệ"}]},
         "[TAG:CRITIQUE]": {"criteria": []},
-        "[TAG:STRUCT:Đơn dự thầu hợp lệ]": _detail("Đơn dự thầu hợp lệ", "presence"),
+        "[TAG:STRUCT:Đơn dự thầu hợp lệ]": _crit(
+            "Đơn dự thầu hợp lệ", [_nd("Có đơn dự thầu", nguon="hsdt", kieu="tồn tại")]),
     })
     wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5: [], timeout=30)
     gd = await wf.run(group=_GROUP)
@@ -160,8 +147,8 @@ async def test_no_need_skips_query_and_resolve():
     assert not any("[TAG:RESOLVE:" in c for c in llm.calls)
 
 
-async def test_detail_llm_error_marks_can_review():
-    """Lỗi LLM structure 1 tiêu chí -> giữ tiêu chí + can_review + loi_ai (KHÔNG verdict bịa)."""
+async def test_detail_llm_error_marks_loi_ai():
+    """Lỗi LLM structure 1 tiêu chí -> giữ tiêu chí + loi_ai (KHÔNG verdict bịa)."""
     llm = ScriptedLlm({
         "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Đơn dự thầu hợp lệ"}]},
         "[TAG:CRITIQUE]": {"criteria": []},
@@ -171,8 +158,8 @@ async def test_detail_llm_error_marks_can_review():
     gd = await wf.run(group=_GROUP)
 
     c = gd.criteria[0]
-    assert c["can_review"] is True
     assert "proxy down" in c["loi_ai"]
+    assert c["noi_dung_can_kiem_tra"] == []
     assert gd.needs_review
 
 
@@ -186,7 +173,9 @@ async def test_reference_following_injects_phan4():
     llm = ScriptedLlm({
         "[TAG:LIST]": {"criteria": [{"nhom": "ky_thuat", "ten": "Thông số kỹ thuật"}]},
         "[TAG:CRITIQUE]": {"criteria": []},
-        "[TAG:STRUCT:Thông số kỹ thuật]": _detail("Thông số kỹ thuật", "spec_match"),
+        "[TAG:STRUCT:Thông số kỹ thuật]": _crit(
+            "Thông số kỹ thuật", [_nd("Đáp ứng yêu cầu kỹ thuật", nguon="hsdt", kieu="đối chiếu")],
+            nhom="ky_thuat"),
     })
     ev = [{"text": "Yêu cầu kỹ thuật: công suất tối thiểu 10kW", "metadata": {}, "score": 1.0}]
     wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5: ev, timeout=30)

@@ -7,11 +7,10 @@ from experiment.decompose.run_decompose import run as decompose_run
 
 def _generic_detail():
     return {
-        "nhom": "hop_le", "ten": "Tiêu chí mẫu", "yeu_cau": "theo HSMT",
-        "required_artifacts": [], "kieu": "pass_fail", "trong_so": 0.0,
-        "sub_checks": [{"ten": "kiểm tra", "check_type": "presence", "thong_so": {},
-                        "required_artifact": "", "blocking": True}],
-        "proposed_artifacts": [],
+        "nhom": "hop_le", "ten": "Tiêu chí mẫu", "yeu_cau_goc": "theo HSMT",
+        "hsdt_can_kiem_tra": ["don_du_thau"], "tien_quyet": False,
+        "noi_dung_can_kiem_tra": [
+            {"ten": "Có tài liệu", "gia_tri": "", "nguon": "hsdt", "kieu_check": "tồn tại"}],
     }
 
 
