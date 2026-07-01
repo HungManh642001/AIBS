@@ -1,0 +1,50 @@
+"""System prompt + builder cho ingest (đọc ảnh) và evaluate (đối chiếu HSDT vs chuẩn HSMT)."""
+from __future__ import annotations
+
+from typing import Any
+
+from services import artifact_catalog
+from services.prompts import cot_block
+
+
+def catalog_codes() -> str:
+    return ", ".join(
+        f"{c}={artifact_catalog.get_artifact(c)['label']}" for c in artifact_catalog.all_codes()
+    )
+
+
+SYS_INGEST = (
+    "Bạn đọc ẢNH một trang hồ sơ dự thầu (HSDT) scan tiếng Việt. Hãy: (1) PHÂN LOẠI trang thuộc "
+    "loại hồ sơ nào (theo danh mục mã cho sẵn; không rõ -> 'khac'); (2) BÓC toàn bộ chữ thành text "
+    "(giữ số/tên/ngày chính xác, KHÔNG bịa); (3) ghi co_chu_ky (có chữ ký tay/scan không), co_dau "
+    "(có con dấu đỏ/đóng dấu không). Chỉ trả JSON."
+)
+
+
+def ingest_prompt() -> str:
+    return (
+        "[IN]\n"
+        f"Danh mục loại hồ sơ (code=label): {catalog_codes()}\n\n"
+        + cot_block('{"loai_ho_so":"<mã hoặc khac>","text":"<toàn bộ chữ>","co_chu_ky":false,"co_dau":false}')
+    )
+
+
+SYS_EVAL = (
+    "Bạn là chuyên gia chấm thầu. Đối chiếu NỘI DUNG HSDT của nhà thầu với CHUẨN của HSMT để kết "
+    "luận. ket_qua: 'đạt' nếu HSDT thỏa mãn; 'không đạt' nếu vi phạm/không thỏa; 'cần làm rõ' nếu "
+    "không đủ căn cứ. bang_chung: TRÍCH nguyên văn phần HSDT làm căn cứ (KHÔNG bịa); trang: số "
+    "trang HSDT chứa căn cứ; do_tin: 0-1. Chỉ trả JSON."
+)
+
+
+def eval_prompt(nd_item: dict[str, Any], hsdt_text: str, has_image: bool) -> str:
+    anh = "\n(KÈM ẢNH trang HSDT bên dưới — soi chữ ký/đóng dấu trực tiếp trên ảnh.)" if has_image else ""
+    return (
+        f"[EV:{nd_item.get('noi_dung_kiem_tra', '')}]\n"
+        f"NỘI DUNG KIỂM TRA: {nd_item.get('noi_dung_kiem_tra', '')}\n"
+        f"YÊU CẦU (theo HSMT): {nd_item.get('yeu_cau', '')}\n"
+        f"CHUẨN HSMT (thông tin bổ sung): {nd_item.get('thong_tin_bo_sung', '') or '(không có)'}\n"
+        f"KIỂU CHECK: {nd_item.get('kieu_check', '')}\n\n"
+        f"NỘI DUNG HSDT (đã bóc từ ảnh):\n{hsdt_text[:6000]}{anh}\n\n"
+        + cot_block('{"ket_qua":"đạt|không đạt|cần làm rõ","bang_chung":"<trích HSDT>","trang":[...],"do_tin":0.0,"ghi_chu":""}')
+    )
