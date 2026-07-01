@@ -1,19 +1,21 @@
 """Cổng truy hồi cho workflow phân rã.
 
 Thật: truy hồi hybrid trên index Qdrant on-disk (`experiment.index`). Test: tiêm in-memory
-hoặc scripted. retrieve_fn(query, k) -> list[{text, metadata, score}].
+hoặc scripted. retrieve_fn(query, k, clause_doc=None) -> list[{text, metadata, score}].
+clause_doc="bdl" -> chỉ tra trong Bảng dữ liệu E-BDL (tăng precision khi tra GIÁ TRỊ).
 """
 from __future__ import annotations
 
 from typing import Any, Callable
 
+from llama_index.core.vector_stores import FilterOperator, MetadataFilter, MetadataFilters
 from qdrant_client import QdrantClient
 
 from experiment.index.embedder import build_embedder
 from experiment.index.schema import COLLECTION
-from experiment.index.store import build_vector_store, hybrid_retriever, open_index
+from experiment.index.store import build_vector_store, open_index
 
-# retrieve_fn(query, k) -> list[hit dict]
+# retrieve_fn(query, k, clause_doc=None) -> list[hit dict]
 RetrieveFn = Callable[..., list[dict[str, Any]]]
 
 
@@ -30,8 +32,16 @@ class IndexRetriever:
     def __init__(self, index: Any):
         self._index = index
 
-    def __call__(self, query: str, k: int = 5) -> list[dict[str, Any]]:
-        return hits_to_dicts(hybrid_retriever(self._index, k).retrieve(query))
+    def __call__(self, query: str, k: int = 5, clause_doc: str | None = None) -> list[dict[str, Any]]:
+        filters = None
+        if clause_doc:
+            filters = MetadataFilters(
+                filters=[MetadataFilter(key="clause_doc", value=clause_doc, operator=FilterOperator.EQ)]
+            )
+        retriever = self._index.as_retriever(
+            vector_store_query_mode="hybrid", similarity_top_k=k, sparse_top_k=k, filters=filters
+        )
+        return hits_to_dicts(retriever.retrieve(query))
 
 
 def open_disk_index(

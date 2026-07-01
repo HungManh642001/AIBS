@@ -29,13 +29,13 @@ def memory_retriever():
     client = QdrantClient(location=":memory:")
     store = build_vector_store(client, "t_decompose")
     nodes = []
-    for cid, text in [
-        ("d1", "Bảo đảm dự thầu giá trị 150 triệu đồng hiệu lực 120 ngày theo BDS"),
-        ("d2", "Yêu cầu kỹ thuật thông số hàng hóa phần 4 phụ lục"),
-        ("d3", "Doanh thu bình quân ba năm tài chính"),
+    for cid, text, clause_doc in [
+        ("d1", "Bảo đảm dự thầu giá trị 150 triệu đồng hiệu lực 120 ngày theo BDS", "bdl"),
+        ("d2", "Yêu cầu kỹ thuật thông số hàng hóa phần 4 phụ lục", "cdnt"),
+        ("d3", "Doanh thu bình quân ba năm tài chính", "bdl"),
     ]:
-        n = TextNode(text=text, id_=point_id(cid), metadata={"chunk_id": cid})
-        n.excluded_embed_metadata_keys = ["chunk_id"]
+        n = TextNode(text=text, id_=point_id(cid), metadata={"chunk_id": cid, "clause_doc": clause_doc})
+        n.excluded_embed_metadata_keys = ["chunk_id", "clause_doc"]
         nodes.append(n)
     index = build_index(nodes, store, DeterministicEmbedding())
     return IndexRetriever(index)

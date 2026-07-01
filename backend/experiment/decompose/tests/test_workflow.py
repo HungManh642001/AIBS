@@ -53,7 +53,7 @@ async def test_critique_adds_missing_and_no_fabrication():
             "Bảo đảm dự thầu", [_nd("Giá trị bảo lãnh")], nhom="nang_luc"),  # can_tra_cuu, trống
     })
     # retrieve rỗng -> không bằng chứng -> không resolve -> yeu_cau vẫn trống -> can_review.
-    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5: [], timeout=30)
+    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5, clause_doc=None: [], timeout=30)
     gd = await wf.run(group=_TABLE_GROUP)
 
     assert gd.coverage.listed_n == 1
@@ -77,7 +77,7 @@ async def test_critique_skipped_for_free_text():
         "[TAG:STRUCT:Đơn dự thầu hợp lệ]": _crit(
             "Đơn dự thầu hợp lệ", [_nd("Có đơn dự thầu", yeu_cau="phải có", can_tra_cuu=False)]),
     })
-    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5: [], timeout=30)
+    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5, clause_doc=None: [], timeout=30)
     gd = await wf.run(group=_GROUP)
 
     assert not any("[TAG:CRITIQUE]" in c for c in llm.calls)
@@ -87,13 +87,13 @@ async def test_critique_skipped_for_free_text():
 
 async def test_search_per_need_independent_resolve():
     """Mỗi need search ĐỘC LẬP: query+resolve riêng từng need, điền đúng giá trị (không nhiễu chéo)."""
-    captured: list[str] = []
+    captured: list[tuple] = []
 
-    def retrieve_fn(q, k=5):
-        captured.append(q)
+    def retrieve_fn(q, k=5, clause_doc=None):
+        captured.append((q, clause_doc))
         if "hiệu lực" in q:
-            return [{"text": "Thời hạn hiệu lực bảo lãnh: 120 ngày", "metadata": {}, "score": 1.0}]
-        return [{"text": "Giá trị bảo đảm dự thầu: 6.100.000 VNĐ", "metadata": {}, "score": 1.0}]
+            return [{"text": "Thời hạn hiệu lực bảo lãnh: 120 ngày", "metadata": {"chunk_id": "h"}, "score": 1.0}]
+        return [{"text": "Giá trị bảo đảm dự thầu: 6.100.000 VNĐ", "metadata": {"chunk_id": "g"}, "score": 1.0}]
 
     llm = ScriptedLlm({
         "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Bảo đảm dự thầu"}]},
@@ -111,17 +111,17 @@ async def test_search_per_need_independent_resolve():
     assert _nd_by(c, "Giá trị bảo lãnh")["yeu_cau"] == "6.100.000 VNĐ"
     assert _nd_by(c, "Thời gian hiệu lực")["yeu_cau"] == ">= 120 ngày"
     assert gd.needs_review == []
-    # Mỗi need retrieve RIÊNG -> 2 lượt truy hồi độc lập.
-    assert len(captured) == 2
     # Mỗi need có lượt RESOLVE riêng (1 call 1 việc).
     assert sum("[TAG:RESOLVE:" in c for c in llm.calls) == 2
+    # Mỗi need có 1 lượt tra E-BDL riêng (clause_doc='bdl') -> ưu tiên data sheet.
+    assert sum(1 for _, cd in captured if cd == "bdl") == 2
 
 
 async def test_search_query_anchored_with_clause_ref():
     """Neo mã điều khoản: query truy hồi phải chứa mã (18.3 + 18) trích từ yeu_cau_goc + thiên vị E-BDL."""
     captured: list[str] = []
 
-    def retrieve_fn(q, k=5):
+    def retrieve_fn(q, k=5, clause_doc=None):
         captured.append(q)
         return [{"text": "E-CDNT 18.2 | Giá trị bảo đảm: 6.100.000 VNĐ", "metadata": {}, "score": 1.0}]
 
@@ -156,7 +156,7 @@ async def test_no_lookup_item_not_searched_or_flagged():
         "[TAG:RESOLVE:Thời điểm phát hành HSMT]": {"yeu_cau": "04/06/2025", "can_review": False},
     })
 
-    def retrieve_fn(q, k=5):
+    def retrieve_fn(q, k=5, clause_doc=None):
         captured.append(q)
         return [{"text": "HSMT phát hành ngày 04/06/2025", "metadata": {}, "score": 1.0}]
 
@@ -169,9 +169,10 @@ async def test_no_lookup_item_not_searched_or_flagged():
     assert nb["can_review"] is False  # can_tra_cuu=false -> không bao giờ bị flag
     assert nb["yeu_cau"] == "sau thời điểm phát hành HSMT"  # giữ nguyên điều kiện
     assert gd.needs_review == []
-    # CHỈ truy hồi nội dung can_tra_cuu=true (1 lượt, base query giữ nguyên + enrich).
-    assert len(captured) == 1
-    assert "thời điểm phát hành hồ sơ mời thầu" in captured[0]
+    # CHỈ truy hồi nội dung can_tra_cuu=true (2 lượt: E-BDL + tra chung); KHÔNG tra "ngày ký đơn".
+    assert len(captured) == 2
+    assert all("thời điểm phát hành hồ sơ mời thầu" in q for q in captured)
+    assert not any("ngày ký đơn" in q for q in captured)
 
 
 async def test_no_need_skips_search():
@@ -181,7 +182,7 @@ async def test_no_need_skips_search():
         "[TAG:STRUCT:Đơn dự thầu hợp lệ]": _crit(
             "Đơn dự thầu hợp lệ", [_nd("Có đơn dự thầu", yeu_cau="phải có", can_tra_cuu=False)]),
     })
-    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5: [], timeout=30)
+    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5, clause_doc=None: [], timeout=30)
     gd = await wf.run(group=_GROUP)
 
     assert gd.needs_review == []
@@ -195,7 +196,7 @@ async def test_analyze_llm_error_marks_loi_ai():
         "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Đơn dự thầu hợp lệ"}]},
         "[TAG:STRUCT:Đơn dự thầu hợp lệ]": RuntimeError("proxy down"),
     })
-    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5: [], timeout=30)
+    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5, clause_doc=None: [], timeout=30)
     gd = await wf.run(group=_GROUP)
 
     c = gd.criteria[0]
@@ -218,7 +219,7 @@ async def test_reference_following_injects_phan4():
                                       can_tra_cuu=False)], nhom="ky_thuat"),
     })
     ev = [{"text": "Yêu cầu kỹ thuật: công suất tối thiểu 10kW", "metadata": {}, "score": 1.0}]
-    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5: ev, timeout=30)
+    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5, clause_doc=None: ev, timeout=30)
     await wf.run(group=group)
 
     list_call = next(c for c in llm.calls if "[TAG:LIST]" in c)

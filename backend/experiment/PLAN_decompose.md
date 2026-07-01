@@ -54,8 +54,9 @@ StartEvent(group)
   ▼  SearchEvent(crit, item)
 [Step 3 search] (song song)  Với MỖI nội dung can_tra_cuu còn TRỐNG yeu_cau -> ĐỘC LẬP: sinh 1 query
                 (LLM MỞ RỘNG nghiệp vụ: từ đồng nghĩa/nơi-thông-tin-nằm, vd 'đơn vị thụ hưởng'≈'chủ đầu
-                tư') + NEO mã điều khoản trích từ yeu_cau_goc (vd '18.3'+'18') + 'bảng dữ liệu E-BDL'
-                -> retrieve RIÊNG -> resolve RIÊNG (1 call/1 need) -> điền yeu_cau.
+                tư') + NEO mã điều khoản trích từ yeu_cau_goc (vd '18.3'+'18'). Truy hồi: **ưu tiên tra
+                CHỈ trong E-BDL** (retrieve clause_doc='bdl', k=8 — data sheet key:value, precision cao)
+                GỘP tra chung (k=3, recall) -> resolve RIÊNG (1 call/1 need) -> điền yeu_cau.
                 Vẫn trống -> can_review (no-fab). Lỗi LLM ở analyze -> giữ tiêu chí + loi_ai.
   ▼  collect tất cả DoneEvent
 [Step 4 collect] -> StopEvent(GroupDecomposition)

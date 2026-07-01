@@ -120,6 +120,21 @@ class DecomposeWorkflow(Workflow):
         """Nhóm nặng bảng (vd năng lực) -> bật critique chống sót; free-text -> bỏ qua."""
         return any(b.get("type") == "table" for b in group.get("blocks", []))
 
+    @staticmethod
+    def _merge_hits(*hit_lists: list[dict], cap: int = 8) -> list[dict]:
+        """Gộp nhiều nguồn hit (E-BDL trước), khử trùng theo chunk_id, cắt còn `cap`."""
+        seen: set = set()
+        out: list[dict] = []
+        for hits in hit_lists:
+            for h in hits or []:
+                cid = (h.get("metadata") or {}).get("chunk_id")
+                key = cid if cid is not None else id(h)
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(h)
+        return out[:cap]
+
     # ---- Step 1: liệt kê tiêu chí (+ critique CHỈ cho nhóm bảng lớn) ----
     @step
     async def list_criteria(self, ctx: Context, ev: StartEvent) -> _Listed | StopEvent:
@@ -226,8 +241,11 @@ class DecomposeWorkflow(Workflow):
                 refs = list(dict.fromkeys(extract_clause_refs(nd) + crit_refs))
                 query = " ".join([base, *refs, "bảng dữ liệu E-BDL"]).strip()
                 log.info("      [retrieve] %s", query)
-                # 3) truy hồi RIÊNG -> bằng chứng riêng của need
-                hits = self._retrieve(query, k=3)
+                # 3) truy hồi: ưu tiên BẢNG DỮ LIỆU E-BDL (data sheet, precision cao) + tra chung.
+                hits = self._merge_hits(
+                    self._retrieve(query, k=8, clause_doc="bdl"),  # chỉ E-BDL: dòng khai giá trị
+                    self._retrieve(query, k=3),                    # tra chung: recall (E-CDNT...)
+                )
                 if not hits:
                     continue
                 body = "\n".join(h["text"][:300] for h in hits)
