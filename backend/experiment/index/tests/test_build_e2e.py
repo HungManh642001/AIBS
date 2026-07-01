@@ -1,10 +1,12 @@
 from experiment.index.build_index import run as build_run
 from experiment.index.query_index import run as query_run
+from experiment.index.schema import keep_for_index
 
 
 def test_build_e2e_with_fake_embedder(sample_chunks, det_embedder, tmp_path):
-    """Sample-gated: build toàn bộ chunks.jsonl bằng DeterministicEmbedding (offline)."""
-    n_chunks = len(sample_chunks["chunks"])
+    """Sample-gated: build chunks.jsonl bằng DeterministicEmbedding (offline), có lọc TCĐG/Biểu mẫu."""
+    total = len(sample_chunks["chunks"])
+    kept = sum(1 for c in sample_chunks["chunks"] if keep_for_index(c))
     db = tmp_path / "qdrant"
     out = tmp_path / "out"
 
@@ -15,8 +17,9 @@ def test_build_e2e_with_fake_embedder(sample_chunks, det_embedder, tmp_path):
         embed=det_embedder,
     )
 
-    assert metrics["n_chunks"] == n_chunks
-    assert metrics["n_points"] == n_chunks  # mọi chunk vào collection, không mất/nhân đôi
+    assert metrics["n_chunks"] == kept          # chỉ index chương mang giá trị
+    assert metrics["n_excluded"] == total - kept
+    assert metrics["n_points"] == kept          # mọi chunk giữ lại vào collection, không mất/nhân đôi
     assert metrics["dense_dim"] == 256
     assert metrics["sparse"] is True
     assert (out / "index_report.md").exists()

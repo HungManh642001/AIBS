@@ -2,7 +2,7 @@ import uuid
 
 from llama_index.core.schema import MetadataMode
 
-from experiment.index.schema import FAKE_DIM, chunk_to_node, point_id
+from experiment.index.schema import FAKE_DIM, chunk_to_node, keep_for_index, point_id
 
 _CHUNK = {
     "chunk_id": "E-HSMT-0042",
@@ -47,3 +47,19 @@ def test_embed_exclusion_covers_all_metadata():
 
 def test_fake_dim_constant():
     assert FAKE_DIM == 256
+
+
+def test_keep_for_index_drops_tcdg_and_bieu_mau():
+    """Index step-3 chỉ giữ chương mang giá trị; bỏ TCĐG (nguồn tiêu chí) + Biểu mẫu (mẫu trống)."""
+    def _c(path):
+        return {"chunk_id": "x", "section_path": path}
+    # Bỏ: TCĐG + Biểu mẫu (phát hiện theo tiêu đề, không theo số chương).
+    assert not keep_for_index(_c(["PHẦN 4", "Chương III. TIÊU CHUẨN ĐÁNH GIÁ E-HSDT"]))
+    assert not keep_for_index(_c(["PHẦN 4", "Chương IV. BIỂU MẪU MỜI THẦU VÀ DỰ THẦU"]))
+    assert not keep_for_index(_c(["Chương V. BIỂU MẪU"]))  # Biểu mẫu có thể ở chương khác
+    # Giữ: E-BDL, E-CDNT, Yêu cầu kỹ thuật.
+    assert keep_for_index(_c(["PHẦN 4", "Chương II. BẢNG DỮ LIỆU ĐẤU THẦU"]))
+    assert keep_for_index(_c(["PHẦN 4", "Chương I. CHỈ DẪN NHÀ THẦU"]))
+    assert keep_for_index(_c(["PHẦN 4", "Yêu cầu kỹ thuật"]))
+    # "Tiêu chí đánh giá kỹ thuật" (chí ≠ chuẩn) -> KHÔNG bị bỏ nhầm.
+    assert keep_for_index(_c(["PHẦN 4", "Tiêu chí đánh giá kỹ thuật"]))

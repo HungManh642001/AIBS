@@ -16,7 +16,7 @@ from typing import Any
 from config import get_settings
 
 from experiment.index.embedder import DeterministicEmbedding, build_embedder
-from experiment.index.schema import COLLECTION, chunks_to_nodes
+from experiment.index.schema import COLLECTION, chunks_to_nodes, keep_for_index
 from experiment.index.store import build_index, build_vector_store
 
 from qdrant_client import QdrantClient
@@ -37,7 +37,7 @@ def _write_report(out_dir: Path, m: dict[str, Any]) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     txt = (
         f"# Index report — {m['collection']}\n\n"
-        f"- chunks: {m['n_chunks']}\n"
+        f"- chunks: {m['n_chunks']} (bỏ TCĐG/Biểu mẫu: {m['n_excluded']})\n"
         f"- points: {m['n_points']}\n"
         f"- dense_dim: {m['dense_dim']}\n"
         f"- sparse: BM25 (Qdrant/bm25)\n"
@@ -55,12 +55,18 @@ def run(
     out_dir: str = _DEFAULT_OUT,
     collection: str = COLLECTION,
     embed: Any | None = None,
+    filter_sections: bool = True,
 ) -> dict[str, Any]:
-    """Đọc chunks -> nodes -> dựng collection Qdrant on-disk; trả metrics + ghi report."""
+    """Đọc chunks -> nodes -> dựng collection Qdrant on-disk; trả metrics + ghi report.
+
+    filter_sections=True (mặc định): bỏ chương TCĐG/Biểu mẫu (không mang giá trị) -> giảm nhiễu.
+    """
     t0 = time.time()
     if embed is None:
         embed = build_embedder(get_settings())
-    chunks = _load_chunks(chunks_path)
+    chunks_all = _load_chunks(chunks_path)
+    chunks = [c for c in chunks_all if keep_for_index(c)] if filter_sections else chunks_all
+    n_excluded = len(chunks_all) - len(chunks)
     nodes = chunks_to_nodes(chunks)
 
     db = Path(db_path)
@@ -85,6 +91,7 @@ def run(
     metrics = {
         "collection": collection,
         "n_chunks": len(chunks),
+        "n_excluded": n_excluded,
         "n_points": n_points,
         "dense_dim": dense_dim,
         "sparse": True,
@@ -102,6 +109,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default=_DEFAULT_OUT)
     ap.add_argument("--collection", default=COLLECTION)
     ap.add_argument("--fake", action="store_true", help="Dùng DeterministicEmbedding (offline)")
+    ap.add_argument("--all-sections", action="store_true",
+                    help="Index MỌI chương (không bỏ TCĐG/Biểu mẫu)")
     args = ap.parse_args(argv)
 
     embed = DeterministicEmbedding() if args.fake else None
@@ -112,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
             out_dir=args.out,
             collection=args.collection,
             embed=embed,
+            filter_sections=not args.all_sections,
         )
     except Exception as exc:  # no-silent-mock: báo lỗi rõ, không tạo vector giả
         print(f"[build_index] LỖI: {type(exc).__name__}: {exc}", file=sys.stderr)

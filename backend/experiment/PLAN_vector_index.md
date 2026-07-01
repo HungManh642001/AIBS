@@ -18,7 +18,7 @@ Biến chunk phân cấp đã có thành chỉ mục vector **hybrid** (dense + 
 | Orchestration | **LlamaIndex** (TextNode → QdrantVectorStore → VectorStoreIndex) |
 | Nguồn **dense** embedding | Qua **LiteLLM proxy** `/v1/embeddings` (model `bge-m3`), nối bằng LlamaIndex **`OpenAILikeEmbedding`** — KHÔNG dùng lib litellm → giữ pin `litellm==1.41.0` & `ai_client` |
 | Nguồn **sparse** (BM25) | **FastEmbed `Qdrant/bm25`**, chạy local, xác định, KHÔNG cần proxy |
-| Phạm vi index | **Toàn bộ HSMT** (185 chunk) — vì đích tham chiếu nằm NGOÀI Chương III |
+| Phạm vi index | **Chỉ chương MANG GIÁ TRỊ** (E-BDL + E-CDNT + Yêu cầu kỹ thuật). Cập nhật 2026-06-30: BỎ **TCĐG (Chương III)** — nguồn tiêu chí, đã bóc ở list/analyze qua `chuong3_groups.json`, KHÔNG dùng index — và **Biểu mẫu** (mẫu trống, ~44% chunk, không có giá trị) vì gây nhiễu retrieve. `keep_for_index` lọc theo tiêu đề chương; `--all-sections` để tắt. (252→104 chunk, cắt ~45% đối thủ nhiễu cho query giá trị.) |
 | Kiểu tìm kiếm | **Hybrid** dense + sparse, hợp nhất bằng **RRF** |
 | Triển khai Qdrant | **Embedded on-disk** `QdrantClient(path="out/qdrant/")` — zero infra |
 | Vị trí deps | `experiment/requirements-experiment.txt` (KHÔNG đụng `services/`) |
