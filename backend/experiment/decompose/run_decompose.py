@@ -48,16 +48,21 @@ def _to_markdown(r: DecomposeResult) -> str:
             if c.get("hsdt_can_kiem_tra"):
                 lines.append(f"    - HSDT cần kiểm tra: {', '.join(map(str, c.get('hsdt_can_kiem_tra')))}")
             for n in nds:
-                if n.get("can_review"):
-                    gv = "⚠️cần soi"
-                elif n.get("yeu_cau"):
-                    gv = n.get("yeu_cau")
+                if n.get("thong_tin_bo_sung"):
+                    val = n["thong_tin_bo_sung"]
+                    if n.get("nguon"):
+                        val += f" [nguồn: {n['nguon']}]"
+                elif n.get("can_review"):
+                    val = "⚠️cần soi"
                 elif n.get("can_tra_cuu"):
-                    gv = "(cần tra cứu)"
+                    val = f"(cần tra cứu: {n.get('can_lam_ro', '')})"
                 else:
-                    gv = "—"
-                kc = f" · {n.get('kieu_check')}" if n.get("kieu_check") else ""
-                lines.append(f"        - {n.get('noi_dung')}: {gv}{kc}")
+                    val = "—"
+                hs = f" ·HSDT:{n['hsdt_kiem_tra']}" if n.get("hsdt_kiem_tra") else ""
+                kc = f" ·{n.get('kieu_check')}" if n.get("kieu_check") else ""
+                lines.append(f"        - {n.get('noi_dung_kiem_tra')}{hs}{kc}")
+                lines.append(f"            · yêu cầu: {n.get('yeu_cau', '')}")
+                lines.append(f"            · thông tin bổ sung: {val}")
         if g.needs_review:
             lines.append(f"- needs_review: {g.needs_review}")
         lines.append("")

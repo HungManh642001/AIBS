@@ -121,6 +121,17 @@ class DecomposeWorkflow(Workflow):
         return any(b.get("type") == "table" for b in group.get("blocks", []))
 
     @staticmethod
+    def _hit_source(hits: list[dict]) -> str:
+        """Backfill nguon: mã điều khoản của hit đầu tiên có clause_id (E-BDL/E-CDNT)."""
+        for h in hits or []:
+            m = h.get("metadata") or {}
+            cid = m.get("clause_id")
+            if cid:
+                prefix = "E-BDL" if m.get("clause_doc") == "bdl" else "E-CDNT"
+                return f"{prefix} {cid}"
+        return ""
+
+    @staticmethod
     def _merge_hits(*hit_lists: list[dict], cap: int = 8) -> list[dict]:
         """Gộp nhiều nguồn hit (E-BDL trước), khử trùng theo chunk_id, cắt còn `cap`."""
         seen: set = set()
@@ -214,6 +225,11 @@ class DecomposeWorkflow(Workflow):
             item["yeu_cau_goc"] = crit.get("yeu_cau_goc", "")
         if not item.get("hsdt_can_kiem_tra"):
             item["hsdt_can_kiem_tra"] = crit.get("hsdt_can_kiem_tra", [])
+        # Bù hsdt_kiem_tra per item (1 hồ sơ) nếu LLM để trống -> lấy hồ sơ đầu của tiêu chí.
+        default_hsdt = str((item.get("hsdt_can_kiem_tra") or [""])[0] or "")
+        for n in item.get("noi_dung_can_kiem_tra", []):
+            if not (n.get("hsdt_kiem_tra") or "").strip():
+                n["hsdt_kiem_tra"] = default_hsdt
         return _SearchReq(crit=crit, item=item)
 
     # ---- Step 3: tìm giá trị cho nội dung can_tra_cuu — ĐỘC LẬP từng need, 1 call/1 việc ----
@@ -224,7 +240,7 @@ class DecomposeWorkflow(Workflow):
 
         needs = [
             n for n in item.get("noi_dung_can_kiem_tra", [])
-            if n.get("can_tra_cuu") and not (n.get("yeu_cau") or "").strip()
+            if n.get("can_tra_cuu") and not (n.get("thong_tin_bo_sung") or "").strip()
         ]
 
         # Neo mã điều khoản (trích từ yêu cầu gốc) -> nhồi vào query giúp BM25 khớp đúng dòng E-BDL.
@@ -233,12 +249,13 @@ class DecomposeWorkflow(Workflow):
         if needs and self._retrieve:
             log.info("    [search] %s -> %d nội dung cần tra cứu", ten, len(needs))
             for n in needs:
-                nd = n.get("noi_dung", "")
-                # 1) sinh query RIÊNG cho need này (LLM mở rộng theo nghiệp vụ: đồng nghĩa/nơi nằm)
+                nd = n.get("noi_dung_kiem_tra", "")
+                lam_ro = n.get("can_lam_ro", "") or nd
+                # 1) sinh query RIÊNG cho 'cần làm rõ' (LLM mở rộng nghiệp vụ: đồng nghĩa/nơi nằm)
                 qout = await self._llm(SYS_QUERY, query_prompt(crit, n), validate=validate_query)
-                base = (qout.data.get("query") if qout.status == "ok" else "") or f"{ten} {nd}"
-                # 2) neo mã điều khoản (need + tiêu chí) + thiên vị mục dữ liệu
-                refs = list(dict.fromkeys(extract_clause_refs(nd) + crit_refs))
+                base = (qout.data.get("query") if qout.status == "ok" else "") or f"{ten} {lam_ro}"
+                # 2) neo mã điều khoản (cần làm rõ + tiêu chí) + thiên vị mục dữ liệu
+                refs = list(dict.fromkeys(extract_clause_refs(lam_ro) + crit_refs))
                 query = " ".join([base, *refs, "bảng dữ liệu E-BDL"]).strip()
                 log.info("      [retrieve] %s", query)
                 # 3) truy hồi: ưu tiên BẢNG DỮ LIỆU E-BDL (data sheet, precision cao) + tra chung.
@@ -249,24 +266,25 @@ class DecomposeWorkflow(Workflow):
                 if not hits:
                     continue
                 body = "\n".join(h["text"][:300] for h in hits)
-                # 4) resolve RIÊNG: trích đúng 1 giá trị từ bằng chứng của need (không nhiễu chéo)
+                # 4) resolve RIÊNG -> thong_tin_bo_sung (tự đủ + quan hệ so sánh) + nguon (mã điều khoản)
                 rout = await self._llm(SYS_RESOLVE, resolve_prompt(crit, n, body),
                                        validate=validate_resolved_value, max_tokens=_STRUCT_MAX_TOKENS)
                 if rout.status == "ok" and not rout.data.get("can_review") \
-                        and (rout.data.get("yeu_cau") or "").strip():
-                    n["yeu_cau"] = rout.data["yeu_cau"]
+                        and (rout.data.get("thong_tin_bo_sung") or "").strip():
+                    n["thong_tin_bo_sung"] = rout.data["thong_tin_bo_sung"]
+                    n["nguon"] = rout.data.get("nguon", "") or self._hit_source(hits)
                 elif rout.status == "error":
                     log.warning("    [search] %s/%s -> lỗi resolve: %s", ten, nd, rout.error)
 
-        # No-fab: nội dung can_tra_cuu vẫn trống yeu_cau -> can_review (KHÔNG bịa).
+        # No-fab: nội dung can_tra_cuu vẫn trống thong_tin_bo_sung -> can_review (KHÔNG bịa).
         flagged: list[str] = []
         for n in item.get("noi_dung_can_kiem_tra", []):
-            if n.get("can_tra_cuu") and not (n.get("yeu_cau") or "").strip():
+            if n.get("can_tra_cuu") and not (n.get("thong_tin_bo_sung") or "").strip():
                 n["can_review"] = True
-                flagged.append(n.get("noi_dung", ""))
+                flagged.append(n.get("noi_dung_kiem_tra", ""))
         nr = None
         if flagged:
-            nr = {"ten": ten, "ly_do": f"chưa tra được giá trị HSMT cho: {', '.join(flagged)} — cần soi"}
+            nr = {"ten": ten, "ly_do": f"chưa tra được thông tin HSMT cho: {', '.join(flagged)} — cần soi"}
         return _Done(detail=item, needs_review=nr)
 
     # ---- Step 4: gom ----

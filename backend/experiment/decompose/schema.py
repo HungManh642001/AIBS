@@ -38,17 +38,22 @@ class CriteriaListModel(_Base):
 
 
 class NoiDungKiemTra(_Base):
-    """Một nội dung cần kiểm trên HSDT của tiêu chí."""
-    noi_dung: str = ""          # điều cần kiểm trên HSDT
-    yeu_cau: str = ""           # CHUẨN HSMT để đối chiếu (số/điều kiện); '' nếu cần tra cứu
-    can_tra_cuu: bool = False   # yeu_cau là giá trị HSMT định nghĩa ở CHỖ KHÁC -> step 3 tra cứu
-    kieu_check: str = ""        # tồn tại | đối chiếu | so sánh ngày | định dạng ... (nhãn nhẹ)
-    can_review: bool = False    # True nếu can_tra_cuu mà tra không ra (KHÔNG bịa)
+    """Một nội dung cần kiểm trên HSDT — đủ để bước chấm thầu đọc & đối chiếu."""
+    noi_dung_kiem_tra: str = ""   # Nội dung kiểm tra trên HSDT
+    hsdt_kiem_tra: str = ""       # 1 loại HSDT cần xem (từ hsdt_can_kiem_tra của tiêu chí)
+    yeu_cau: str = ""             # Yêu cầu cần đáp ứng (theo yeu_cau_goc) — LUÔN có
+    can_lam_ro: str = ""          # Thông tin cần làm rõ (chưa rõ trong yeu_cau); '' nếu không
+    can_tra_cuu: bool = False     # = (can_lam_ro != '') -> step 3 tra cứu
+    kieu_check: str = ""          # đối chiếu | tồn tại | so sánh ngày | ...
+    thong_tin_bo_sung: str = ""   # (step 3) chuẩn ĐÃ RESOLVE, tự đủ, có quan hệ so sánh
+    nguon: str = ""               # (step 3) mã điều khoản nguồn (E-BDL/E-CDNT), cho audit
+    can_review: bool = False      # (step 3) True nếu can_tra_cuu mà tra không ra (KHÔNG bịa)
 
 
-class ResolvedValue(_Base):
-    """Output step search (resolve 1 need): giá trị tìm được hoặc cần soi."""
-    yeu_cau: str = ""
+class ResolvedInfo(_Base):
+    """Output step search (resolve 1 need): thông tin bổ sung đã tra + nguồn, hoặc cần review."""
+    thong_tin_bo_sung: str = ""
+    nguon: str = ""
     can_review: bool = False
 
 
@@ -81,7 +86,7 @@ def validate_query(d: dict[str, Any]) -> dict[str, Any]:
 
 
 def validate_resolved_value(d: dict[str, Any]) -> dict[str, Any]:
-    return ResolvedValue(**d).model_dump()
+    return ResolvedInfo(**d).model_dump()
 
 
 # ---- gom kết quả 1 nhóm / cả tài liệu ----

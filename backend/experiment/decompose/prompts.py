@@ -29,37 +29,44 @@ SYS_CRITIQUE = (
 )
 SYS_STRUCT = (
     "Bạn là chuyên gia đấu thầu. Cho MỘT tiêu chí (đã có yeu_cau_goc trích từ HSMT và "
-    "hsdt_can_kiem_tra), hãy xác định CHECKLIST noi_dung_can_kiem_tra — những nội dung cần kiểm tra "
-    "trên (các) hồ sơ hsdt_can_kiem_tra để kết luận tiêu chí. Liệt kê ĐẦY ĐỦ, đừng bỏ sót. Mỗi nội "
-    "dung gồm:\n"
-    "- noi_dung: điều cần kiểm trên HSDT (vd 'Giá trị bảo lãnh', 'Chữ ký & đóng dấu', 'Thời điểm ký đơn').\n"
-    "- yeu_cau: CHUẨN của HSMT để đối chiếu — số/điều kiện (vd '≥ 90 ngày', 'phải có chữ ký', 'sau "
-    "thời điểm phát hành HSMT'). Nếu chuẩn này là GIÁ TRỊ do HSMT quy định ở CHỖ KHÁC (E-BDL/E-CDNT; "
-    "yeu_cau_goc chỉ trỏ tới chứ chưa nêu số) thì ĐỂ TRỐNG yeu_cau và đặt can_tra_cuu=true.\n"
-    "- can_tra_cuu: true nếu yeu_cau cần TRA CỨU bổ sung từ HSMT; false nếu đã đủ/không cần số.\n"
-    "- kieu_check: tồn tại | đối chiếu | so sánh ngày | định dạng | ...\n"
-    "CHỈ tra cứu phía HSMT — TUYỆT ĐỐI KHÔNG bịa số; chưa có thì để trống yeu_cau + can_tra_cuu=true. "
-    "Cũng đặt tien_quyet=true nếu là tiêu chí loại/cổng."
+    "hsdt_can_kiem_tra), hãy lập CHECKLIST noi_dung_can_kiem_tra — những nội dung cần kiểm tra trên "
+    "HSDT để kết luận tiêu chí. Liệt kê ĐẦY ĐỦ, đừng bỏ sót. Mỗi nội dung gồm:\n"
+    "- noi_dung_kiem_tra: điều cần kiểm trên HSDT (vd 'Giá trị bảo lãnh', 'Bảo đảm tư cách hợp lệ').\n"
+    "- hsdt_kiem_tra: CHỌN 1 loại hồ sơ HSDT (trong hsdt_can_kiem_tra của tiêu chí) để kiểm nội dung này.\n"
+    "- yeu_cau: YÊU CẦU nội dung này phải đáp ứng, diễn theo yeu_cau_goc (vd 'Phải bảo đảm tư cách hợp "
+    "lệ theo Mục 5 E-CDNT', 'Thỏa mãn giá trị bảo lãnh theo HSMT'). LUÔN điền.\n"
+    "- can_lam_ro: nếu yeu_cau còn CHƯA RÕ (trỏ tới điều khoản/BDS mà chưa nêu con số/nội dung cụ thể) "
+    "-> ghi NGẮN thứ cần làm rõ (vd 'Giá trị bảo lãnh', 'Nội dung tư cách hợp lệ tại Mục 5 E-CDNT'). "
+    "Nếu đã rõ (không cần tra) -> để trống.\n"
+    "- can_tra_cuu: true nếu can_lam_ro khác rỗng; false nếu không.\n"
+    "- kieu_check: đối chiếu | tồn tại | so sánh ngày | ...\n"
+    "TUYỆT ĐỐI KHÔNG bịa số/nội dung. Đặt tien_quyet=true nếu là tiêu chí loại/cổng."
 )
 SYS_QUERY = (
-    "Bạn tạo MỘT câu truy vấn tìm kiếm tiếng Việt NGẮN, giàu từ khoá để tra GIÁ TRỊ mà HSMT quy định "
-    "cho MỘT nội dung (thường nằm trong E-BDL / E-CDNT).\n"
+    "Bạn tạo MỘT câu truy vấn tìm kiếm tiếng Việt NGẮN, giàu từ khoá để tra trong HSMT (E-BDL / "
+    "E-CDNT) phần THÔNG TIN CẦN LÀM RÕ cho một nội dung kiểm tra.\n"
     "QUAN TRỌNG — MỞ RỘNG THEO NGHIỆP VỤ: thông tin có thể được HSMT ghi dưới MỘT KHÁI NIỆM KHÁC; "
     "hãy THÊM từ đồng nghĩa / nơi thông tin thường nằm. Ví dụ: 'đơn vị thụ hưởng (của) bảo đảm dự "
-    "thầu' THƯỜNG CHÍNH LÀ 'Chủ đầu tư / Bên mời thầu'; 'thời hạn hiệu lực bảo đảm' nằm cùng mục bảo "
-    "đảm dự thầu. Query nên gồm CẢ từ gốc LẪN từ đồng nghĩa/khái niệm tương đương.\n"
+    "thầu' THƯỜNG CHÍNH LÀ 'Chủ đầu tư / Bên mời thầu'. Query gồm CẢ từ gốc LẪN từ đồng nghĩa.\n"
     'Trả đúng dạng {"query":"..."}.'
 )
 SYS_RESOLVE = (
-    "Bạn là chuyên gia đấu thầu. Cho MỘT nội dung cần xác định giá trị và PHẦN BẰNG CHỨNG truy hồi từ "
-    'HSMT, hãy trích GIÁ TRỊ/chuẩn tương ứng. Trả {"yeu_cau":"<giá trị>","can_review":false}. Nếu bằng '
-    'chứng KHÔNG chứa/không chắc, trả {"yeu_cau":"","can_review":true} — TUYỆT ĐỐI KHÔNG bịa.'
+    "Bạn là chuyên gia đấu thầu. Cho THÔNG TIN CẦN LÀM RÕ của một nội dung và PHẦN BẰNG CHỨNG truy "
+    "hồi từ HSMT, hãy trả 'thong_tin_bo_sung' — chuẩn cụ thể để bước chấm thầu đối chiếu:\n"
+    "- TỰ ĐỦ: nếu bằng chứng trỏ tới nội dung điều khoản (vd tư cách hợp lệ Mục 5), TRÍCH NỘI DUNG "
+    "THỰC (các điều kiện a, b, c...), KHÔNG trả lại con trỏ 'nội dung Mục 5'.\n"
+    "- CÓ QUAN HỆ SO SÁNH: vd 'Giá trị bảo lãnh: 6.100.000 VNĐ', 'Thời gian hiệu lực: ≥ 120 ngày', "
+    "'Đơn vị thụ hưởng: Liên doanh Việt - Nga Vietsovpetro', 'Đáp ứng đủ điều kiện: (a)...(b)...'.\n"
+    "- 'nguon': mã điều khoản chứa thông tin (vd 'E-BDL 18.2', 'E-CDNT 1.1') trích từ bằng chứng.\n"
+    'Trả {"thong_tin_bo_sung":"...","nguon":"...","can_review":false}. Nếu bằng chứng KHÔNG chứa/không '
+    'chắc -> {"thong_tin_bo_sung":"","nguon":"","can_review":true} — TUYỆT ĐỐI KHÔNG bịa.'
 )
 
 # Schema step structure — noi_dung_can_kiem_tra là ô hạng nhất.
 _CRIT_SCHEMA = (
     '{"nhom","ten","yeu_cau_goc","hsdt_can_kiem_tra":[...],"tien_quyet":false,'
-    '"noi_dung_can_kiem_tra":[{"noi_dung","yeu_cau","can_tra_cuu":false,"kieu_check"}]}'
+    '"noi_dung_can_kiem_tra":[{"noi_dung_kiem_tra","hsdt_kiem_tra","yeu_cau","can_lam_ro",'
+    '"can_tra_cuu":false,"kieu_check"}]}'
 )
 
 
@@ -96,32 +103,37 @@ def struct_prompt(crit: dict[str, Any]) -> str:
         f"TIÊU CHÍ: {crit.get('ten')} (nhóm {crit.get('nhom', 'hop_le')})\n"
         f"YÊU CẦU GỐC (HSMT): {crit.get('yeu_cau_goc', '')}\n"
         f"HSDT cần kiểm tra: {crit.get('hsdt_can_kiem_tra', [])}\n\n"
-        "VÍ DỤ noi_dung_can_kiem_tra cho tiêu chí về bảo đảm dự thầu:\n"
-        '  [{"noi_dung":"Giá trị bảo lãnh","yeu_cau":"","can_tra_cuu":true,"kieu_check":"đối chiếu"},\n'
-        '   {"noi_dung":"Thời gian hiệu lực","yeu_cau":"","can_tra_cuu":true,"kieu_check":"đối chiếu"},\n'
-        '   {"noi_dung":"Đơn vị thụ hưởng","yeu_cau":"","can_tra_cuu":true,"kieu_check":"đối chiếu"},\n'
-        '   {"noi_dung":"Chữ ký & đóng dấu","yeu_cau":"phải có chữ ký hợp lệ","can_tra_cuu":false,"kieu_check":"tồn tại"}]\n\n'
+        "VÍ DỤ 1 — 'Nhà thầu bảo đảm tư cách hợp lệ theo Mục 5 E-CDNT' (hsdt=[don_du_thau]):\n"
+        '  [{"noi_dung_kiem_tra":"Bảo đảm tư cách hợp lệ","hsdt_kiem_tra":"don_du_thau",'
+        '"yeu_cau":"Phải bảo đảm tư cách hợp lệ theo Mục 5 E-CDNT",'
+        '"can_lam_ro":"Nội dung tư cách hợp lệ tại Mục 5 E-CDNT","can_tra_cuu":true,"kieu_check":"đối chiếu"}]\n'
+        "VÍ DỤ 2 — 'Thư bảo lãnh đúng giá trị/hiệu lực/đơn vị thụ hưởng theo HSMT' (hsdt=[bao_lanh_du_thau]):\n"
+        '  [{"noi_dung_kiem_tra":"Giá trị bảo lãnh","hsdt_kiem_tra":"bao_lanh_du_thau",'
+        '"yeu_cau":"Thỏa mãn giá trị bảo lãnh theo HSMT","can_lam_ro":"Giá trị bảo lãnh","can_tra_cuu":true,"kieu_check":"đối chiếu"},\n'
+        '   {"noi_dung_kiem_tra":"Thời gian hiệu lực","hsdt_kiem_tra":"bao_lanh_du_thau",'
+        '"yeu_cau":"Thỏa mãn thời gian hiệu lực theo HSMT","can_lam_ro":"Thời gian hiệu lực bảo lãnh","can_tra_cuu":true,"kieu_check":"đối chiếu"}]\n\n'
         + cot_block(_CRIT_SCHEMA)
     )
 
 
 def query_prompt(crit: dict[str, Any], need: dict[str, Any]) -> str:
-    """Step search — sinh 1 truy vấn cho MỘT nội dung cần tra cứu (kèm ngữ cảnh yêu cầu gốc)."""
+    """Step search — sinh 1 truy vấn cho THÔNG TIN CẦN LÀM RÕ của một nội dung (kèm ngữ cảnh)."""
     return (
-        f"[TAG:QUERY:{need.get('noi_dung', '')}]\n"
+        f"[TAG:QUERY:{need.get('noi_dung_kiem_tra', '')}]\n"
         f"TIÊU CHÍ: {crit.get('ten')}\n"
         f"YÊU CẦU GỐC (HSMT): {crit.get('yeu_cau_goc', '')}\n"
-        f"NỘI DUNG CẦN TRA GIÁ TRỊ (do HSMT quy định): {need.get('noi_dung', '')}\n\n"
+        f"THÔNG TIN CẦN LÀM RÕ (tra trong HSMT): {need.get('can_lam_ro', '')}\n\n"
         + cot_block('{"query":"..."}')
     )
 
 
 def resolve_prompt(crit: dict[str, Any], need: dict[str, Any], evidence_text: str) -> str:
-    """Step search — trích giá trị cho MỘT nội dung từ bằng chứng RIÊNG của nó; không thấy -> can_review."""
+    """Step search — trả thong_tin_bo_sung (tự đủ + quan hệ so sánh) + nguon; không thấy -> can_review."""
     return (
-        f"[TAG:RESOLVE:{need.get('noi_dung', '')}]\n"
+        f"[TAG:RESOLVE:{need.get('noi_dung_kiem_tra', '')}]\n"
         f"TIÊU CHÍ: {crit.get('ten')}\n"
-        f"NỘI DUNG: {need.get('noi_dung', '')}\n\n"
+        f"YÊU CẦU: {need.get('yeu_cau', '')}\n"
+        f"THÔNG TIN CẦN LÀM RÕ: {need.get('can_lam_ro', '')}\n\n"
         f"BẰNG CHỨNG (truy hồi từ HSMT/E-BDL/E-CDNT):\n{evidence_text or '(không có)'}\n\n"
-        + cot_block('{"yeu_cau":"<giá trị tìm được>","can_review":false}')
+        + cot_block('{"thong_tin_bo_sung":"<chuẩn cụ thể, tự đủ, có quan hệ so sánh>","nguon":"<mã điều khoản>","can_review":false}')
     )

@@ -21,8 +21,10 @@ _TABLE_GROUP = {
 }
 
 
-def _nd(noi_dung, yeu_cau="", can_tra_cuu=True, kieu="đối chiếu"):
-    return {"noi_dung": noi_dung, "yeu_cau": yeu_cau, "can_tra_cuu": can_tra_cuu, "kieu_check": kieu}
+def _nd(noi_dung, yeu_cau="theo HSMT", can_lam_ro="", kieu="đối chiếu", hsdt="don_du_thau"):
+    """Item noi_dung_can_kiem_tra. can_lam_ro != '' -> cần tra cứu (step 3 tra)."""
+    return {"noi_dung_kiem_tra": noi_dung, "hsdt_kiem_tra": hsdt, "yeu_cau": yeu_cau,
+            "can_lam_ro": can_lam_ro, "can_tra_cuu": bool(can_lam_ro), "kieu_check": kieu}
 
 
 def _crit(ten, contents, nhom="hop_le", tien_quyet=False, hsdt=None):
@@ -38,21 +40,21 @@ def _by_name(criteria, ten):
 
 
 def _nd_by(crit, noi_dung):
-    return next(n for n in crit["noi_dung_can_kiem_tra"] if n["noi_dung"] == noi_dung)
+    return next(n for n in crit["noi_dung_can_kiem_tra"] if n["noi_dung_kiem_tra"] == noi_dung)
 
 
 async def test_critique_adds_missing_and_no_fabrication():
-    """Recall guard (nhóm bảng): critique thêm tiêu chí sót. No-fab: can_tra_cuu không ra -> can_review."""
+    """Recall guard (nhóm bảng): critique thêm tiêu chí sót. No-fab: tra không ra -> can_review."""
     llm = ScriptedLlm({
         "[TAG:LIST]": {"criteria": [{"nhom": "nang_luc", "ten": "Đơn dự thầu hợp lệ"}]},
         "[TAG:CRITIQUE]": {"criteria": [{"nhom": "nang_luc", "ten": "Bảo đảm dự thầu"}]},
         "[TAG:STRUCT:Đơn dự thầu hợp lệ]": _crit(
-            "Đơn dự thầu hợp lệ", [_nd("Có đơn dự thầu", yeu_cau="phải có", can_tra_cuu=False,
-                                       kieu="tồn tại")], nhom="nang_luc"),
+            "Đơn dự thầu hợp lệ", [_nd("Có đơn dự thầu", yeu_cau="phải có đơn", kieu="tồn tại")],
+            nhom="nang_luc"),
         "[TAG:STRUCT:Bảo đảm dự thầu]": _crit(
-            "Bảo đảm dự thầu", [_nd("Giá trị bảo lãnh")], nhom="nang_luc"),  # can_tra_cuu, trống
+            "Bảo đảm dự thầu", [_nd("Giá trị bảo lãnh", can_lam_ro="Giá trị bảo lãnh")], nhom="nang_luc"),
     })
-    # retrieve rỗng -> không bằng chứng -> không resolve -> yeu_cau vẫn trống -> can_review.
+    # retrieve rỗng -> không bằng chứng -> không resolve -> thong_tin_bo_sung trống -> can_review.
     wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5, clause_doc=None: [], timeout=30)
     gd = await wf.run(group=_TABLE_GROUP)
 
@@ -61,8 +63,9 @@ async def test_critique_adds_missing_and_no_fabrication():
     assert "Bảo đảm dự thầu" in gd.coverage.added_by_critique
 
     bd = _nd_by(_by_name(gd.criteria, "Bảo đảm dự thầu"), "Giá trị bảo lãnh")
-    assert bd["can_review"] is True  # KHÔNG bịa số
-    assert not bd["yeu_cau"]
+    assert bd["can_review"] is True  # KHÔNG bịa
+    assert not bd["thong_tin_bo_sung"]
+    assert bd["yeu_cau"] == "theo HSMT"  # yêu cầu (luật) giữ nguyên, KHÔNG bị ghi đè
     assert any(n["ten"] == "Bảo đảm dự thầu" for n in gd.needs_review)
 
     # Nội dung không cần tra cứu -> không bị ép can_review.
@@ -75,7 +78,7 @@ async def test_critique_skipped_for_free_text():
     llm = ScriptedLlm({
         "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Đơn dự thầu hợp lệ"}]},
         "[TAG:STRUCT:Đơn dự thầu hợp lệ]": _crit(
-            "Đơn dự thầu hợp lệ", [_nd("Có đơn dự thầu", yeu_cau="phải có", can_tra_cuu=False)]),
+            "Đơn dự thầu hợp lệ", [_nd("Có đơn dự thầu", yeu_cau="phải có")]),
     })
     wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5, clause_doc=None: [], timeout=30)
     gd = await wf.run(group=_GROUP)
@@ -86,108 +89,107 @@ async def test_critique_skipped_for_free_text():
 
 
 async def test_search_per_need_independent_resolve():
-    """Mỗi need search ĐỘC LẬP: query+resolve riêng từng need, điền đúng giá trị (không nhiễu chéo)."""
+    """Mỗi need search ĐỘC LẬP: điền thong_tin_bo_sung + nguon riêng từng need (không nhiễu chéo)."""
     captured: list[tuple] = []
 
     def retrieve_fn(q, k=5, clause_doc=None):
         captured.append((q, clause_doc))
         if "hiệu lực" in q:
-            return [{"text": "Thời hạn hiệu lực bảo lãnh: 120 ngày", "metadata": {"chunk_id": "h"}, "score": 1.0}]
-        return [{"text": "Giá trị bảo đảm dự thầu: 6.100.000 VNĐ", "metadata": {"chunk_id": "g"}, "score": 1.0}]
+            return [{"text": "E-CDNT 18.2 | hiệu lực bảo lãnh 120 ngày",
+                     "metadata": {"chunk_id": "h", "clause_id": "18.2", "clause_doc": "bdl"}, "score": 1.0}]
+        return [{"text": "E-CDNT 18.2 | Giá trị bảo đảm 6.100.000 VNĐ",
+                 "metadata": {"chunk_id": "g", "clause_id": "18.2", "clause_doc": "bdl"}, "score": 1.0}]
 
     llm = ScriptedLlm({
         "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Bảo đảm dự thầu"}]},
         "[TAG:STRUCT:Bảo đảm dự thầu]": _crit(
-            "Bảo đảm dự thầu", [_nd("Giá trị bảo lãnh"), _nd("Thời gian hiệu lực")]),
+            "Bảo đảm dự thầu",
+            [_nd("Giá trị bảo lãnh", can_lam_ro="Giá trị bảo lãnh", hsdt=""),
+             _nd("Thời gian hiệu lực", can_lam_ro="Thời gian hiệu lực bảo lãnh", hsdt="")],
+            hsdt=["bao_lanh_du_thau"]),
         "[TAG:QUERY:Giá trị bảo lãnh]": {"query": "giá trị bảo đảm dự thầu"},
         "[TAG:QUERY:Thời gian hiệu lực]": {"query": "thời gian hiệu lực bảo lãnh"},
-        "[TAG:RESOLVE:Giá trị bảo lãnh]": {"yeu_cau": "6.100.000 VNĐ", "can_review": False},
-        "[TAG:RESOLVE:Thời gian hiệu lực]": {"yeu_cau": ">= 120 ngày", "can_review": False},
+        "[TAG:RESOLVE:Giá trị bảo lãnh]":
+            {"thong_tin_bo_sung": "Giá trị bảo lãnh: 6.100.000 VNĐ", "nguon": "E-BDL 18.2", "can_review": False},
+        "[TAG:RESOLVE:Thời gian hiệu lực]":
+            {"thong_tin_bo_sung": "Thời gian hiệu lực: ≥ 120 ngày", "nguon": "", "can_review": False},
     })
     wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=retrieve_fn, timeout=30)
     gd = await wf.run(group=_GROUP)
 
     c = _by_name(gd.criteria, "Bảo đảm dự thầu")
-    assert _nd_by(c, "Giá trị bảo lãnh")["yeu_cau"] == "6.100.000 VNĐ"
-    assert _nd_by(c, "Thời gian hiệu lực")["yeu_cau"] == ">= 120 ngày"
+    gv = _nd_by(c, "Giá trị bảo lãnh")
+    hl = _nd_by(c, "Thời gian hiệu lực")
+    assert gv["thong_tin_bo_sung"] == "Giá trị bảo lãnh: 6.100.000 VNĐ"
+    assert gv["nguon"] == "E-BDL 18.2"
+    assert hl["thong_tin_bo_sung"] == "Thời gian hiệu lực: ≥ 120 ngày"
+    assert hl["nguon"] == "E-BDL 18.2"   # nguon rỗng -> backfill từ clause_id của hit
+    # hsdt_kiem_tra được bù per item từ hsdt_can_kiem_tra của tiêu chí.
+    assert gv["hsdt_kiem_tra"] == "bao_lanh_du_thau"
     assert gd.needs_review == []
-    # Mỗi need có lượt RESOLVE riêng (1 call 1 việc).
     assert sum("[TAG:RESOLVE:" in c for c in llm.calls) == 2
-    # Mỗi need có 1 lượt tra E-BDL riêng (clause_doc='bdl') -> ưu tiên data sheet.
-    assert sum(1 for _, cd in captured if cd == "bdl") == 2
+    assert sum(1 for _, cd in captured if cd == "bdl") == 2  # mỗi need 1 lượt tra E-BDL
 
 
 async def test_search_query_anchored_with_clause_ref():
-    """Neo mã điều khoản: query truy hồi phải chứa mã (18.3 + 18) trích từ yeu_cau_goc + thiên vị E-BDL."""
+    """Neo mã điều khoản: query truy hồi chứa mã (18.3 + 18) trích từ yeu_cau_goc + thiên vị E-BDL."""
     captured: list[str] = []
 
     def retrieve_fn(q, k=5, clause_doc=None):
         captured.append(q)
-        return [{"text": "E-CDNT 18.2 | Giá trị bảo đảm: 6.100.000 VNĐ", "metadata": {}, "score": 1.0}]
+        return [{"text": "E-CDNT 18.2 | Giá trị bảo đảm: 6.100.000 VNĐ",
+                 "metadata": {"chunk_id": "g", "clause_id": "18.2", "clause_doc": "bdl"}, "score": 1.0}]
 
-    struct = _crit("Bảo đảm dự thầu", [_nd("Giá trị bảo lãnh")])
+    struct = _crit("Bảo đảm dự thầu", [_nd("Giá trị bảo lãnh", can_lam_ro="Giá trị bảo lãnh")])
     struct["yeu_cau_goc"] = "Bảo đảm dự thầu không vi phạm Mục 18.3 E-CDNT"
     llm = ScriptedLlm({
         "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Bảo đảm dự thầu"}]},
         "[TAG:STRUCT:Bảo đảm dự thầu]": struct,
         "[TAG:QUERY:Giá trị bảo lãnh]": {"query": "giá trị bảo đảm dự thầu"},
-        "[TAG:RESOLVE:Giá trị bảo lãnh]": {"yeu_cau": "6.100.000 VNĐ", "can_review": False},
+        "[TAG:RESOLVE:Giá trị bảo lãnh]":
+            {"thong_tin_bo_sung": "Giá trị: 6.100.000 VNĐ", "nguon": "E-BDL 18.2", "can_review": False},
     })
     wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=retrieve_fn, timeout=30)
     await wf.run(group=_GROUP)
 
     q = captured[0]
-    assert "18.3" in q and " 18 " in f" {q} "   # mã đầy đủ + mã lớn (cho điều khoản con lân cận)
+    assert "18.3" in q and " 18 " in f" {q} "   # mã đầy đủ + mã lớn
     assert "giá trị bảo đảm dự thầu" in q        # giữ query ngữ nghĩa từ LLM
     assert "bảng dữ liệu" in q.lower()           # thiên vị mục dữ liệu
 
 
 async def test_no_lookup_item_not_searched_or_flagged():
-    """Nội dung can_tra_cuu=false (kiểm tồn tại/điều kiện) -> KHÔNG tra cứu, KHÔNG can_review."""
+    """Nội dung không cần làm rõ (can_tra_cuu=false) -> KHÔNG tra cứu, KHÔNG can_review."""
     captured: list[str] = []
     llm = ScriptedLlm({
         "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Thời gian ký đơn"}]},
         "[TAG:STRUCT:Thời gian ký đơn]": _crit("Thời gian ký đơn", [
-            _nd("Thời điểm phát hành HSMT", can_tra_cuu=True),
-            _nd("Ngày ký đơn dự thầu", yeu_cau="sau thời điểm phát hành HSMT",
-                can_tra_cuu=False, kieu="so sánh ngày"),
+            _nd("Thời điểm phát hành HSMT", can_lam_ro="Thời điểm phát hành HSMT"),
+            _nd("Ngày ký đơn dự thầu", yeu_cau="sau thời điểm phát hành HSMT", kieu="so sánh ngày"),
         ]),
         "[TAG:QUERY:Thời điểm phát hành HSMT]": {"query": "thời điểm phát hành hồ sơ mời thầu"},
-        "[TAG:RESOLVE:Thời điểm phát hành HSMT]": {"yeu_cau": "04/06/2025", "can_review": False},
+        "[TAG:RESOLVE:Thời điểm phát hành HSMT]":
+            {"thong_tin_bo_sung": "Phát hành: 04/06/2025", "nguon": "E-BDL 1.1", "can_review": False},
     })
 
     def retrieve_fn(q, k=5, clause_doc=None):
         captured.append(q)
-        return [{"text": "HSMT phát hành ngày 04/06/2025", "metadata": {}, "score": 1.0}]
+        return [{"text": "E-CDNT 1.1 | HSMT phát hành 04/06/2025",
+                 "metadata": {"chunk_id": "p", "clause_id": "1.1", "clause_doc": "bdl"}, "score": 1.0}]
 
     wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=retrieve_fn, timeout=30)
     gd = await wf.run(group=_GROUP)
 
     c = gd.criteria[0]
-    assert _nd_by(c, "Thời điểm phát hành HSMT")["yeu_cau"] == "04/06/2025"
+    assert _nd_by(c, "Thời điểm phát hành HSMT")["thong_tin_bo_sung"] == "Phát hành: 04/06/2025"
     nb = _nd_by(c, "Ngày ký đơn dự thầu")
-    assert nb["can_review"] is False  # can_tra_cuu=false -> không bao giờ bị flag
-    assert nb["yeu_cau"] == "sau thời điểm phát hành HSMT"  # giữ nguyên điều kiện
+    assert nb["can_review"] is False           # không cần làm rõ -> không bao giờ flag
+    assert nb["yeu_cau"] == "sau thời điểm phát hành HSMT"
     assert gd.needs_review == []
-    # CHỈ truy hồi nội dung can_tra_cuu=true (2 lượt: E-BDL + tra chung); KHÔNG tra "ngày ký đơn".
+    # CHỈ truy hồi nội dung cần làm rõ (2 lượt: E-BDL + tra chung); KHÔNG tra "ngày ký đơn".
     assert len(captured) == 2
     assert all("thời điểm phát hành hồ sơ mời thầu" in q for q in captured)
     assert not any("ngày ký đơn" in q for q in captured)
-
-
-async def test_no_need_skips_search():
-    """Không có nội dung can_tra_cuu -> bỏ qua query & resolve."""
-    llm = ScriptedLlm({
-        "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Đơn dự thầu hợp lệ"}]},
-        "[TAG:STRUCT:Đơn dự thầu hợp lệ]": _crit(
-            "Đơn dự thầu hợp lệ", [_nd("Có đơn dự thầu", yeu_cau="phải có", can_tra_cuu=False)]),
-    })
-    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5, clause_doc=None: [], timeout=30)
-    gd = await wf.run(group=_GROUP)
-
-    assert gd.needs_review == []
-    assert not any("[TAG:QUERY:" in c for c in llm.calls)
-    assert not any("[TAG:RESOLVE:" in c for c in llm.calls)
 
 
 async def test_analyze_llm_error_marks_loi_ai():
@@ -215,8 +217,8 @@ async def test_reference_following_injects_phan4():
     llm = ScriptedLlm({
         "[TAG:LIST]": {"criteria": [{"nhom": "ky_thuat", "ten": "Thông số kỹ thuật"}]},
         "[TAG:STRUCT:Thông số kỹ thuật]": _crit(
-            "Thông số kỹ thuật", [_nd("Đáp ứng yêu cầu kỹ thuật", yeu_cau="theo Phần 4",
-                                      can_tra_cuu=False)], nhom="ky_thuat"),
+            "Thông số kỹ thuật", [_nd("Đáp ứng yêu cầu kỹ thuật", yeu_cau="theo Phần 4")],
+            nhom="ky_thuat"),
     })
     ev = [{"text": "Yêu cầu kỹ thuật: công suất tối thiểu 10kW", "metadata": {}, "score": 1.0}]
     wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5, clause_doc=None: ev, timeout=30)

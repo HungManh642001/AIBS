@@ -52,12 +52,11 @@ StartEvent(group)
                 nếu là giá trị HSMT định nghĩa ở CHỖ KHÁC (E-BDL) -> để trống yeu_cau + can_tra_cuu=true.
                 (KHÔNG bịa số.)
   ▼  SearchEvent(crit, item)
-[Step 3 search] (song song)  Với MỖI nội dung can_tra_cuu còn TRỐNG yeu_cau -> ĐỘC LẬP: sinh 1 query
-                (LLM MỞ RỘNG nghiệp vụ: từ đồng nghĩa/nơi-thông-tin-nằm, vd 'đơn vị thụ hưởng'≈'chủ đầu
-                tư') + NEO mã điều khoản trích từ yeu_cau_goc (vd '18.3'+'18'). Truy hồi: **ưu tiên tra
-                CHỈ trong E-BDL** (retrieve clause_doc='bdl', k=8 — data sheet key:value, precision cao)
-                GỘP tra chung (k=3, recall) -> resolve RIÊNG (1 call/1 need) -> điền yeu_cau.
-                Vẫn trống -> can_review (no-fab). Lỗi LLM ở analyze -> giữ tiêu chí + loi_ai.
+[Step 3 search] (song song)  Với MỖI nội dung can_tra_cuu còn TRỐNG thong_tin_bo_sung -> ĐỘC LẬP: sinh 1
+                query cho **can_lam_ro** (LLM MỞ RỘNG nghiệp vụ: đồng nghĩa/nơi-nằm, 'đơn vị thụ hưởng'≈
+                'chủ đầu tư') + NEO mã điều khoản (vd '18.3'+'18'). Truy hồi: **ưu tiên E-BDL**
+                (clause_doc='bdl', k=8) GỘP tra chung (k=3) -> resolve RIÊNG -> điền **thong_tin_bo_sung**
+                (tự đủ + quan hệ so sánh) + **nguon** (mã điều khoản). Vẫn trống -> can_review (no-fab).
   ▼  collect tất cả DoneEvent
 [Step 4 collect] -> StopEvent(GroupDecomposition)
 ```
@@ -93,11 +92,11 @@ xác định offline; nghiệm thu ngữ nghĩa khi proxy bật:
       "criteria": [{
         "nhom": "hop_le", "ten": "Bảo đảm dự thầu đúng yêu cầu E-HSMT",
         "yeu_cau_goc": "Giá trị bảo lãnh, thời gian hiệu lực, đơn vị thụ hưởng theo E-HSMT",
-        "hsdt_can_kiem_tra": ["Thư bảo lãnh"], "tien_quyet": true,
+        "hsdt_can_kiem_tra": ["bao_lanh_du_thau"], "tien_quyet": true,
         "noi_dung_can_kiem_tra": [
-          {"ten":"Giá trị bảo lãnh","gia_tri":"6.100.000 VNĐ","nguon":"hsmt","kieu_check":"đối chiếu","can_review":false},
-          {"ten":"Thời gian hiệu lực","gia_tri":">= 120 ngày","nguon":"hsmt","kieu_check":"đối chiếu","can_review":false},
-          {"ten":"Đơn vị thụ hưởng","gia_tri":"Liên doanh Việt Nga Vietsovpetro","nguon":"hsmt","kieu_check":"đối chiếu","can_review":false}
+          {"noi_dung_kiem_tra":"Giá trị bảo lãnh","hsdt_kiem_tra":"bao_lanh_du_thau","yeu_cau":"Thỏa mãn giá trị bảo lãnh theo HSMT","can_lam_ro":"","can_tra_cuu":true,"kieu_check":"đối chiếu","thong_tin_bo_sung":"Giá trị bảo lãnh: 6.100.000 VNĐ","nguon":"E-BDL 18.2","can_review":false},
+          {"noi_dung_kiem_tra":"Thời gian hiệu lực","hsdt_kiem_tra":"bao_lanh_du_thau","yeu_cau":"Thỏa mãn thời gian hiệu lực theo HSMT","can_lam_ro":"","can_tra_cuu":true,"thong_tin_bo_sung":"Thời gian hiệu lực: ≥ 120 ngày","nguon":"E-BDL 18.2","can_review":false},
+          {"noi_dung_kiem_tra":"Đơn vị thụ hưởng","hsdt_kiem_tra":"bao_lanh_du_thau","yeu_cau":"Thỏa mãn đơn vị thụ hưởng theo HSMT","thong_tin_bo_sung":"Đơn vị thụ hưởng: Liên doanh Việt - Nga Vietsovpetro","nguon":"E-BDL 1.1","can_review":false}
         ]
       }],
       "coverage": {"listed_n": 5, "final_n": 6, "added_by_critique": ["..."], "notes": "..."},
