@@ -11,10 +11,10 @@ def _v(ket_qua="đạt"):
 
 
 def test_validate_ingest_page_defaults():
-    out = validate_ingest_page({"loai_ho_so": "don_du_thau", "text": "abc", "field_la": "bỏ"})
-    assert out["loai_ho_so"] == "don_du_thau" and out["text"] == "abc"
+    out = validate_ingest_page({"text": "abc", "field_la": "bỏ"})
+    assert out["text"] == "abc"
     assert out["co_chu_ky"] is False and out["co_dau"] is False
-    assert "field_la" not in out
+    assert "field_la" not in out and "loai_ho_so" not in out  # ingest KHÔNG phân loại
 
 
 def test_validate_eval_verdict_defaults():

@@ -40,8 +40,9 @@ def _to_markdown(r: EvalResult) -> str:
     return "\n".join(lines)
 
 
-async def run(decomposition_path: str, hsdt_files: list[tuple[str, bytes]], out_dir: str,
+async def run(decomposition_path: str, hsdt_files: list[tuple[str, str, bytes]], out_dir: str,
               doc: str = "HSDT", vision_fn: Any | None = None) -> dict[str, Any]:
+    # hsdt_files: (tên_file, loai_ho_so [mã catalog đã biết], data pdf)
     vision_fn = vision_fn or default_vision_fn
     decomp = json.loads(Path(decomposition_path).read_text(encoding="utf-8"))
     criteria = _legality_criteria(decomp)
@@ -63,14 +64,21 @@ async def run(decomposition_path: str, hsdt_files: list[tuple[str, bytes]], out_
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Đánh giá HSDT nhóm hợp lệ")
     ap.add_argument("--decomp", required=True, help="decomposition.json")
-    ap.add_argument("--hsdt", nargs="+", required=True, help="các file HSDT .pdf (scan)")
+    ap.add_argument("--hsdt", nargs="+", required=True,
+                    help="các file HSDT dạng <mã_catalog>=<đường_dẫn.pdf> (loại hồ sơ đã biết)")
     ap.add_argument("--out", default="out")
     ap.add_argument("--doc", default="HSDT")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.WARNING if args.quiet else logging.INFO,
                         format="%(message)s", stream=sys.stderr)
-    files = [(Path(p).name, Path(p).read_bytes()) for p in args.hsdt]
+    files: list[tuple[str, str, bytes]] = []
+    for spec in args.hsdt:
+        if "=" not in spec:
+            print(f"[run_evaluate] --hsdt cần dạng <mã>=<đường_dẫn>: {spec}", file=sys.stderr)
+            return 2
+        code, path = spec.split("=", 1)
+        files.append((Path(path).name, code.strip(), Path(path).read_bytes()))
     try:
         metrics = asyncio.run(run(args.decomp, files, args.out, doc=args.doc))
     except Exception as exc:  # no-silent-mock

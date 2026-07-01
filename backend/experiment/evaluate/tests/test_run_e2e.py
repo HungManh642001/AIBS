@@ -21,11 +21,12 @@ async def test_run_e2e_legality(tmp_path):
     dp.write_text(json.dumps(decomp, ensure_ascii=False), encoding="utf-8")
 
     vision = ScriptedVision({
-        "[IN]": {"loai_ho_so": "bao_dam_du_thau", "text": "Thư bảo lãnh 6.100.000 VNĐ", "co_dau": True},
+        "[IN]": {"text": "Thư bảo lãnh 6.100.000 VNĐ", "co_dau": True},   # vision chỉ bóc text
         "[EV:Giá trị bảo lãnh]": {"ket_qua": "đạt", "bang_chung": "6.100.000", "trang": [1], "do_tin": 0.9},
     })
     out = tmp_path / "out"
-    metrics = await run(str(dp), [("bao_lanh.pdf", _pdf("bảo lãnh"))], str(out),
+    # file HSDT kèm mã catalog đã biết: (tên, loai_ho_so, data)
+    metrics = await run(str(dp), [("bao_lanh.pdf", "bao_dam_du_thau", _pdf("bảo lãnh"))], str(out),
                         doc="HSDT-NhaThauA", vision_fn=vision)
 
     assert metrics["n_tieu_chi"] == 1 and metrics["n_dat"] == 1   # CHỈ nhóm hop_le

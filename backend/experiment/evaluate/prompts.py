@@ -3,29 +3,20 @@ from __future__ import annotations
 
 from typing import Any
 
-from services import artifact_catalog
 from services.prompts import cot_block
 
 
-def catalog_codes() -> str:
-    return ", ".join(
-        f"{c}={artifact_catalog.get_artifact(c)['label']}" for c in artifact_catalog.all_codes()
-    )
-
-
 SYS_INGEST = (
-    "Bạn đọc ẢNH một trang hồ sơ dự thầu (HSDT) scan tiếng Việt. Hãy: (1) PHÂN LOẠI trang thuộc "
-    "loại hồ sơ nào (theo danh mục mã cho sẵn; không rõ -> 'khac'); (2) BÓC toàn bộ chữ thành text "
-    "(giữ số/tên/ngày chính xác, KHÔNG bịa); (3) ghi co_chu_ky (có chữ ký tay/scan không), co_dau "
-    "(có con dấu đỏ/đóng dấu không). Chỉ trả JSON."
+    "Bạn đọc ẢNH một trang hồ sơ dự thầu (HSDT) scan tiếng Việt. Hãy: (1) BÓC toàn bộ chữ thành text "
+    "(giữ số/tên/ngày chính xác, KHÔNG bịa); (2) ghi co_chu_ky (có chữ ký tay/scan không), co_dau "
+    "(có con dấu đỏ/đóng dấu không). KHÔNG cần phân loại hồ sơ (loại đã biết khi tải). Chỉ trả JSON."
 )
 
 
 def ingest_prompt() -> str:
     return (
         "[IN]\n"
-        f"Danh mục loại hồ sơ (code=label): {catalog_codes()}\n\n"
-        + cot_block('{"loai_ho_so":"<mã hoặc khac>","text":"<toàn bộ chữ>","co_chu_ky":false,"co_dau":false}')
+        + cot_block('{"text":"<toàn bộ chữ trong ảnh>","co_chu_ky":false,"co_dau":false}')
     )
 
 

@@ -18,7 +18,7 @@ class _Base(BaseModel):
 
 
 class IngestPageModel(_Base):
-    loai_ho_so: str = "khac"      # mã artifact_catalog | 'khac'
+    """Output vision ingest 1 trang: CHỈ bóc text + cờ thị giác (loại hồ sơ đã biết khi tải file)."""
     text: str = ""
     co_chu_ky: bool = False
     co_dau: bool = False

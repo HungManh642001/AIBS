@@ -1,11 +1,11 @@
-from experiment.evaluate.prompts import ingest_prompt, eval_prompt, catalog_codes
+from experiment.evaluate.prompts import ingest_prompt, eval_prompt
 
 
-def test_ingest_prompt_has_tag_and_codes():
+def test_ingest_prompt_ocr_only_no_classification():
     p = ingest_prompt()
     assert "[IN]" in p
-    assert "don_du_thau" in catalog_codes()
-    assert "loai_ho_so" in p
+    assert "text" in p and "co_chu_ky" in p
+    assert "loai_ho_so" not in p              # loại hồ sơ đã biết khi tải -> KHÔNG bắt LLM phân loại
 
 
 def test_eval_prompt_carries_standard_and_tag():
