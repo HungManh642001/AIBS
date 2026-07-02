@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
-import { Button, Card, Input, Select, Table, Tag, message } from "antd";
+import { Button, Card, Checkbox, Input, Select, Table, Tag, message } from "antd";
+
+const { TextArea } = Input;
+const AUTO = { minRows: 1, maxRows: 6 } as const;
 import { useParams, useNavigate } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import { ARTIFACT_TYPES, type RubricCriteria } from "../api/types";
@@ -65,21 +68,38 @@ export default function Rubric() {
           </span>}>
           <p style={{ color: "#666", marginTop: 0 }}>Yêu cầu gốc (HSMT): {c.yeu_cau_goc}</p>
           <Table rowKey={(_, i) => String(i)} pagination={false} dataSource={c.noi_dung_can_kiem_tra}
+            scroll={{ x: 1180 }}
             columns={[
-              { title: "Nội dung kiểm tra (HSDT)", dataIndex: "noi_dung_kiem_tra",
-                render: (t, _n, ni) => <Input value={t} onChange={(e) => setNoiDung(ci, ni, "noi_dung_kiem_tra", e.target.value)} /> },
-              { title: "Hồ sơ", dataIndex: "hsdt_kiem_tra",
-                render: (t, _n, ni) => <Select value={t} options={ARTIFACT_TYPES} className="min-w-44"
+              { title: "Nội dung kiểm tra (HSDT)", dataIndex: "noi_dung_kiem_tra", width: 220,
+                render: (t, _n, ni) => <TextArea autoSize={AUTO} value={t}
+                  onChange={(e) => setNoiDung(ci, ni, "noi_dung_kiem_tra", e.target.value)} /> },
+              { title: "Hồ sơ", dataIndex: "hsdt_kiem_tra", width: 180,
+                render: (t, _n, ni) => <Select value={t} options={ARTIFACT_TYPES} style={{ width: "100%" }}
                   onChange={(v) => setNoiDung(ci, ni, "hsdt_kiem_tra", v)} /> },
-              { title: "Yêu cầu", dataIndex: "yeu_cau",
-                render: (t, _n, ni) => <Input value={t} onChange={(e) => setNoiDung(ci, ni, "yeu_cau", e.target.value)} /> },
-              { title: "Thông tin bổ sung (chuẩn HSMT)", dataIndex: "thong_tin_bo_sung",
-                render: (t, _n, ni) => <Input value={t} onChange={(e) => setNoiDung(ci, ni, "thong_tin_bo_sung", e.target.value)} /> },
-              { title: "Nguồn", dataIndex: "nguon",
-                render: (t, _n, ni) => <Input value={t} className="min-w-28"
+              { title: "Yêu cầu", dataIndex: "yeu_cau", width: 240,
+                render: (t, _n, ni) => <TextArea autoSize={AUTO} value={t}
+                  onChange={(e) => setNoiDung(ci, ni, "yeu_cau", e.target.value)} /> },
+              { title: "Thông tin bổ sung (chuẩn HSMT)", dataIndex: "thong_tin_bo_sung", width: 260,
+                render: (t, _n, ni) => <TextArea autoSize={AUTO} value={t}
+                  placeholder="(để trống nếu không cần)"
+                  onChange={(e) => setNoiDung(ci, ni, "thong_tin_bo_sung", e.target.value)} /> },
+              { title: "Nguồn", dataIndex: "nguon", width: 120,
+                render: (t, _n, ni) => <Input value={t}
                   onChange={(e) => setNoiDung(ci, ni, "nguon", e.target.value)} /> },
-              { title: "Cần soi", dataIndex: "can_review",
-                render: (t: boolean) => t ? <Tag color="orange">Cần soi</Tag> : <Tag color="green">OK</Tag> },
+              { title: "Cần kiểm tra", dataIndex: "can_review", width: 180,
+                render: (t: boolean, _n, ni) => (
+                  <div>
+                    <Checkbox checked={t}
+                      onChange={(e) => setNoiDung(ci, ni, "can_review", e.target.checked)}>
+                      Cần kiểm tra
+                    </Checkbox>
+                    {t && _n.can_lam_ro && (
+                      <div style={{ fontSize: 12, color: "#d46b08", marginTop: 4 }}>
+                        Cần soi: {_n.can_lam_ro}
+                      </div>
+                    )}
+                  </div>
+                ) },
             ]} />
         </Card>
       ))}

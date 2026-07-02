@@ -1,10 +1,13 @@
 """F01 - Router quản lý gói thầu."""
 from __future__ import annotations
+import shutil
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import models
+import storage
 from database import get_db
 from responses import ok, fail
 from schemas import PackageCreate, PackageOut, VendorOut
@@ -57,3 +60,33 @@ async def get_package(package_id: int, db: Session = Depends(get_db)):
     if not pkg:
         return fail("Không tìm thấy gói thầu", 404)
     return ok(_to_out(pkg))
+
+
+@router.delete("/{package_id}")
+async def delete_package(package_id: int, db: Session = Depends(get_db)):
+    """Xóa gói thầu + toàn bộ dữ liệu phụ thuộc + file đã upload."""
+    pkg = db.get(models.ProcurementPackage, package_id)
+    if not pkg:
+        return fail("Không tìm thấy gói thầu", 404)
+    # Dọn bảng cũ theo tiêu chí (FK không có cascade ORM trên package).
+    crit_ids = [c.id for c in pkg.criteria]
+    if crit_ids:
+        sub_ids = [s.id for s in db.scalars(select(models.EvaluationSubCheck).where(
+            models.EvaluationSubCheck.criteria_id.in_(crit_ids))).all()]
+        if sub_ids:
+            db.query(models.SubCheckResult).filter(
+                models.SubCheckResult.sub_check_id.in_(sub_ids)).delete(synchronize_session=False)
+        db.query(models.EvaluationResult).filter(
+            models.EvaluationResult.criteria_id.in_(crit_ids)).delete(synchronize_session=False)
+        db.query(models.EvaluationSubCheck).filter(
+            models.EvaluationSubCheck.criteria_id.in_(crit_ids)).delete(synchronize_session=False)
+    # Tiêu chí rubric mới (FK package_id, ngoài cascade) — cascade noi_dung.
+    for c in db.scalars(select(models.RubricCriterion).where(
+            models.RubricCriterion.package_id == package_id)).all():
+        db.delete(c)
+    db.query(models.Report).filter_by(package_id=package_id).delete(synchronize_session=False)
+    db.query(models.EvaluationSession).filter_by(package_id=package_id).delete(synchronize_session=False)
+    db.delete(pkg)  # cascade vendors/documents/EvaluationCriteria
+    db.commit()
+    shutil.rmtree(storage.abs_path(str(package_id)), ignore_errors=True)  # dọn file upload + rubric_work
+    return ok({"deleted": True})

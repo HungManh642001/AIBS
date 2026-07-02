@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Button, Form, Input, InputNumber, Modal, Table, message } from "antd";
-import { PlusOutlined } from "@ant-design/icons";
+import { Button, Form, Input, InputNumber, Modal, Popconfirm, Table, message } from "antd";
+import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import { Link } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import type { Package } from "../api/types";
@@ -15,6 +15,16 @@ export default function Packages() {
     api.get("/packages").then((r) => setData(unwrap<Package[]>(r))).catch(() => {});
 
   useEffect(() => { load(); }, []);
+
+  const del = async (id: number) => {
+    try {
+      await api.delete(`/packages/${id}`);
+      message.success("Đã xóa gói thầu");
+      load();
+    } catch (e: any) {
+      message.error(e.message);
+    }
+  };
 
   const submit = async () => {
     const v = await form.validateFields();
@@ -78,11 +88,21 @@ export default function Packages() {
             },
             {
               title: "",
-              width: 80,
+              width: 160,
               render: (_, r) => (
-                <Link to={`/packages/${r.id}`} style={{ fontSize: 13, color: "var(--teal)" }}>
-                  Chi tiết →
-                </Link>
+                <span style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                  <Link to={`/packages/${r.id}`} style={{ fontSize: 13, color: "var(--teal)" }}>
+                    Chi tiết →
+                  </Link>
+                  <Popconfirm
+                    title="Xóa gói thầu này?"
+                    description="Xóa toàn bộ tài liệu, tiêu chí và kết quả của gói."
+                    okText="Xóa" cancelText="Hủy" okButtonProps={{ danger: true }}
+                    onConfirm={() => del(r.id)}
+                  >
+                    <Button danger size="small" icon={<DeleteOutlined />}>Xóa</Button>
+                  </Popconfirm>
+                </span>
               ),
             },
           ]}
