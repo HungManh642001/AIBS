@@ -66,7 +66,8 @@ export default function PackageDetail() {
   return (
     <div className="space-y-4">
       <Card title={`${pkg.ma_so} — ${pkg.ten}`} extra={<StatusTag status={pkg.trang_thai} />}>
-        <div className="flex gap-3 items-center">
+        <span className="page-eyebrow">Tải tài liệu</span>
+        <div className="flex gap-3 items-center" style={{ marginTop: 8, flexWrap: "wrap" }}>
           <Select value={loai} onChange={setLoai} options={[
             { value: "HSMT", label: "HSMT" }, { value: "HSDT", label: "HSDT" }]} />
           {loai === "HSDT" && (
@@ -81,6 +82,10 @@ export default function PackageDetail() {
           <Upload beforeUpload={upload} showUploadList={false}>
             <Button>Tải tài liệu</Button>
           </Upload>
+        </div>
+      </Card>
+      <Card title="Hành động">
+        <div className="flex gap-3 items-center">
           <Button onClick={() => nav(`/packages/${id}/rubric`)}>Tiêu chí đánh giá</Button>
           <Button type="primary" loading={evaluating} onClick={runEvaluate}>
             Chạy đánh giá AI</Button>

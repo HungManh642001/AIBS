@@ -1,67 +1,67 @@
-"""Tests cho report router (TDD Task 16): sinh và tải báo cáo Word/Excel."""
+"""Tests report router — sinh Word/Excel từ verdict HSDT (offline, seed DB trực tiếp).
+
+Không gọi /rubric hay /evaluate thật (cần proxy); seed HsdtCriterionEval + HsdtVerdict qua DB.
+"""
 import io
 
-import fitz
 import pytest
 from docx import Document
-from openpyxl import Workbook
-
-from services import ai_client
-import services.extraction as _extraction_svc
 
 
-def _text_pdf(t: str) -> bytes:
-    d = fitz.open()
-    d.new_page().insert_htmlbox(fitz.Rect(72, 72, 500, 200), f"<p>{t}</p>")
-    return d.tobytes()
+@pytest.fixture
+def db_session(client):  # noqa: ARG001 — phụ thuộc client để DB được khởi tạo trước
+    """Session DB dùng chung engine với app."""
+    import database as _db
+    sess = _db.SessionLocal()
+    try:
+        yield sess
+    finally:
+        sess.close()
 
 
-def _setup(client, monkeypatch):
-    """Tạo gói thầu, upload HSMT + HSDT, tạo tiêu chí đánh giá, chạy đánh giá."""
-    monkeypatch.setattr(ai_client.settings, "ai_mock", True)
-    p = client.post(
-        "/api/v1/packages",
-        json={"ma_so": "G-R", "ten": "G", "vendors": ["A"]},
-    ).json()["data"]
-    pid, vid = p["id"], p["vendors"][0]["id"]
-    client.post(
-        f"/api/v1/packages/{pid}/documents",
-        files={"file": ("h.pdf", _text_pdf("Tiêu chí đánh giá hợp lệ kỹ thuật"), "application/pdf")},
-        data={"loai": "HSMT"},
-    )
-    client.post(
-        f"/api/v1/packages/{pid}/documents",
-        files={"file": ("d.pdf", _text_pdf("Hồ sơ dự thầu của nhà thầu A"), "application/pdf")},
-        data={"loai": "HSDT", "vendor_id": str(vid)},
-    )
-    # Tạo và chốt tiêu chí đánh giá trước khi evaluate (yêu cầu bắt buộc trong luồng mới)
-    client.post(f"/api/v1/packages/{pid}/rubric")
-    client.post(f"/api/v1/packages/{pid}/rubric/confirm")
-    client.post(f"/api/v1/packages/{pid}/evaluate")
-    return pid
+def _seed_verdict(db, package_id: int, vendor_id: int, ket_qua: str = "đạt") -> int:
+    """Tạo 1 HsdtCriterionEval + 1 verdict; trả verdict_id."""
+    import models
+    ev = models.HsdtCriterionEval(
+        package_id=package_id, vendor_id=vendor_id, thu_tu=0, nhom="hop_le",
+        ten="Đơn dự thầu hợp lệ", tien_quyet=True, ket_qua=ket_qua,
+        loai=(ket_qua == "không đạt"))
+    ev.verdicts.append(models.HsdtVerdict(
+        thu_tu=0, noi_dung_kiem_tra="Chữ ký & con dấu", hsdt_kiem_tra="don_du_thau",
+        yeu_cau="có chữ ký", ket_qua=ket_qua, bang_chung="Có chữ ký, đóng dấu",
+        trang=[1], do_tin=0.9))
+    db.add(ev)
+    db.commit()
+    db.refresh(ev)
+    return ev.verdicts[0].id
 
 
-def test_generate_and_download_word(client, monkeypatch):
-    pid = _setup(client, monkeypatch)
+def _package(client) -> tuple[int, int]:
+    p = client.post("/api/v1/packages",
+                    json={"ma_so": "G-R", "ten": "Gói R", "vendors": ["NhaThauA"]}).json()["data"]
+    return p["id"], p["vendors"][0]["id"]
 
+
+def test_generate_and_download_word(client, db_session):
+    pid, vid = _package(client)
+    _seed_verdict(db_session, pid, vid)
     gen = client.post(f"/api/v1/packages/{pid}/reports?loai=word").json()["data"]
     assert gen["report_id"]
-
     dl = client.get(f"/api/v1/reports/{gen['report_id']}/download")
-    assert dl.status_code == 200
-    assert len(dl.content) > 0
+    assert dl.status_code == 200 and len(dl.content) > 0
+
+    doc = Document(io.BytesIO(dl.content))
+    text = "\n".join(p.text for p in doc.paragraphs)
+    assert "NhaThauA" in text and "Đơn dự thầu hợp lệ" in text
 
 
-def test_generate_and_download_excel(client, monkeypatch):
-    pid = _setup(client, monkeypatch)
-
+def test_generate_and_download_excel(client, db_session):
+    pid, vid = _package(client)
+    _seed_verdict(db_session, pid, vid)
     gen = client.post(f"/api/v1/packages/{pid}/reports?loai=excel").json()["data"]
-    assert gen["report_id"]
-    assert gen["loai"] == "excel"
-
+    assert gen["report_id"] and gen["loai"] == "excel"
     dl = client.get(f"/api/v1/reports/{gen['report_id']}/download")
-    assert dl.status_code == 200
-    assert len(dl.content) > 0
+    assert dl.status_code == 200 and len(dl.content) > 0
 
 
 def test_generate_report_missing_package(client):
@@ -74,147 +74,10 @@ def test_download_missing_report(client):
     assert r.status_code == 404
 
 
-def _price_xlsx() -> bytes:
-    """Tạo bảng giá Excel với 1 lỗi số học: 100*2=200 nhưng khai 250."""
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "BangGia"
-    ws.append(["STT", "Hạng mục", "Đơn giá", "Số lượng", "Thành tiền"])
-    ws.append([1, "Máy chủ", 100, 2, 250])   # sai số học: đúng là 200
-    ws.append([2, "Switch", 50, 3, 150])       # đúng
-    buf = io.BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
-
-
-def test_legality_results_in_report(client, monkeypatch):
-    """Kiểm tra rằng dữ liệu đánh giá được persist và sinh được báo cáo Word có nội dung."""
-    monkeypatch.setattr(ai_client.settings, "ai_mock", True)
-    monkeypatch.setattr(_extraction_svc._settings, "ai_mock", True)
-
-    # Tạo gói thầu với 1 nhà thầu
-    p = client.post(
-        "/api/v1/packages",
-        json={"ma_so": "G-FIN", "ten": "Gói tài chính", "vendors": ["NhaThuauA"]},
-    ).json()["data"]
-    pid, vid = p["id"], p["vendors"][0]["id"]
-
-    # Upload HSMT — phải có heading "Tiêu chuẩn đánh giá" để locator định vị được mục TCĐG
-    client.post(
-        f"/api/v1/packages/{pid}/documents",
-        files={"file": ("h.pdf", _text_pdf("Tiêu chuẩn đánh giá hợp lệ kỹ thuật tài chính"), "application/pdf")},
-        data={"loai": "HSMT"},
-    )
-
-    # Upload HSDT PDF với artifact_type để routing hop_le tìm được
-    client.post(
-        f"/api/v1/packages/{pid}/documents",
-        files={"file": ("d.pdf", _text_pdf("Đơn dự thầu có chữ ký đóng dấu hợp lệ của nhà thầu A"), "application/pdf")},
-        data={"loai": "HSDT", "vendor_id": str(vid), "artifact_type": "don_du_thau"},
-    )
-
-    # Upload bảng giá Excel (tham khảo cho tài chính — không xử lý trong evaluate mới)
-    client.post(
-        f"/api/v1/packages/{pid}/documents",
-        files={"file": ("gia.xlsx", _price_xlsx(),
-                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
-        data={"loai": "HSDT", "vendor_id": str(vid)},
-    )
-
-    # Tạo và chốt tiêu chí đánh giá (bắt buộc trước evaluate)
-    client.post(f"/api/v1/packages/{pid}/rubric")
-    client.post(f"/api/v1/packages/{pid}/rubric/confirm")
-
-    # Chạy đánh giá
-    ev = client.post(f"/api/v1/packages/{pid}/evaluate").json()
-    assert ev["success"], f"evaluate failed: {ev}"
-
-    # Sinh báo cáo Word
-    gen = client.post(f"/api/v1/packages/{pid}/reports?loai=word").json()["data"]
-    assert gen["report_id"]
-
-    # Tải báo cáo
-    dl = client.get(f"/api/v1/reports/{gen['report_id']}/download")
-    assert dl.status_code == 200
-    assert len(dl.content) > 0
-
-    # Kiểm tra nội dung báo cáo: tên nhà thầu và kết quả đánh giá hợp lệ có mặt
-    doc = Document(io.BytesIO(dl.content))
-    text = "\n".join(p.text for p in doc.paragraphs)
-    assert "NhaThuauA" in text, f"Tên nhà thầu không có trong báo cáo. Text:\n{text}"
-    assert "Đơn dự thầu hợp lệ" in text, f"Tiêu chí hop_le không có trong báo cáo. Text:\n{text}"
-
-
-@pytest.fixture
-def db_session(client):  # noqa: ARG001 — phụ thuộc client để DB được khởi tạo trước
-    """Session DB dùng trong test cần truy cập trực tiếp (dùng cùng engine với app)."""
-    import database as _db
-    sess = _db.SessionLocal()
-    try:
-        yield sess
-    finally:
-        sess.close()
-
-
-def test_export_blocked_when_unresolved_error(client, db_session, monkeypatch):
-    """Xuất báo cáo phải trả 409 khi còn SubCheckResult ERROR chưa được chuyên gia xử lý."""
-    monkeypatch.setattr(ai_client.settings, "ai_mock", True)
-    monkeypatch.setattr(_extraction_svc._settings, "ai_mock", True)
-
-    # Tạo gói thầu với 1 nhà thầu
-    p = client.post(
-        "/api/v1/packages",
-        json={"ma_so": "G-ERR", "ten": "Gói lỗi AI", "vendors": ["NT-ERR"]},
-    ).json()["data"]
-    pid, vid = p["id"], p["vendors"][0]["id"]
-
-    # Upload HSMT với heading "Tiêu chuẩn đánh giá" để locator định vị được mục TCĐG
-    client.post(
-        f"/api/v1/packages/{pid}/documents",
-        files={"file": ("h.pdf", _text_pdf("Tiêu chuẩn đánh giá hợp lệ kỹ thuật"), "application/pdf")},
-        data={"loai": "HSMT"},
-    )
-
-    # Tạo và chốt tiêu chí (để có EvaluationCriteria + EvaluationSubCheck trong DB)
-    r_rubric = client.post(f"/api/v1/packages/{pid}/rubric")
-    assert r_rubric.status_code == 200, f"rubric extract failed: {r_rubric.json()}"
-    client.post(f"/api/v1/packages/{pid}/rubric/confirm")
-
-    # Lấy sub_check đầu tiên từ DB để gắn SubCheckResult ERROR
-    import models as _models
-    from sqlalchemy import select as _select
-
-    all_criteria = db_session.scalars(
-        _select(_models.EvaluationCriteria).where(
-            _models.EvaluationCriteria.package_id == pid
-        )
-    ).all()
-    sub_check = None
-    for c in all_criteria:
-        sc = db_session.scalars(
-            _select(_models.EvaluationSubCheck).where(
-                _models.EvaluationSubCheck.criteria_id == c.id
-            )
-        ).first()
-        if sc:
-            sub_check = sc
-            break
-
-    assert sub_check is not None, "Cần có ít nhất 1 EvaluationSubCheck sau khi confirm rubric"
-
-    # Dựng SubCheckResult với ket_qua="ERROR" chưa override
-    db_session.add(_models.SubCheckResult(
-        sub_check_id=sub_check.id,
-        vendor_id=vid,
-        ket_qua="ERROR",
-        evidence="AI lỗi",
-        page_ref=[],
-        nguon_file="",
-        ai_model="",
-    ))
-    db_session.commit()
-
-    # Xuất báo cáo phải bị chặn với HTTP 409
+def test_export_blocked_when_unresolved_error(client, db_session):
+    """Xuất báo cáo phải trả 409 khi còn verdict ket_qua='lỗi' chưa override."""
+    pid, vid = _package(client)
+    _seed_verdict(db_session, pid, vid, ket_qua="lỗi")
     r = client.post(f"/api/v1/packages/{pid}/reports?loai=excel")
     assert r.status_code == 409
     assert "ai lỗi" in r.json()["error"].lower()

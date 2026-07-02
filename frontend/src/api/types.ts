@@ -42,6 +42,24 @@ export interface VendorBreakdown {
   vendor_id: number; ten: string; completeness: Completeness; criteria: CriteriaBreakdown[];
 }
 export interface ResultsBreakdown { vendors: VendorBreakdown[]; }
+
+// ---- Đánh giá HSDT (verdict pipeline vision) ----
+export interface Verdict {
+  id: number; noi_dung_kiem_tra: string; hsdt_kiem_tra: string; yeu_cau: string;
+  thong_tin_bo_sung: string; ket_qua: string; bang_chung: string; trang: number[];
+  do_tin: number; ghi_chu: string; overridden: boolean;
+}
+export interface CriterionEval {
+  eval_id: number; ten: string; nhom: string; tien_quyet: boolean;
+  ket_qua: string; loai: boolean; verdicts: Verdict[];
+}
+export interface EvalSummary {
+  n_tieu_chi: number; n_dat: number; n_khong_dat: number; n_can_lam_ro: number; n_loai: number;
+}
+export interface VendorEval {
+  vendor_id: number; ten: string; summary: EvalSummary; criteria: CriterionEval[];
+}
+export interface EvalResultsPayload { vendors: VendorEval[]; }
 export const ARTIFACT_TYPES: { value: string; label: string }[] = [
   { value: "don_du_thau", label: "Đơn dự thầu" },
   { value: "bao_dam_du_thau", label: "Bảo đảm dự thầu (thư BL)" },

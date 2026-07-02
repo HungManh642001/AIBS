@@ -166,3 +166,39 @@ class RubricNoiDung(Base):
     nguon: Mapped[str] = mapped_column(String(128), default="")
     can_review: Mapped[bool] = mapped_column(default=False)
     criterion: Mapped[RubricCriterion] = relationship(back_populates="noi_dung")
+
+
+# ---- Đánh giá HSDT (verdict pipeline vision) — bảng riêng ----
+class HsdtCriterionEval(Base):
+    """Kết quả đánh giá 1 tiêu chí cho 1 nhà thầu (roll-up từ verdicts)."""
+    __tablename__ = "hsdt_criterion_eval"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    package_id: Mapped[int] = mapped_column(ForeignKey("procurement_package.id"))
+    vendor_id: Mapped[int] = mapped_column(ForeignKey("vendor.id"))
+    thu_tu: Mapped[int] = mapped_column(Integer, default=0)
+    nhom: Mapped[str] = mapped_column(String(16), default="hop_le")
+    ten: Mapped[str] = mapped_column(String(512), default="")
+    tien_quyet: Mapped[bool] = mapped_column(default=False)
+    ket_qua: Mapped[str] = mapped_column(String(16), default="cần làm rõ")
+    loai: Mapped[bool] = mapped_column(default=False)
+    verdicts: Mapped[list[HsdtVerdict]] = relationship(
+        back_populates="eval", cascade="all, delete-orphan", order_by="HsdtVerdict.thu_tu")
+
+
+class HsdtVerdict(Base):
+    """Verdict 1 nội dung kiểm tra (đối chiếu HSDT vs chuẩn HSMT) — đủ để audit."""
+    __tablename__ = "hsdt_verdict"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    eval_id: Mapped[int] = mapped_column(ForeignKey("hsdt_criterion_eval.id"))
+    thu_tu: Mapped[int] = mapped_column(Integer, default=0)
+    noi_dung_kiem_tra: Mapped[str] = mapped_column(String(512), default="")
+    hsdt_kiem_tra: Mapped[str] = mapped_column(String(64), default="")
+    yeu_cau: Mapped[str] = mapped_column(Text, default="")
+    thong_tin_bo_sung: Mapped[str] = mapped_column(Text, default="")
+    ket_qua: Mapped[str] = mapped_column(String(16), default="cần làm rõ")
+    bang_chung: Mapped[str] = mapped_column(Text, default="")
+    trang: Mapped[list[int]] = mapped_column(JSON, default=list)
+    do_tin: Mapped[float] = mapped_column(Float, default=0.0)
+    ghi_chu: Mapped[str] = mapped_column(Text, default="")
+    overridden: Mapped[bool] = mapped_column(default=False)
+    eval: Mapped[HsdtCriterionEval] = relationship(back_populates="verdicts")

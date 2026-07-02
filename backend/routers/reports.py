@@ -21,8 +21,10 @@ def _rebuild_evals(
     pkg: models.ProcurementPackage, db: Session,
     financials: dict[str, dict] | None = None,
 ) -> tuple[dict[int, str], dict[int, dict]]:
-    """Tái tạo dicts VendorEvaluation từ EvaluationResult trong DB."""
-    criteria = {c.id: c for c in pkg.criteria}
+    """Tái tạo dicts VendorEvaluation từ verdict HSDT (HsdtCriterionEval) trong DB.
+
+    Phạm vi hiện tại chỉ nhóm hợp lệ; năng lực/kỹ thuật để trống, tài chính là placeholder.
+    """
     vendor_names: dict[int, str] = {v.id: v.ten for v in pkg.vendors}
     evals: dict[int, dict] = {}
     if financials is None:
@@ -30,47 +32,39 @@ def _rebuild_evals(
 
     for v in pkg.vendors:
         rows = db.scalars(
-            select(models.EvaluationResult).where(
-                models.EvaluationResult.vendor_id == v.id
-            )
+            select(models.HsdtCriterionEval).where(
+                models.HsdtCriterionEval.package_id == pkg.id,
+                models.HsdtCriterionEval.vendor_id == v.id,
+            ).order_by(models.HsdtCriterionEval.thu_tu)
         ).all()
-        groups: dict[str, list] = {"hop_le": [], "nang_luc": [], "ky_thuat": []}
-        for r in rows:
-            c = criteria.get(r.criteria_id)
-            if not c or c.nhom not in groups:
-                continue
-            groups[c.nhom].append({
-                "criteria_ten": c.ten,
-                "result": r.ket_qua,
-                "score": r.diem_so,
-                "evidence": r.dan_chung,
-                "page_ref": r.so_trang,
-                "note": r.ghi_chu,
-                "ai_model": r.ai_model,
+        legality = []
+        for e in rows:
+            do_tins = [vd.do_tin for vd in e.verdicts]
+            trang = sorted({t for vd in e.verdicts for t in (vd.trang or [])})
+            legality.append({
+                "criteria_ten": e.ten,
+                "result": e.ket_qua,
+                "score": round(sum(do_tins) / len(do_tins), 2) if do_tins else 0.0,
+                "evidence": "; ".join(vd.bang_chung for vd in e.verdicts if vd.bang_chung)[:500],
+                "page_ref": trang,
+                "note": "; ".join(vd.ghi_chu for vd in e.verdicts if vd.ghi_chu),
+                "ai_model": "vision",
             })
-        ky_thuat = groups["ky_thuat"]
         fin = financials.get(str(v.id), {})
         price = Decimal(str(fin.get("evaluated_price", 0)))
         so_loi = int(fin.get("so_loi", 0))
         evals[v.id] = {
-            "legality": groups["hop_le"],
-            "capacity": groups["nang_luc"],
-            "technical": ky_thuat,
+            "legality": legality,
+            "capacity": [],
+            "technical": [],
             "financial": {
                 "corrected_rows": [],
                 "errors": [{}] * so_loi,
                 "tong_gia": price,
                 "evaluated_price": price,
             },
-            "technical_score": (
-                sum(x["score"] for x in ky_thuat) / len(ky_thuat)
-                if ky_thuat
-                else 0.0
-            ),
-            "passed_legality": bool(groups["hop_le"] + groups["nang_luc"]) and all(
-                x["result"] not in ("FAIL", "ERROR")
-                for x in groups["hop_le"] + groups["nang_luc"]
-            ),
+            "technical_score": 0.0,
+            "passed_legality": bool(rows) and all(e.ket_qua != "không đạt" for e in rows),
         }
 
     return vendor_names, evals
@@ -90,22 +84,19 @@ async def generate_report(
     if loai not in ("word", "excel"):
         return fail("loai phải là 'word' hoặc 'excel'", 422)
 
-    # Chặn xuất khi còn điểm kiểm AI lỗi chưa được chuyên gia xử lý.
-    sub_ids = [
-        s.id for c in pkg.criteria
-        for s in db.scalars(select(models.EvaluationSubCheck).where(
-            models.EvaluationSubCheck.criteria_id == c.id)).all()
-    ]
-    if sub_ids:
-        n_err = db.scalar(
-            select(models.SubCheckResult).where(
-                models.SubCheckResult.sub_check_id.in_(sub_ids),
-                models.SubCheckResult.ket_qua == "ERROR",
-                models.SubCheckResult.overridden.is_(False),
-            )
+    # Chặn xuất khi còn verdict AI lỗi chưa được chuyên gia xử lý.
+    n_err = db.scalar(
+        select(models.HsdtVerdict).join(
+            models.HsdtCriterionEval,
+            models.HsdtVerdict.eval_id == models.HsdtCriterionEval.id,
+        ).where(
+            models.HsdtCriterionEval.package_id == package_id,
+            models.HsdtVerdict.ket_qua == "lỗi",
+            models.HsdtVerdict.overridden.is_(False),
         )
-        if n_err is not None:
-            return fail("Còn điểm kiểm AI lỗi chưa xử lý — hãy điều chỉnh trước khi xuất báo cáo", 409)
+    )
+    if n_err is not None:
+        return fail("Còn verdict AI lỗi chưa xử lý — hãy điều chỉnh trước khi xuất báo cáo", 409)
 
     # Lấy session đánh giá mới nhất để lấy ranking và financials
     # Ghi chú: xếp hạng/tài chính tạm thời trống — sẽ có khi các nhóm ngoài Hợp lệ áp dụng pattern artifact.

@@ -99,6 +99,10 @@ async def delete_package(package_id: int, db: Session = Depends(get_db)):
     for c in db.scalars(select(models.RubricCriterion).where(
             models.RubricCriterion.package_id == package_id)).all():
         db.delete(c)
+    # Kết quả đánh giá HSDT mới (FK package_id, ngoài cascade) — cascade verdicts.
+    for e in db.scalars(select(models.HsdtCriterionEval).where(
+            models.HsdtCriterionEval.package_id == package_id)).all():
+        db.delete(e)
     db.query(models.Report).filter_by(package_id=package_id).delete(synchronize_session=False)
     db.query(models.EvaluationSession).filter_by(package_id=package_id).delete(synchronize_session=False)
     db.delete(pkg)  # cascade vendors/documents/EvaluationCriteria

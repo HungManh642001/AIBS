@@ -48,3 +48,26 @@ def test_add_vendor_empty_name_400(client):
     pid = client.post("/api/v1/packages", json={"ma_so": "G-VE", "ten": "g"}).json()["data"]["id"]
     r = client.post(f"/api/v1/packages/{pid}/vendors", json={"ten": "  "})
     assert r.status_code == 400
+
+
+def test_delete_package_removes_hsdt_verdicts(client):
+    """Xóa gói phải dọn HsdtCriterionEval + HsdtVerdict (FK package_id, ngoài cascade)."""
+    import database as _db
+    import models
+    pid = client.post("/api/v1/packages", json={
+        "ma_so": "G-HV", "ten": "g", "vendors": ["A"]}).json()["data"]
+    package_id, vendor_id = pid["id"], pid["vendors"][0]["id"]
+    sess = _db.SessionLocal()
+    ev = models.HsdtCriterionEval(package_id=package_id, vendor_id=vendor_id, ten="X", ket_qua="đạt")
+    ev.verdicts.append(models.HsdtVerdict(noi_dung_kiem_tra="n", ket_qua="đạt"))
+    sess.add(ev)
+    sess.commit()
+    sess.close()
+
+    assert client.delete(f"/api/v1/packages/{package_id}").status_code == 200
+    check = _db.SessionLocal()
+    try:
+        assert check.query(models.HsdtCriterionEval).filter_by(package_id=package_id).count() == 0
+        assert check.query(models.HsdtVerdict).count() == 0
+    finally:
+        check.close()
