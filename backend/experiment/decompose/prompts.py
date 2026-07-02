@@ -106,10 +106,10 @@ def struct_prompt(crit: dict[str, Any]) -> str:
         '  [{"noi_dung_kiem_tra":"Bảo đảm tư cách hợp lệ","hsdt_kiem_tra":"don_du_thau",'
         '"yeu_cau":"Phải bảo đảm tư cách hợp lệ theo Mục 5 E-CDNT",'
         '"can_lam_ro":"Nội dung tư cách hợp lệ tại Mục 5 E-CDNT","can_tra_cuu":true}]\n'
-        "VÍ DỤ 2 — 'Thư bảo lãnh đúng giá trị/hiệu lực/đơn vị thụ hưởng theo HSMT' (hsdt=[bao_lanh_du_thau]):\n"
-        '  [{"noi_dung_kiem_tra":"Giá trị bảo lãnh","hsdt_kiem_tra":"bao_lanh_du_thau",'
+        "VÍ DỤ 2 — 'Thư bảo lãnh đúng giá trị/hiệu lực/đơn vị thụ hưởng theo HSMT' (hsdt=[bao_dam_du_thau]):\n"
+        '  [{"noi_dung_kiem_tra":"Giá trị bảo lãnh","hsdt_kiem_tra":"bao_dam_du_thau",'
         '"yeu_cau":"Thỏa mãn giá trị bảo lãnh theo HSMT","can_lam_ro":"Giá trị bảo lãnh","can_tra_cuu":true},\n'
-        '   {"noi_dung_kiem_tra":"Thời gian hiệu lực","hsdt_kiem_tra":"bao_lanh_du_thau",'
+        '   {"noi_dung_kiem_tra":"Thời gian hiệu lực","hsdt_kiem_tra":"bao_dam_du_thau",'
         '"yeu_cau":"Thỏa mãn thời gian hiệu lực theo HSMT","can_lam_ro":"Thời gian hiệu lực bảo lãnh","can_tra_cuu":true}]\n\n'
         + cot_block(_CRIT_SCHEMA)
     )

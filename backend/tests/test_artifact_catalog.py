@@ -20,3 +20,16 @@ def test_match_artifact_by_alias():
 def test_match_artifact_none_when_no_alias():
     code, conf = cat.match_artifact("nội dung không liên quan abcxyz")
     assert code is None and conf == 0.0
+
+
+def test_resolve_code_snaps_offcatalog_to_canonical():
+    # Mã LLM sinh lệch danh mục -> ép về code chuẩn (chống route trượt -> 'thiếu hồ sơ').
+    assert cat.resolve_code("bao_lanh_du_thau") == "bao_dam_du_thau"
+    assert cat.resolve_code("Bảo lãnh dự thầu") == "bao_dam_du_thau"
+
+
+def test_resolve_code_keeps_valid_and_rejects_unknown():
+    for code in cat.all_codes():
+        assert cat.resolve_code(code) == code
+    assert cat.resolve_code("xyz_khong_ton_tai") is None
+    assert cat.resolve_code("") is None

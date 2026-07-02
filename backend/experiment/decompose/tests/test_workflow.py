@@ -124,8 +124,9 @@ async def test_search_per_need_independent_resolve():
     assert gv["nguon"] == "E-BDL 18.2"
     assert hl["thong_tin_bo_sung"] == "Thời gian hiệu lực: ≥ 120 ngày"
     assert hl["nguon"] == "E-BDL 18.2"   # nguon rỗng -> backfill từ clause_id của hit
-    # hsdt_kiem_tra được bù per item từ hsdt_can_kiem_tra của tiêu chí.
-    assert gv["hsdt_kiem_tra"] == "bao_lanh_du_thau"
+    # hsdt_kiem_tra bù per item từ hsdt_can_kiem_tra + ÉP về danh mục chuẩn
+    # (mã LLM 'bao_lanh_du_thau' -> 'bao_dam_du_thau', tránh route trượt -> thiếu hồ sơ).
+    assert gv["hsdt_kiem_tra"] == "bao_dam_du_thau"
     assert gd.needs_review == []
     assert sum("[TAG:RESOLVE:" in c for c in llm.calls) == 2
     assert sum(1 for _, cd in captured if cd == "bdl") == 2  # mỗi need 1 lượt tra E-BDL

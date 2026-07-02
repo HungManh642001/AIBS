@@ -1,6 +1,9 @@
 """Danh mục loại hồ sơ (artifact) chuẩn theo Luật 22/2023 & NĐ 24/2024."""
 from __future__ import annotations
 
+import re
+import unicodedata
+
 CATALOG: dict[str, dict] = {
     "don_du_thau": {
         "label": "Đơn dự thầu", "nhom": "hop_le",
@@ -61,6 +64,49 @@ def get_artifact(code: str) -> dict | None:
 def all_codes() -> list[str]:
     """Trả danh sách tất cả mã artifact."""
     return list(CATALOG.keys())
+
+
+def _norm_code(s: str) -> str:
+    """Chuẩn hóa để so khớp mã: thường, bỏ dấu, đ->d, bỏ mọi ký tự không phải chữ/số."""
+    s = (s or "").lower().strip().replace("đ", "d")
+    s = "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+    return re.sub(r"[^a-z0-9]", "", s)
+
+
+_NORM_INDEX: dict[str, str] | None = None
+
+
+def _norm_index() -> dict[str, str]:
+    """Bảng tra: khoá chuẩn hóa (từ code + alias + label) -> code chuẩn trong danh mục."""
+    global _NORM_INDEX
+    if _NORM_INDEX is None:
+        idx: dict[str, str] = {}
+        for code, info in CATALOG.items():
+            keys = {_norm_code(code), _norm_code(info["label"])}
+            keys |= {_norm_code(a) for a in info["aliases"]}
+            for k in keys:
+                if k:
+                    idx.setdefault(k, code)
+        _NORM_INDEX = idx
+    return _NORM_INDEX
+
+
+def resolve_code(raw: str) -> str | None:
+    """Ép 1 mã loại hồ sơ (LLM sinh) về code chuẩn trong danh mục.
+
+    Khớp theo code/alias/label sau khi bỏ dấu và ký tự phân cách (vd 'bao_lanh_du_thau' ->
+    'bao_dam_du_thau' qua alias 'bảo lãnh dự thầu'). Không khớp -> None (KHÔNG bịa).
+    """
+    nr = _norm_code(raw)
+    if not nr:
+        return None
+    idx = _norm_index()
+    if nr in idx:
+        return idx[nr]
+    for k, code in idx.items():  # mã dài/ngắn chứa nhau (vd chứa tiền tố)
+        if k in nr or nr in k:
+            return code
+    return None
 
 
 def match_artifact(text: str) -> tuple[str | None, float]:

@@ -39,8 +39,29 @@ from experiment.decompose.schema import (
     validate_query,
     validate_resolved_value,
 )
+from services import artifact_catalog
 
 log = logging.getLogger("experiment.decompose")
+
+
+def _clamp_codes(item: dict[str, Any]) -> None:
+    """Ép mã loại hồ sơ (LLM sinh) về danh mục chuẩn — in-place.
+
+    route đánh giá khớp CHÍNH XÁC hsdt_kiem_tra với artifact_type khi tải HSDT; mã lệch (vd
+    'bao_lanh_du_thau' vs 'bao_dam_du_thau') sẽ trượt -> 'thiếu hồ sơ'. Mã ngoài danh mục:
+    giữ nguyên + cảnh báo (KHÔNG bịa).
+    """
+    def snap(raw: str) -> str:
+        code = artifact_catalog.resolve_code(raw)
+        if code is None and (raw or "").strip():
+            log.warning("    [analyze] mã loại hồ sơ ngoài danh mục: %r (route có thể trượt)", raw)
+            return raw
+        return code or raw
+
+    item["hsdt_can_kiem_tra"] = [snap(str(x)) for x in (item.get("hsdt_can_kiem_tra") or [])]
+    for n in item.get("noi_dung_can_kiem_tra", []):
+        if (n.get("hsdt_kiem_tra") or "").strip():
+            n["hsdt_kiem_tra"] = snap(str(n["hsdt_kiem_tra"]))
 
 # Step analyze/search sinh JSON + Qwen3 có khối <think> -> cần budget rộng (mặc định chỉ 4096).
 _STRUCT_MAX_TOKENS = 8192
@@ -217,6 +238,7 @@ class DecomposeWorkflow(Workflow):
                 "noi_dung_can_kiem_tra": [],
                 "loi_ai": out.error,
             }
+            _clamp_codes(item)
             return _Done(detail=item, needs_review={"ten": ten, "ly_do": f"lỗi AI: {out.error}"})
 
         item = out.data
@@ -230,6 +252,7 @@ class DecomposeWorkflow(Workflow):
         for n in item.get("noi_dung_can_kiem_tra", []):
             if not (n.get("hsdt_kiem_tra") or "").strip():
                 n["hsdt_kiem_tra"] = default_hsdt
+        _clamp_codes(item)  # ép mã loại hồ sơ về danh mục chuẩn (khớp artifact_type khi tải HSDT)
         return _SearchReq(crit=crit, item=item)
 
     # ---- Step 3: tìm giá trị cho nội dung can_tra_cuu — ĐỘC LẬP từng need, 1 call/1 việc ----
