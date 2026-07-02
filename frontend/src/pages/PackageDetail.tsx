@@ -4,7 +4,7 @@ import { PlusOutlined } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import type { Package } from "../api/types";
-import { ARTIFACT_TYPES } from "../api/types";
+import { useArtifactTypes } from "../api/artifacts";
 import StatusTag from "../components/StatusTag";
 
 export default function PackageDetail() {
@@ -17,6 +17,7 @@ export default function PackageDetail() {
   const [evaluating, setEvaluating] = useState(false);
   const [artifactType, setArtifactType] = useState<string | undefined>();
   const [newVendor, setNewVendor] = useState("");
+  const artifactTypes = useArtifactTypes();
 
   const load = () => {
     api.get(`/packages/${id}`).then((r) => setPkg(unwrap<Package>(r)));
@@ -77,7 +78,7 @@ export default function PackageDetail() {
           )}
           {loai === "HSDT" && (
             <Select placeholder="Loại hồ sơ" value={artifactType} onChange={setArtifactType}
-              className="min-w-48" options={ARTIFACT_TYPES} />
+              className="min-w-48" options={artifactTypes} />
           )}
           <Upload beforeUpload={upload} showUploadList={false}>
             <Button>Tải tài liệu</Button>

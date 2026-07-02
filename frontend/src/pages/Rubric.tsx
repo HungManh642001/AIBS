@@ -5,12 +5,14 @@ const { TextArea } = Input;
 const AUTO = { minRows: 1, maxRows: 6 } as const;
 import { useParams, useNavigate } from "react-router-dom";
 import { api, unwrap } from "../api/client";
-import { ARTIFACT_TYPES, type RubricCriteria } from "../api/types";
+import { useArtifactTypes } from "../api/artifacts";
+import type { RubricCriteria } from "../api/types";
 
 export default function Rubric() {
   const { id } = useParams();
   const nav = useNavigate();
   const [criteria, setCriteria] = useState<RubricCriteria[]>([]);
+  const artifactTypes = useArtifactTypes();
 
   const load = () => api.get(`/packages/${id}/rubric`)
     .then((r) => setCriteria(unwrap<{ criteria: RubricCriteria[] }>(r).criteria));
@@ -74,7 +76,7 @@ export default function Rubric() {
                 render: (t, _n, ni) => <TextArea autoSize={AUTO} value={t}
                   onChange={(e) => setNoiDung(ci, ni, "noi_dung_kiem_tra", e.target.value)} /> },
               { title: "Hồ sơ", dataIndex: "hsdt_kiem_tra", width: 180,
-                render: (t, _n, ni) => <Select value={t} options={ARTIFACT_TYPES} style={{ width: "100%" }}
+                render: (t, _n, ni) => <Select value={t} options={artifactTypes} style={{ width: "100%" }}
                   onChange={(v) => setNoiDung(ci, ni, "hsdt_kiem_tra", v)} /> },
               { title: "Yêu cầu", dataIndex: "yeu_cau", width: 240,
                 render: (t, _n, ni) => <TextArea autoSize={AUTO} value={t}

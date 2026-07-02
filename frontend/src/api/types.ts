@@ -60,12 +60,4 @@ export interface VendorEval {
   vendor_id: number; ten: string; summary: EvalSummary; criteria: CriterionEval[];
 }
 export interface EvalResultsPayload { vendors: VendorEval[]; }
-export const ARTIFACT_TYPES: { value: string; label: string }[] = [
-  { value: "don_du_thau", label: "Đơn dự thầu" },
-  { value: "bao_dam_du_thau", label: "Bảo đảm dự thầu (thư BL)" },
-  { value: "thoa_thuan_lien_danh", label: "Thỏa thuận liên danh" },
-  { value: "tu_cach_phap_ly", label: "Tài liệu tư cách hợp lệ" },
-  { value: "bao_cao_tai_chinh", label: "Báo cáo tài chính" },
-  { value: "hop_dong_tuong_tu", label: "Hợp đồng tương tự" },
-  { value: "bang_gia", label: "Bảng giá dự thầu" },
-];
+// Danh mục loại hồ sơ giờ lấy động từ backend — dùng hook useArtifactTypes() (api/artifacts.ts).
