@@ -4,20 +4,8 @@ export interface Package {
   gia_tri_uoc_tinh: number; trang_thai: string; nguoi_phu_trach: string;
   vendors: Vendor[]; so_tai_lieu: number; so_tieu_chi: number;
 }
-export interface Criteria {
-  id: number; nhom: string; ten: string; yeu_cau: string; trong_so: number; kieu: string;
-}
-export interface EvalResult {
-  id: number; criteria_id: number; ket_qua: string; diem_so: number;
-  dan_chung: string; so_trang: number[]; ghi_chu: string; ai_model: string; overridden: boolean;
-}
-export interface VendorResults { vendor_id: number; ten: string; results: EvalResult[]; }
-export interface RankRow {
-  vendor_id: number; evaluated_price: number; technical_score: number;
-  rank: number | null; eligible: boolean;
-}
-export interface ResultsPayload { criteria: Criteria[]; vendors: VendorResults[]; ranking: RankRow[]; }
-export interface ArtifactValidation { match: boolean; suggested_type: string; confidence: number; note: string; }
+
+// ---- Tiêu chí đánh giá (decompose) ----
 export interface NoiDungKiemTra {
   id?: number; noi_dung_kiem_tra: string; hsdt_kiem_tra: string; yeu_cau: string;
   can_lam_ro: string; can_tra_cuu: boolean; thong_tin_bo_sung: string; nguon: string;
@@ -27,21 +15,6 @@ export interface RubricCriteria {
   id?: number; nhom: string; ten: string; yeu_cau_goc: string;
   hsdt_can_kiem_tra: string[]; tien_quyet: boolean; noi_dung_can_kiem_tra: NoiDungKiemTra[];
 }
-export interface SubResult {
-  id: number; sub_check_ten: string; result: string; evidence: string;
-  page_ref: number[]; nguon_file: string; ai_model: string; overridden: boolean;
-}
-export interface CriteriaBreakdown {
-  criteria_id: number; criteria_ten: string; result: string | null;
-  score: number; sub_results: SubResult[];
-}
-export interface Completeness {
-  percent: number; missing: string[]; required: string[];
-}
-export interface VendorBreakdown {
-  vendor_id: number; ten: string; completeness: Completeness; criteria: CriteriaBreakdown[];
-}
-export interface ResultsBreakdown { vendors: VendorBreakdown[]; }
 
 // ---- Đánh giá HSDT (verdict pipeline vision) ----
 export interface Verdict {

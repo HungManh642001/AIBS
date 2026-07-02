@@ -1,4 +1,8 @@
-"""Trích xuất văn bản từ PDF (text/scan) và Excel. OCR bằng Tesseract (vie+eng)."""
+"""Trích xuất văn bản từ PDF text và Excel.
+
+HSDT scan KHÔNG OCR ở bước upload nữa — Qwen vision đọc lại ảnh ở bước đánh giá
+(experiment/evaluate). Nhờ vậy luồng upload không phụ thuộc Tesseract.
+"""
 from __future__ import annotations
 from typing import Any, TypedDict
 import io
@@ -24,20 +28,6 @@ def extract_pdf(data: bytes) -> list[PageText]:
     return [{"page": i + 1, "text": page.get_text()} for i, page in enumerate(doc)]
 
 
-def ocr_pdf(data: bytes) -> list[PageText]:
-    import pytesseract
-    from PIL import Image
-
-    doc = fitz.open(stream=data, filetype="pdf")
-    out: list[PageText] = []
-    for i, page in enumerate(doc):
-        pix = page.get_pixmap(dpi=300)
-        img = Image.open(io.BytesIO(pix.tobytes("png")))
-        text = pytesseract.image_to_string(img, lang="vie+eng")
-        out.append({"page": i + 1, "text": text})
-    return out
-
-
 class SheetData(TypedDict):
     sheet: str
     rows: list[list[Any]]
@@ -54,7 +44,7 @@ def parse_excel(data: bytes) -> list[SheetData]:
 
 def extract_document(data: bytes, file_kind: str) -> list[PageText]:
     if file_kind == "pdf_scan":
-        return ocr_pdf(data)
+        return []  # scan để Qwen vision đọc ở bước đánh giá, không OCR khi upload
     if file_kind == "pdf_text":
         return extract_pdf(data)
     if file_kind == "excel":

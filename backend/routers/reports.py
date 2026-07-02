@@ -98,26 +98,9 @@ async def generate_report(
     if n_err is not None:
         return fail("Còn verdict AI lỗi chưa xử lý — hãy điều chỉnh trước khi xuất báo cáo", 409)
 
-    # Lấy session đánh giá mới nhất để lấy ranking và financials
-    # Ghi chú: xếp hạng/tài chính tạm thời trống — sẽ có khi các nhóm ngoài Hợp lệ áp dụng pattern artifact.
-    session = db.scalars(
-        select(models.EvaluationSession)
-        .where(models.EvaluationSession.package_id == package_id)
-        .order_by(models.EvaluationSession.id.desc())
-    ).first()
-    ranking_raw: list[dict] = (
-        session.ket_qua_tong_hop.get("ranking", []) if session else []
-    )
-    financials_map: dict[str, dict] = (
-        session.ket_qua_tong_hop.get("financials", {}) if session else {}
-    )
-
-    vendor_names, evals = _rebuild_evals(pkg, db, financials_map)
-    # Chuyển evaluated_price từ float JSON về Decimal để report builders dùng
-    ranking = [
-        {**r, "evaluated_price": Decimal(str(r["evaluated_price"]))}
-        for r in ranking_raw
-    ]
+    # Phạm vi hiện tại chỉ nhóm hợp lệ -> xếp hạng/tài chính để trống.
+    vendor_names, evals = _rebuild_evals(pkg, db, {})
+    ranking: list[dict] = []
 
     out_dir = storage.abs_path(f"{package_id}/reports")
     out_dir.mkdir(parents=True, exist_ok=True)

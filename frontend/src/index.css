@@ -181,27 +181,7 @@ body {
   letter-spacing: 0.05em;
 }
 
-/* ── Verdict cards (signature element) ─────────────────── */
-.verdict-card {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--paper);
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-
-.verdict-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  cursor: pointer;
-}
-
-.verdict-header:hover {
-  background: var(--surface);
-}
-
+/* ── Verdict result pill (dùng ở trang Kết quả đánh giá) ── */
 .verdict-result-pill {
   font-family: var(--font-sans);
   font-size: 11px;
@@ -219,61 +199,6 @@ body {
 .verdict-result-pill.PARTIAL { background: var(--partial-bg); color: var(--partial); }
 .verdict-result-pill.default { background: #F0F0F0; color: #666; }
 .verdict-result-pill.ERROR   { background: #FBE3E1; color: var(--seal); font-weight: 700; }
-
-.verdict-ten {
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--ink);
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.verdict-score {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--ink-muted);
-  flex-shrink: 0;
-}
-
-/* ── Source chip ────────────────────────────────────────── */
-.source-chip {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  padding: 1px 6px;
-  border-radius: 3px;
-  border: 1px solid;
-  display: inline-block;
-  white-space: nowrap;
-  vertical-align: middle;
-}
-
-.source-chip.real   { border-color: var(--teal);  color: var(--teal);  background: var(--teal-tint); }
-.source-chip.mock   { border-color: #aaa;          color: #777;         background: #F5F5F5; }
-.source-chip.python { border-color: #6B7AE0;       color: #4B5CC4;      background: #EEEFFE; }
-.source-chip.error  { border-color: var(--fail);   color: var(--fail);  background: var(--fail-bg); }
-
-/* ── Completeness bar ───────────────────────────────────── */
-.completeness-bar-track {
-  height: 4px;
-  background: var(--line);
-  border-radius: 2px;
-  overflow: hidden;
-  width: 80px;
-  display: inline-block;
-  vertical-align: middle;
-  margin: 0 8px;
-}
-
-.completeness-bar-fill {
-  height: 100%;
-  border-radius: 2px;
-  background: var(--pass);
-  transition: width 0.3s ease;
-}
 
 /* ── AntD global overrides ──────────────────────────────── */
 .ant-table-thead > tr > th {

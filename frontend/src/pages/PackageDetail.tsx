@@ -107,7 +107,6 @@ export default function PackageDetail() {
           { title: "Loại", dataIndex: "loai" },
           { title: "Loại hồ sơ", dataIndex: "artifact_type" },
           { title: "Định dạng", dataIndex: "file_kind" },
-          { title: "Trạng thái OCR", dataIndex: "trang_thai_ocr" },
         ]} />
       </Card>
     </div>

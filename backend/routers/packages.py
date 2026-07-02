@@ -21,7 +21,7 @@ def _to_out(p: models.ProcurementPackage) -> dict:
         gia_tri_uoc_tinh=p.gia_tri_uoc_tinh, trang_thai=p.trang_thai,
         nguoi_phu_trach=p.nguoi_phu_trach,
         vendors=[VendorOut(id=v.id, ten=v.ten, ma_so_thue=v.ma_so_thue) for v in p.vendors],
-        so_tai_lieu=len(p.documents), so_tieu_chi=len(p.criteria),
+        so_tai_lieu=len(p.documents), so_tieu_chi=len(p.rubric_criteria),
     ).model_dump()
 
 
@@ -83,29 +83,10 @@ async def delete_package(package_id: int, db: Session = Depends(get_db)):
     pkg = db.get(models.ProcurementPackage, package_id)
     if not pkg:
         return fail("Không tìm thấy gói thầu", 404)
-    # Dọn bảng cũ theo tiêu chí (FK không có cascade ORM trên package).
-    crit_ids = [c.id for c in pkg.criteria]
-    if crit_ids:
-        sub_ids = [s.id for s in db.scalars(select(models.EvaluationSubCheck).where(
-            models.EvaluationSubCheck.criteria_id.in_(crit_ids))).all()]
-        if sub_ids:
-            db.query(models.SubCheckResult).filter(
-                models.SubCheckResult.sub_check_id.in_(sub_ids)).delete(synchronize_session=False)
-        db.query(models.EvaluationResult).filter(
-            models.EvaluationResult.criteria_id.in_(crit_ids)).delete(synchronize_session=False)
-        db.query(models.EvaluationSubCheck).filter(
-            models.EvaluationSubCheck.criteria_id.in_(crit_ids)).delete(synchronize_session=False)
-    # Tiêu chí rubric mới (FK package_id, ngoài cascade) — cascade noi_dung.
-    for c in db.scalars(select(models.RubricCriterion).where(
-            models.RubricCriterion.package_id == package_id)).all():
-        db.delete(c)
-    # Kết quả đánh giá HSDT mới (FK package_id, ngoài cascade) — cascade verdicts.
-    for e in db.scalars(select(models.HsdtCriterionEval).where(
-            models.HsdtCriterionEval.package_id == package_id)).all():
-        db.delete(e)
+    # Report FK package_id nhưng không có relationship cascade -> dọn tay.
     db.query(models.Report).filter_by(package_id=package_id).delete(synchronize_session=False)
-    db.query(models.EvaluationSession).filter_by(package_id=package_id).delete(synchronize_session=False)
-    db.delete(pkg)  # cascade vendors/documents/EvaluationCriteria
+    # cascade: vendors, documents, rubric_criteria(+noi_dung), hsdt_evals(+verdicts).
+    db.delete(pkg)
     db.commit()
     shutil.rmtree(storage.abs_path(str(package_id)), ignore_errors=True)  # dọn file upload + rubric_work
     return ok({"deleted": True})

@@ -25,7 +25,8 @@ class ProcurementPackage(Base):
 
     vendors: Mapped[list[Vendor]] = relationship(back_populates="package", cascade="all, delete-orphan")
     documents: Mapped[list[TenderDocument]] = relationship(back_populates="package", cascade="all, delete-orphan")
-    criteria: Mapped[list[EvaluationCriteria]] = relationship(back_populates="package", cascade="all, delete-orphan")
+    rubric_criteria: Mapped[list[RubricCriterion]] = relationship(cascade="all, delete-orphan")
+    hsdt_evals: Mapped[list[HsdtCriterionEval]] = relationship(cascade="all, delete-orphan")
 
 
 class Vendor(Base):
@@ -52,42 +53,6 @@ class TenderDocument(Base):
     package: Mapped[ProcurementPackage] = relationship(back_populates="documents")
 
 
-class EvaluationCriteria(Base):
-    __tablename__ = "evaluation_criteria"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    package_id: Mapped[int] = mapped_column(ForeignKey("procurement_package.id"))
-    nhom: Mapped[str] = mapped_column(String(16))   # hop_le|nang_luc|ky_thuat|tai_chinh
-    ten: Mapped[str] = mapped_column(String(512))
-    yeu_cau: Mapped[str] = mapped_column(Text, default="")
-    trong_so: Mapped[float] = mapped_column(Float, default=0.0)
-    kieu: Mapped[str] = mapped_column(String(16), default="pass_fail")  # pass_fail|score
-    required_artifacts: Mapped[list[str]] = mapped_column(JSON, default=list)
-    package: Mapped[ProcurementPackage] = relationship(back_populates="criteria")
-
-
-class EvaluationResult(Base):
-    __tablename__ = "evaluation_result"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    criteria_id: Mapped[int] = mapped_column(ForeignKey("evaluation_criteria.id"))
-    vendor_id: Mapped[int] = mapped_column(ForeignKey("vendor.id"))
-    ket_qua: Mapped[str] = mapped_column(String(16), default="PARTIAL")  # PASS|FAIL|PARTIAL
-    diem_so: Mapped[float] = mapped_column(Float, default=0.0)
-    dan_chung: Mapped[str] = mapped_column(Text, default="")
-    so_trang: Mapped[list[int]] = mapped_column(JSON, default=list)
-    ghi_chu: Mapped[str] = mapped_column(Text, default="")
-    ai_model: Mapped[str] = mapped_column(String(64), default="")
-    overridden: Mapped[bool] = mapped_column(default=False)
-
-
-class EvaluationSession(Base):
-    __tablename__ = "evaluation_session"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    package_id: Mapped[int] = mapped_column(ForeignKey("procurement_package.id"))
-    trang_thai: Mapped[str] = mapped_column(String(32), default="dang_xu_ly")
-    ngay_bat_dau: Mapped[datetime] = mapped_column(DateTime, default=_now)
-    ket_qua_tong_hop: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-
-
 class Report(Base):
     __tablename__ = "report"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -105,32 +70,6 @@ class AuditLog(Base):
     entity_id: Mapped[int] = mapped_column(default=0)
     detail: Mapped[str] = mapped_column(Text, default="")
     timestamp: Mapped[datetime] = mapped_column(DateTime, default=_now)
-
-
-class EvaluationSubCheck(Base):
-    __tablename__ = "evaluation_sub_check"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    criteria_id: Mapped[int] = mapped_column(ForeignKey("evaluation_criteria.id"))
-    ten: Mapped[str] = mapped_column(String(512))
-    check_type: Mapped[str] = mapped_column(String(32))
-    thong_so: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    required_artifact: Mapped[str] = mapped_column(String(64), default="")
-    thu_tu: Mapped[int] = mapped_column(Integer, default=0)
-    blocking: Mapped[bool] = mapped_column(default=True)
-
-
-class SubCheckResult(Base):
-    __tablename__ = "sub_check_result"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    sub_check_id: Mapped[int] = mapped_column(ForeignKey("evaluation_sub_check.id"))
-    vendor_id: Mapped[int] = mapped_column(ForeignKey("vendor.id"))
-    ket_qua: Mapped[str] = mapped_column(String(16), default="PARTIAL")
-    evidence: Mapped[str] = mapped_column(Text, default="")
-    page_ref: Mapped[list[int]] = mapped_column(JSON, default=list)
-    nguon_file: Mapped[str] = mapped_column(String(64), default="")
-    ai_model: Mapped[str] = mapped_column(String(64), default="")
-    overridden: Mapped[bool] = mapped_column(default=False)
-    ghi_chu: Mapped[str] = mapped_column(Text, default="")
 
 
 # ---- Rubric agentic (decompose pipeline) — bảng riêng cho schema mới ----
