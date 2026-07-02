@@ -1,6 +1,8 @@
 """Router tiêu chí đánh giá: bóc từ HSMT bằng pipeline decompose, chuyên gia sửa, chốt."""
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -12,6 +14,7 @@ from responses import ok, fail
 from services.rubric_pipeline import build_decomposition
 
 router = APIRouter(prefix="/api/v1/packages", tags=["rubric"])
+log = logging.getLogger("abes.rubric")
 
 
 def _persist_decomp(db: Session, package_id: int, decomp: dict) -> None:
@@ -81,11 +84,15 @@ async def extract(package_id: int, db: Session = Depends(get_db)):
         return fail("Chưa upload HSMT", 400)
     pdf_path = str(storage.abs_path(hsmt.file_path))
     workdir = str(storage.abs_path(f"{package_id}/rubric_work"))
+    log.info("[rubric] gói %s: bắt đầu bóc tiêu chí từ HSMT=%s", package_id, hsmt.file_path)
     try:
         decomp = await build_decomposition(pdf_path, workdir)
     except Exception as exc:  # no-silent-mock: pipeline lỗi (proxy tắt...) -> báo rõ
+        log.warning("[rubric] gói %s: pipeline lỗi: %s", package_id, exc)
         return fail(f"Bóc tách tiêu chí thất bại: {exc}", 502)
     _persist_decomp(db, package_id, decomp)
+    n = sum(len(g.get("criteria", [])) for g in decomp.get("groups", []))
+    log.info("[rubric] gói %s: đã lưu %d tiêu chí", package_id, n)
     return ok(_read_decomp(db, package_id))
 
 
