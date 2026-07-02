@@ -59,8 +59,7 @@ def _to_markdown(r: DecomposeResult) -> str:
                 else:
                     val = "—"
                 hs = f" ·HSDT:{n['hsdt_kiem_tra']}" if n.get("hsdt_kiem_tra") else ""
-                kc = f" ·{n.get('kieu_check')}" if n.get("kieu_check") else ""
-                lines.append(f"        - {n.get('noi_dung_kiem_tra')}{hs}{kc}")
+                lines.append(f"        - {n.get('noi_dung_kiem_tra')}{hs}")
                 lines.append(f"            · yêu cầu: {n.get('yeu_cau', '')}")
                 lines.append(f"            · thông tin bổ sung: {val}")
         if g.needs_review:

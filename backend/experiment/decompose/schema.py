@@ -2,7 +2,7 @@
 
 Bỏ CriterionDetailModel/sub_checks máy-so-sánh: Qwen3 tự đánh giá thông số, không cần code.
 Mỗi tiêu chí: nhom, ten (nhãn ngắn), yeu_cau_goc, hsdt_can_kiem_tra, tien_quyet,
-noi_dung_can_kiem_tra[{ten, gia_tri, nguon hsmt|hsdt, kieu_check, can_review}].
+noi_dung_can_kiem_tra[{noi_dung_kiem_tra, hsdt_kiem_tra, yeu_cau, can_lam_ro, thong_tin_bo_sung, nguon, can_review}].
 """
 from __future__ import annotations
 
@@ -44,7 +44,6 @@ class NoiDungKiemTra(_Base):
     yeu_cau: str = ""             # Yêu cầu cần đáp ứng (theo yeu_cau_goc) — LUÔN có
     can_lam_ro: str = ""          # Thông tin cần làm rõ (chưa rõ trong yeu_cau); '' nếu không
     can_tra_cuu: bool = False     # = (can_lam_ro != '') -> step 3 tra cứu
-    kieu_check: str = ""          # đối chiếu | tồn tại | so sánh ngày | ...
     thong_tin_bo_sung: str = ""   # (step 3) chuẩn ĐÃ RESOLVE, tự đủ, có quan hệ so sánh
     nguon: str = ""               # (step 3) mã điều khoản nguồn (E-BDL/E-CDNT), cho audit
     can_review: bool = False      # (step 3) True nếu can_tra_cuu mà tra không ra (KHÔNG bịa)

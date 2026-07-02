@@ -7,9 +7,9 @@ def _page(loai, text, image=b"\x89PNG", co_chu_ky=False):
     return PageRecord(file="f.pdf", trang=1, loai_ho_so=loai, text=text, co_chu_ky=co_chu_ky, image=image)
 
 
-def _nd(noi_dung, hsdt, kieu="đối chiếu"):
+def _nd(noi_dung, hsdt):
     return {"noi_dung_kiem_tra": noi_dung, "hsdt_kiem_tra": hsdt, "yeu_cau": "theo HSMT",
-            "thong_tin_bo_sung": "6.100.000 VNĐ", "kieu_check": kieu}
+            "thong_tin_bo_sung": "6.100.000 VNĐ"}
 
 
 async def test_eval_noi_dung_missing_doc_is_thieu_ho_so():
@@ -25,15 +25,18 @@ async def test_eval_noi_dung_pass_from_text():
                             [_page("bao_dam_du_thau", "bảo lãnh 6.100.000 VNĐ")], vision)
     assert v.ket_qua == KET_QUA_DAT and v.trang == [1]
     assert v.thong_tin_bo_sung == "6.100.000 VNĐ"   # chuẩn HSMT lưu vào verdict để audit
-    assert vision.calls[-1][1] == 0                 # check đối chiếu -> KHÔNG đính ảnh
+    assert vision.calls[-1][1] == 0                 # eval THUẦN TEXT -> KHÔNG bao giờ đính ảnh
 
 
-async def test_eval_noi_dung_visual_check_attaches_image():
-    vision = ScriptedVision({"[EV:Chữ ký đóng dấu]":
-                             {"ket_qua": "đạt", "bang_chung": "có chữ ký", "trang": [1], "do_tin": 0.8}})
-    await eval_noi_dung(_nd("Chữ ký đóng dấu", "bao_dam_du_thau", kieu="chữ ký & đóng dấu"),
-                        [_page("bao_dam_du_thau", "thư bảo lãnh", co_chu_ky=True)], vision)
-    assert vision.calls[-1][1] == 1                 # check thị giác -> đính 1 ảnh
+async def test_eval_signature_check_from_ingest_text():
+    # Chữ ký/dấu đã được ingest mô tả trong text + cờ -> eval kết luận trên text, KHÔNG cần ảnh.
+    vision = ScriptedVision({"[EV:Chữ ký & đóng dấu]":
+                             {"ket_qua": "đạt", "bang_chung": "có chữ ký và con dấu đỏ", "trang": [1]}})
+    v = await eval_noi_dung(_nd("Chữ ký & đóng dấu", "bao_dam_du_thau"),
+                            [_page("bao_dam_du_thau", "Thư bảo lãnh (có chữ ký; có đóng dấu)", co_chu_ky=True)],
+                            vision)
+    assert v.ket_qua == KET_QUA_DAT
+    assert vision.calls[-1][1] == 0                 # không đính ảnh
 
 
 async def test_criterion_rollup_blocking_fail_marks_loai():

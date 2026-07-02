@@ -11,7 +11,7 @@ def _generic_detail():
         "hsdt_can_kiem_tra": ["don_du_thau"], "tien_quyet": False,
         "noi_dung_can_kiem_tra": [
             {"noi_dung_kiem_tra": "Có tài liệu", "hsdt_kiem_tra": "don_du_thau",
-             "yeu_cau": "phải có", "can_lam_ro": "", "can_tra_cuu": False, "kieu_check": "tồn tại"}],
+             "yeu_cau": "phải có", "can_lam_ro": "", "can_tra_cuu": False}],
     }
 
 

@@ -48,7 +48,7 @@ StartEvent(group)
   ▼  fan-out: mỗi tiêu chí -> AnalyzeEvent
 [Step 2 analyze] (song song)  CHỈ từ tiêu chí (KHÔNG đưa source toàn nhóm -> tránh nhiễu). LLM xác định
                 tien_quyet + **noi_dung_can_kiem_tra** — checklist cần kiểm trên hsdt_can_kiem_tra. Mỗi
-                nội dung {noi_dung, yeu_cau, can_tra_cuu, kieu_check}: yeu_cau = chuẩn HSMT để đối chiếu;
+                nội dung {noi_dung, yeu_cau, can_tra_cuu}: yeu_cau = chuẩn HSMT để đối chiếu;
                 nếu là giá trị HSMT định nghĩa ở CHỖ KHÁC (E-BDL) -> để trống yeu_cau + can_tra_cuu=true.
                 (KHÔNG bịa số.)
   ▼  SearchEvent(crit, item)
@@ -63,7 +63,7 @@ StartEvent(group)
 
 > **Sửa (2026-06-30):** (a) output PHẲNG — bỏ `sub_checks/thong_so` máy-so-sánh (Qwen3 tự đánh giá
 > thông số). Tiêu chí: nhom, ten, **yeu_cau_goc**, **hsdt_can_kiem_tra**, tien_quyet,
-> **noi_dung_can_kiem_tra**[{noi_dung, yeu_cau, can_tra_cuu, kieu_check, can_review}]. (b) workflow gọn:
+> **noi_dung_can_kiem_tra**[{noi_dung, yeu_cau, can_tra_cuu, can_review}]. (b) workflow gọn:
 > `yeu_cau_goc` lên **step 1**; tách `detail` thành **analyze**+**search**; **critique có điều kiện**
 > (chỉ nhóm bảng). (c) **step 2 bỏ source** (chỉ dùng yeu_cau_goc của tiêu chí — source toàn nhóm gây
 > nhiễu); `noi_dung` schema dùng **can_tra_cuu** (bool) thay `nguon` (trigger tra cứu rõ ràng, vẫn chỉ
@@ -94,7 +94,7 @@ xác định offline; nghiệm thu ngữ nghĩa khi proxy bật:
         "yeu_cau_goc": "Giá trị bảo lãnh, thời gian hiệu lực, đơn vị thụ hưởng theo E-HSMT",
         "hsdt_can_kiem_tra": ["bao_lanh_du_thau"], "tien_quyet": true,
         "noi_dung_can_kiem_tra": [
-          {"noi_dung_kiem_tra":"Giá trị bảo lãnh","hsdt_kiem_tra":"bao_lanh_du_thau","yeu_cau":"Thỏa mãn giá trị bảo lãnh theo HSMT","can_lam_ro":"","can_tra_cuu":true,"kieu_check":"đối chiếu","thong_tin_bo_sung":"Giá trị bảo lãnh: 6.100.000 VNĐ","nguon":"E-BDL 18.2","can_review":false},
+          {"noi_dung_kiem_tra":"Giá trị bảo lãnh","hsdt_kiem_tra":"bao_lanh_du_thau","yeu_cau":"Thỏa mãn giá trị bảo lãnh theo HSMT","can_lam_ro":"","can_tra_cuu":true,"thong_tin_bo_sung":"Giá trị bảo lãnh: 6.100.000 VNĐ","nguon":"E-BDL 18.2","can_review":false},
           {"noi_dung_kiem_tra":"Thời gian hiệu lực","hsdt_kiem_tra":"bao_lanh_du_thau","yeu_cau":"Thỏa mãn thời gian hiệu lực theo HSMT","can_lam_ro":"","can_tra_cuu":true,"thong_tin_bo_sung":"Thời gian hiệu lực: ≥ 120 ngày","nguon":"E-BDL 18.2","can_review":false},
           {"noi_dung_kiem_tra":"Đơn vị thụ hưởng","hsdt_kiem_tra":"bao_lanh_du_thau","yeu_cau":"Thỏa mãn đơn vị thụ hưởng theo HSMT","thong_tin_bo_sung":"Đơn vị thụ hưởng: Liên doanh Việt - Nga Vietsovpetro","nguon":"E-BDL 1.1","can_review":false}
         ]

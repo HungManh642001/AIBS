@@ -39,7 +39,6 @@ SYS_STRUCT = (
     "-> ghi NGẮN thứ cần làm rõ (vd 'Giá trị bảo lãnh', 'Nội dung tư cách hợp lệ tại Mục 5 E-CDNT'). "
     "Nếu đã rõ (không cần tra) -> để trống.\n"
     "- can_tra_cuu: true nếu can_lam_ro khác rỗng; false nếu không.\n"
-    "- kieu_check: đối chiếu | tồn tại | so sánh ngày | ...\n"
     "TUYỆT ĐỐI KHÔNG bịa số/nội dung. Đặt tien_quyet=true nếu là tiêu chí loại/cổng."
 )
 SYS_QUERY = (
@@ -66,7 +65,7 @@ SYS_RESOLVE = (
 _CRIT_SCHEMA = (
     '{"nhom","ten","yeu_cau_goc","hsdt_can_kiem_tra":[...],"tien_quyet":false,'
     '"noi_dung_can_kiem_tra":[{"noi_dung_kiem_tra","hsdt_kiem_tra","yeu_cau","can_lam_ro",'
-    '"can_tra_cuu":false,"kieu_check"}]}'
+    '"can_tra_cuu":false}]}'
 )
 
 
@@ -106,12 +105,12 @@ def struct_prompt(crit: dict[str, Any]) -> str:
         "VÍ DỤ 1 — 'Nhà thầu bảo đảm tư cách hợp lệ theo Mục 5 E-CDNT' (hsdt=[don_du_thau]):\n"
         '  [{"noi_dung_kiem_tra":"Bảo đảm tư cách hợp lệ","hsdt_kiem_tra":"don_du_thau",'
         '"yeu_cau":"Phải bảo đảm tư cách hợp lệ theo Mục 5 E-CDNT",'
-        '"can_lam_ro":"Nội dung tư cách hợp lệ tại Mục 5 E-CDNT","can_tra_cuu":true,"kieu_check":"đối chiếu"}]\n'
+        '"can_lam_ro":"Nội dung tư cách hợp lệ tại Mục 5 E-CDNT","can_tra_cuu":true}]\n'
         "VÍ DỤ 2 — 'Thư bảo lãnh đúng giá trị/hiệu lực/đơn vị thụ hưởng theo HSMT' (hsdt=[bao_lanh_du_thau]):\n"
         '  [{"noi_dung_kiem_tra":"Giá trị bảo lãnh","hsdt_kiem_tra":"bao_lanh_du_thau",'
-        '"yeu_cau":"Thỏa mãn giá trị bảo lãnh theo HSMT","can_lam_ro":"Giá trị bảo lãnh","can_tra_cuu":true,"kieu_check":"đối chiếu"},\n'
+        '"yeu_cau":"Thỏa mãn giá trị bảo lãnh theo HSMT","can_lam_ro":"Giá trị bảo lãnh","can_tra_cuu":true},\n'
         '   {"noi_dung_kiem_tra":"Thời gian hiệu lực","hsdt_kiem_tra":"bao_lanh_du_thau",'
-        '"yeu_cau":"Thỏa mãn thời gian hiệu lực theo HSMT","can_lam_ro":"Thời gian hiệu lực bảo lãnh","can_tra_cuu":true,"kieu_check":"đối chiếu"}]\n\n'
+        '"yeu_cau":"Thỏa mãn thời gian hiệu lực theo HSMT","can_lam_ro":"Thời gian hiệu lực bảo lãnh","can_tra_cuu":true}]\n\n'
         + cot_block(_CRIT_SCHEMA)
     )
 

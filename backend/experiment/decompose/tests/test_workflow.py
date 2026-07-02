@@ -21,10 +21,10 @@ _TABLE_GROUP = {
 }
 
 
-def _nd(noi_dung, yeu_cau="theo HSMT", can_lam_ro="", kieu="đối chiếu", hsdt="don_du_thau"):
+def _nd(noi_dung, yeu_cau="theo HSMT", can_lam_ro="", hsdt="don_du_thau"):
     """Item noi_dung_can_kiem_tra. can_lam_ro != '' -> cần tra cứu (step 3 tra)."""
     return {"noi_dung_kiem_tra": noi_dung, "hsdt_kiem_tra": hsdt, "yeu_cau": yeu_cau,
-            "can_lam_ro": can_lam_ro, "can_tra_cuu": bool(can_lam_ro), "kieu_check": kieu}
+            "can_lam_ro": can_lam_ro, "can_tra_cuu": bool(can_lam_ro)}
 
 
 def _crit(ten, contents, nhom="hop_le", tien_quyet=False, hsdt=None):
@@ -49,7 +49,7 @@ async def test_critique_adds_missing_and_no_fabrication():
         "[TAG:LIST]": {"criteria": [{"nhom": "nang_luc", "ten": "Đơn dự thầu hợp lệ"}]},
         "[TAG:CRITIQUE]": {"criteria": [{"nhom": "nang_luc", "ten": "Bảo đảm dự thầu"}]},
         "[TAG:STRUCT:Đơn dự thầu hợp lệ]": _crit(
-            "Đơn dự thầu hợp lệ", [_nd("Có đơn dự thầu", yeu_cau="phải có đơn", kieu="tồn tại")],
+            "Đơn dự thầu hợp lệ", [_nd("Có đơn dự thầu", yeu_cau="phải có đơn")],
             nhom="nang_luc"),
         "[TAG:STRUCT:Bảo đảm dự thầu]": _crit(
             "Bảo đảm dự thầu", [_nd("Giá trị bảo lãnh", can_lam_ro="Giá trị bảo lãnh")], nhom="nang_luc"),
@@ -165,7 +165,7 @@ async def test_no_lookup_item_not_searched_or_flagged():
         "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Thời gian ký đơn"}]},
         "[TAG:STRUCT:Thời gian ký đơn]": _crit("Thời gian ký đơn", [
             _nd("Thời điểm phát hành HSMT", can_lam_ro="Thời điểm phát hành HSMT"),
-            _nd("Ngày ký đơn dự thầu", yeu_cau="sau thời điểm phát hành HSMT", kieu="so sánh ngày"),
+            _nd("Ngày ký đơn dự thầu", yeu_cau="sau thời điểm phát hành HSMT"),
         ]),
         "[TAG:QUERY:Thời điểm phát hành HSMT]": {"query": "thời điểm phát hành hồ sơ mời thầu"},
         "[TAG:RESOLVE:Thời điểm phát hành HSMT]":

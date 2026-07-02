@@ -40,7 +40,7 @@ def test_validate_criterion_shape():
         "noi_dung_can_kiem_tra": [
             {"noi_dung_kiem_tra": "Giá trị bảo lãnh", "hsdt_kiem_tra": "bao_lanh_du_thau",
              "yeu_cau": "Thỏa mãn giá trị bảo lãnh", "can_lam_ro": "Giá trị bảo lãnh",
-             "can_tra_cuu": True, "kieu_check": "đối chiếu"},
+             "can_tra_cuu": True},
             {"noi_dung_kiem_tra": "Thời gian hiệu lực", "can_tra_cuu": True},  # thiếu field -> default
         ],
         "field_la": "bị bỏ",  # extra="ignore"

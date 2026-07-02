@@ -5,8 +5,6 @@ import unicodedata
 
 from experiment.evaluate.schema import PageRecord
 
-_VISUAL = ("chu ky", "dau")  # chữ ký / con dấu / đóng dấu
-
 
 def _norm(s: str) -> str:
     s = (s or "").lower().strip().replace("đ", "d")
@@ -18,10 +16,15 @@ def route_pages(pages: list[PageRecord], hsdt_kiem_tra: str) -> list[PageRecord]
     return [p for p in pages if _norm(p.loai_ho_so) == key] if key else []
 
 
+def _flags(p: PageRecord) -> str:
+    """Hiện cờ thị giác trong text để eval biết có chữ ký/đóng dấu (bù cho việc không đính ảnh)."""
+    fs = []
+    if p.co_chu_ky:
+        fs.append("có chữ ký")
+    if p.co_dau:
+        fs.append("có đóng dấu")
+    return f" ({'; '.join(fs)})" if fs else ""
+
+
 def pages_text(pages: list[PageRecord]) -> str:
-    return "\n".join(f"[Trang {p.trang}] {p.text}" for p in pages)
-
-
-def has_visual_check(kieu_check: str) -> bool:
-    n = _norm(kieu_check)
-    return any(v in n for v in _VISUAL)
+    return "\n".join(f"[Trang {p.trang}]{_flags(p)} {p.text}" for p in pages)

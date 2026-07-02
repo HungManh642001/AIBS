@@ -5,7 +5,7 @@ import logging
 from typing import Any
 
 from experiment.evaluate.prompts import SYS_EVAL, eval_prompt
-from experiment.evaluate.route import has_visual_check, pages_text, route_pages
+from experiment.evaluate.route import pages_text, route_pages
 from experiment.evaluate.schema import (
     KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU,
     CriterionEval, PageRecord, Verdict, validate_eval_verdict,
@@ -27,15 +27,13 @@ def _verdict(nd: dict[str, Any], ket_qua: str, bang_chung: str = "",
 
 
 async def eval_noi_dung(nd: dict[str, Any], pages: list[PageRecord], vision_fn: VisionFn) -> Verdict:
-    """1 nội dung kiểm tra -> verdict (route + đối chiếu; đính ảnh nếu check thị giác)."""
+    """1 nội dung kiểm tra -> verdict (route + đối chiếu THUẦN TEXT; chữ ký/dấu đã có trong text ingest)."""
     matched = route_pages(pages, nd.get("hsdt_kiem_tra", ""))
     if not matched:
         return _verdict(nd, KET_QUA_THIEU, bang_chung=f"HSDT không có: {nd.get('hsdt_kiem_tra', '')}",
                         ghi_chu="thiếu hồ sơ tương ứng")
-    visual = has_visual_check(nd.get("kieu_check", ""))
-    images = [p.image for p in matched if p.image] if visual else []
-    out = await vision_fn(SYS_EVAL, eval_prompt(nd, pages_text(matched), has_image=bool(images)),
-                          images=images, validate=validate_eval_verdict, max_tokens=_EVAL_MAX_TOKENS)
+    out = await vision_fn(SYS_EVAL, eval_prompt(nd, pages_text(matched)),
+                          validate=validate_eval_verdict, max_tokens=_EVAL_MAX_TOKENS)
     if out.status == "error":
         return _verdict(nd, KET_QUA_LOI, bang_chung=f"AI lỗi: {out.error}", ghi_chu="cần soi lại")
     d = out.data

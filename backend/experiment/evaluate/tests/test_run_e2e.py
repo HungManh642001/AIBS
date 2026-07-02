@@ -15,7 +15,7 @@ async def test_run_e2e_legality(tmp_path):
         "nhom": "hop_le", "ten": "Bảo đảm dự thầu", "tien_quyet": True,
         "noi_dung_can_kiem_tra": [{"noi_dung_kiem_tra": "Giá trị bảo lãnh",
             "hsdt_kiem_tra": "bao_dam_du_thau", "yeu_cau": "theo HSMT",
-            "thong_tin_bo_sung": "6.100.000 VNĐ", "kieu_check": "đối chiếu"}]}]},
+            "thong_tin_bo_sung": "6.100.000 VNĐ"}]}]},
         {"group": "tai_chinh", "criteria": [{"nhom": "tai_chinh", "ten": "Giá", "noi_dung_can_kiem_tra": []}]}]}
     dp = tmp_path / "decomposition.json"
     dp.write_text(json.dumps(decomp, ensure_ascii=False), encoding="utf-8")
