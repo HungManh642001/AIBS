@@ -18,13 +18,14 @@ export interface RankRow {
 }
 export interface ResultsPayload { criteria: Criteria[]; vendors: VendorResults[]; ranking: RankRow[]; }
 export interface ArtifactValidation { match: boolean; suggested_type: string; confidence: number; note: string; }
-export interface SubCheck {
-  id?: number; ten: string; check_type: string; thong_so: Record<string, unknown>;
-  required_artifact: string; blocking: boolean;
+export interface NoiDungKiemTra {
+  id?: number; noi_dung_kiem_tra: string; hsdt_kiem_tra: string; yeu_cau: string;
+  can_lam_ro: string; can_tra_cuu: boolean; thong_tin_bo_sung: string; nguon: string;
+  can_review: boolean;
 }
 export interface RubricCriteria {
-  id?: number; nhom: string; ten: string; yeu_cau: string; required_artifacts: string[];
-  kieu: string; trong_so: number; sub_checks: SubCheck[];
+  id?: number; nhom: string; ten: string; yeu_cau_goc: string;
+  hsdt_can_kiem_tra: string[]; tien_quyet: boolean; noi_dung_can_kiem_tra: NoiDungKiemTra[];
 }
 export interface SubResult {
   id: number; sub_check_ten: string; result: string; evidence: string;

@@ -4,10 +4,6 @@ import { useParams, useNavigate } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import { ARTIFACT_TYPES, type RubricCriteria } from "../api/types";
 
-const CHECK_TYPES = ["presence", "form_match", "signature_stamp", "authority",
-  "value_threshold", "date_validity", "quantity_match", "semantic_match"]
-  .map((v) => ({ value: v, label: v }));
-
 export default function Rubric() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -38,10 +34,10 @@ export default function Rubric() {
     } catch (e: any) { message.error(e.message); }
   };
 
-  const setSub = (ci: number, si: number, key: string, val: unknown) => {
+  const setNoiDung = (ci: number, ni: number, key: string, val: unknown) => {
     setCriteria((prev) => {
       const next = structuredClone(prev);
-      (next[ci].sub_checks[si] as any)[key] = val;
+      (next[ci].noi_dung_can_kiem_tra[ni] as any)[key] = val;
       return next;
     });
   };
@@ -61,25 +57,29 @@ export default function Rubric() {
       </div>
 
       {criteria.map((c, ci) => (
-        <Card key={ci} title={`${c.ten}`} style={{ marginBottom: 12 }} extra={
-          <span>Loại HS: {c.required_artifacts.map((a) => <Tag key={a}>{a}</Tag>)}</span>}>
-          <Table rowKey={(_, i) => String(i)} pagination={false} dataSource={c.sub_checks}
+        <Card key={ci} title={c.ten} style={{ marginBottom: 12 }} extra={
+          <span>
+            <Tag color="blue">{c.nhom}</Tag>
+            {c.tien_quyet && <Tag color="red">Tiên quyết</Tag>}
+            {c.hsdt_can_kiem_tra?.map((a) => <Tag key={a}>{a}</Tag>)}
+          </span>}>
+          <p style={{ color: "#666", marginTop: 0 }}>Yêu cầu gốc (HSMT): {c.yeu_cau_goc}</p>
+          <Table rowKey={(_, i) => String(i)} pagination={false} dataSource={c.noi_dung_can_kiem_tra}
             columns={[
-              { title: "Điểm kiểm", dataIndex: "ten",
-                render: (t, _s, si) => <Input value={t} onChange={(e) => setSub(ci, si, "ten", e.target.value)} /> },
-              { title: "Loại kiểm", dataIndex: "check_type",
-                render: (t, _s, si) => <Select value={t} options={CHECK_TYPES} className="min-w-40"
-                  onChange={(v) => setSub(ci, si, "check_type", v)} /> },
-              { title: "Loại hồ sơ", dataIndex: "required_artifact",
-                render: (t, _s, si) => <Select value={t} options={ARTIFACT_TYPES} className="min-w-44"
-                  onChange={(v) => setSub(ci, si, "required_artifact", v)} /> },
-              { title: "Ngưỡng (JSON)", dataIndex: "thong_so",
-                render: (t, _s, si) => <Input value={JSON.stringify(t)}
-                  onChange={(e) => { try { setSub(ci, si, "thong_so", JSON.parse(e.target.value)); } catch { /* giữ nguyên */ } }} /> },
-              { title: "Bắt buộc", dataIndex: "blocking",
-                render: (t: boolean, _s, si) => <Select value={t ? "1" : "0"}
-                  options={[{ value: "1", label: "Có" }, { value: "0", label: "Không" }]}
-                  onChange={(v) => setSub(ci, si, "blocking", v === "1")} /> },
+              { title: "Nội dung kiểm tra (HSDT)", dataIndex: "noi_dung_kiem_tra",
+                render: (t, _n, ni) => <Input value={t} onChange={(e) => setNoiDung(ci, ni, "noi_dung_kiem_tra", e.target.value)} /> },
+              { title: "Hồ sơ", dataIndex: "hsdt_kiem_tra",
+                render: (t, _n, ni) => <Select value={t} options={ARTIFACT_TYPES} className="min-w-44"
+                  onChange={(v) => setNoiDung(ci, ni, "hsdt_kiem_tra", v)} /> },
+              { title: "Yêu cầu", dataIndex: "yeu_cau",
+                render: (t, _n, ni) => <Input value={t} onChange={(e) => setNoiDung(ci, ni, "yeu_cau", e.target.value)} /> },
+              { title: "Thông tin bổ sung (chuẩn HSMT)", dataIndex: "thong_tin_bo_sung",
+                render: (t, _n, ni) => <Input value={t} onChange={(e) => setNoiDung(ci, ni, "thong_tin_bo_sung", e.target.value)} /> },
+              { title: "Nguồn", dataIndex: "nguon",
+                render: (t, _n, ni) => <Input value={t} className="min-w-28"
+                  onChange={(e) => setNoiDung(ci, ni, "nguon", e.target.value)} /> },
+              { title: "Cần soi", dataIndex: "can_review",
+                render: (t: boolean) => t ? <Tag color="orange">Cần soi</Tag> : <Tag color="green">OK</Tag> },
             ]} />
         </Card>
       ))}

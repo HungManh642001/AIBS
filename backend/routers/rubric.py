@@ -1,93 +1,70 @@
-"""Router tiêu chí đánh giá: trích từ HSMT, chuyên gia sửa, chốt."""
+"""Router tiêu chí đánh giá: bóc từ HSMT bằng pipeline decompose, chuyên gia sửa, chốt."""
 from __future__ import annotations
-import json
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import models
+import storage
 from database import get_db
 from responses import ok, fail
-from services.hsmt_locator import locate_hsmt_sections
-from services.extraction import extract_rubric
+from services.rubric_pipeline import build_decomposition
 
 router = APIRouter(prefix="/api/v1/packages", tags=["rubric"])
 
 
-def _pages(doc: models.TenderDocument) -> list[dict]:
-    return json.loads(doc.extracted_text) if doc.extracted_text else []
+def _persist_decomp(db: Session, package_id: int, decomp: dict) -> None:
+    """Xóa tiêu chí cũ của gói (cascade noi_dung) rồi tạo lại từ decomposition dict."""
+    olds = db.scalars(select(models.RubricCriterion).where(
+        models.RubricCriterion.package_id == package_id)).all()
+    for c in olds:
+        db.delete(c)  # cascade xoá noi_dung
+    db.flush()
 
-
-def _persist(db: Session, package_id: int, criteria: list[dict]) -> None:
-    """Xóa tiêu chí cũ (sub-checks trước, rồi criteria) rồi tạo lại."""
-    olds = db.scalars(select(models.EvaluationCriteria).where(
-        models.EvaluationCriteria.package_id == package_id)).all()
-    old_ids = [c.id for c in olds]
-    if old_ids:
-        old_sub_ids = [s.id for s in db.scalars(select(models.EvaluationSubCheck).where(
-            models.EvaluationSubCheck.criteria_id.in_(old_ids))).all()]
-        if old_sub_ids:
-            db.query(models.SubCheckResult).filter(
-                models.SubCheckResult.sub_check_id.in_(old_sub_ids)).delete(synchronize_session=False)
-        db.query(models.EvaluationResult).filter(
-            models.EvaluationResult.criteria_id.in_(old_ids)).delete(synchronize_session=False)
-        db.query(models.EvaluationSubCheck).filter(
-            models.EvaluationSubCheck.criteria_id.in_(old_ids)).delete(synchronize_session=False)
-    db.query(models.EvaluationCriteria).filter_by(package_id=package_id).delete()
-    for c in criteria:
-        row = models.EvaluationCriteria(
-            package_id=package_id,
-            nhom=c.get("nhom", "hop_le"),
-            ten=c.get("ten", ""),
-            yeu_cau=c.get("yeu_cau", ""),
-            trong_so=float(c.get("trong_so") or 0),
-            kieu=c.get("kieu", "pass_fail"),
-            required_artifacts=c.get("required_artifacts", []),
-        )
-        db.add(row)
-        db.flush()
-        for i, s in enumerate(c.get("sub_checks", [])):
-            db.add(models.EvaluationSubCheck(
-                criteria_id=row.id,
-                ten=s.get("ten", ""),
-                check_type=s.get("check_type", ""),
-                thong_so=s.get("thong_so", {}),
-                required_artifact=s.get("required_artifact", ""),
-                thu_tu=i,
-                blocking=bool(s.get("blocking", True)),
-            ))
+    thu_tu = 0
+    for g in decomp.get("groups", []):
+        for c in g.get("criteria", []):
+            crit = models.RubricCriterion(
+                package_id=package_id, thu_tu=thu_tu,
+                nhom=c.get("nhom", "hop_le"), ten=c.get("ten", ""),
+                yeu_cau_goc=c.get("yeu_cau_goc", ""),
+                hsdt_can_kiem_tra=c.get("hsdt_can_kiem_tra", []),
+                tien_quyet=bool(c.get("tien_quyet")), loi_ai=c.get("loi_ai", ""),
+            )
+            db.add(crit)
+            db.flush()
+            for i, n in enumerate(c.get("noi_dung_can_kiem_tra", [])):
+                db.add(models.RubricNoiDung(
+                    criterion_id=crit.id, thu_tu=i,
+                    noi_dung_kiem_tra=n.get("noi_dung_kiem_tra", ""),
+                    hsdt_kiem_tra=n.get("hsdt_kiem_tra", ""),
+                    yeu_cau=n.get("yeu_cau", ""), can_lam_ro=n.get("can_lam_ro", ""),
+                    can_tra_cuu=bool(n.get("can_tra_cuu")),
+                    thong_tin_bo_sung=n.get("thong_tin_bo_sung", ""),
+                    nguon=n.get("nguon", ""), can_review=bool(n.get("can_review")),
+                ))
+            thu_tu += 1
     db.commit()
 
 
-def _read(db: Session, package_id: int) -> dict:
-    """Đọc tiêu chí đánh giá kèm sub-checks lồng nhau."""
-    crits = db.scalars(select(models.EvaluationCriteria).where(
-        models.EvaluationCriteria.package_id == package_id)).all()
+def _read_decomp(db: Session, package_id: int) -> dict:
+    """Đọc tiêu chí + noi_dung_can_kiem_tra lồng nhau."""
+    crits = db.scalars(select(models.RubricCriterion).where(
+        models.RubricCriterion.package_id == package_id)
+        .order_by(models.RubricCriterion.thu_tu)).all()
     out = []
     for c in crits:
-        subs = db.scalars(
-            select(models.EvaluationSubCheck)
-            .where(models.EvaluationSubCheck.criteria_id == c.id)
-            .order_by(models.EvaluationSubCheck.thu_tu)
-        ).all()
         out.append({
-            "id": c.id,
-            "nhom": c.nhom,
-            "ten": c.ten,
-            "yeu_cau": c.yeu_cau,
-            "required_artifacts": c.required_artifacts,
-            "kieu": c.kieu,
-            "trong_so": c.trong_so,
-            "sub_checks": [
-                {
-                    "id": s.id,
-                    "ten": s.ten,
-                    "check_type": s.check_type,
-                    "thong_so": s.thong_so,
-                    "required_artifact": s.required_artifact,
-                    "blocking": s.blocking,
-                }
-                for s in subs
+            "id": c.id, "nhom": c.nhom, "ten": c.ten, "yeu_cau_goc": c.yeu_cau_goc,
+            "hsdt_can_kiem_tra": c.hsdt_can_kiem_tra, "tien_quyet": c.tien_quyet,
+            "noi_dung_can_kiem_tra": [
+                {"id": n.id, "noi_dung_kiem_tra": n.noi_dung_kiem_tra,
+                 "hsdt_kiem_tra": n.hsdt_kiem_tra, "yeu_cau": n.yeu_cau,
+                 "can_lam_ro": n.can_lam_ro, "can_tra_cuu": n.can_tra_cuu,
+                 "thong_tin_bo_sung": n.thong_tin_bo_sung, "nguon": n.nguon,
+                 "can_review": n.can_review}
+                for n in c.noi_dung
             ],
         })
     return {"criteria": out}
@@ -95,44 +72,43 @@ def _read(db: Session, package_id: int) -> dict:
 
 @router.post("/{package_id}/rubric")
 async def extract(package_id: int, db: Session = Depends(get_db)):
-    """Trích xuất tiêu chí đánh giá từ HSMT bằng AI và lưu vào DB."""
+    """Bóc tiêu chí từ HSMT bằng pipeline decompose (extract+chunk+index+decompose) và lưu."""
     pkg = db.get(models.ProcurementPackage, package_id)
     if not pkg:
         return fail("Không tìm thấy gói thầu", 404)
     hsmt = next((d for d in pkg.documents if d.loai == "HSMT"), None)
     if not hsmt:
         return fail("Chưa upload HSMT", 400)
-    sections = locate_hsmt_sections(_pages(hsmt))
-    if not sections["tcdg"]["located"]:
-        return fail("Không định vị được mục Tiêu chuẩn đánh giá trong HSMT — kiểm tra lại file HSMT", 422)
-    print(sections)
-    outcome = await extract_rubric(sections)
-    if outcome.status == "error":
-        return fail(f"Trích xuất tiêu chí thất bại: {outcome.error}", 502)
-    _persist(db, package_id, outcome.data["criteria"])
-    return ok(_read(db, package_id))
+    pdf_path = str(storage.abs_path(hsmt.file_path))
+    workdir = str(storage.abs_path(f"{package_id}/rubric_work"))
+    try:
+        decomp = await build_decomposition(pdf_path, workdir)
+    except Exception as exc:  # no-silent-mock: pipeline lỗi (proxy tắt...) -> báo rõ
+        return fail(f"Bóc tách tiêu chí thất bại: {exc}", 502)
+    _persist_decomp(db, package_id, decomp)
+    return ok(_read_decomp(db, package_id))
 
 
 @router.get("/{package_id}/rubric")
 async def get_rubric(package_id: int, db: Session = Depends(get_db)):
-    """Trả tiêu chí đánh giá đã lưu kèm sub-checks."""
+    """Trả tiêu chí đã lưu kèm noi_dung_can_kiem_tra."""
     if not db.get(models.ProcurementPackage, package_id):
         return fail("Không tìm thấy gói thầu", 404)
-    return ok(_read(db, package_id))
+    return ok(_read_decomp(db, package_id))
 
 
 @router.put("/{package_id}/rubric")
 async def update_rubric(package_id: int, payload: dict, db: Session = Depends(get_db)):
-    """Cập nhật tiêu chí đánh giá theo chỉnh sửa của chuyên gia."""
+    """Cập nhật tiêu chí theo chỉnh sửa của chuyên gia."""
     if not db.get(models.ProcurementPackage, package_id):
         return fail("Không tìm thấy gói thầu", 404)
-    _persist(db, package_id, payload.get("criteria", []))
-    return ok(_read(db, package_id))
+    _persist_decomp(db, package_id, {"groups": [{"criteria": payload.get("criteria", [])}]})
+    return ok(_read_decomp(db, package_id))
 
 
 @router.post("/{package_id}/rubric/confirm")
 async def confirm_rubric(package_id: int, db: Session = Depends(get_db)):
-    """Chốt tiêu chí đánh giá: chuyển trạng thái gói thầu sang dang_xu_ly."""
+    """Chốt tiêu chí: chuyển trạng thái gói thầu sang dang_xu_ly."""
     pkg = db.get(models.ProcurementPackage, package_id)
     if not pkg:
         return fail("Không tìm thấy gói thầu", 404)

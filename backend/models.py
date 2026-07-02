@@ -131,3 +131,38 @@ class SubCheckResult(Base):
     ai_model: Mapped[str] = mapped_column(String(64), default="")
     overridden: Mapped[bool] = mapped_column(default=False)
     ghi_chu: Mapped[str] = mapped_column(Text, default="")
+
+
+# ---- Rubric agentic (decompose pipeline) — bảng riêng cho schema mới ----
+class RubricCriterion(Base):
+    """Tiêu chí đánh giá do pipeline decompose sinh (thay extract_rubric)."""
+    __tablename__ = "rubric_criterion"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    package_id: Mapped[int] = mapped_column(ForeignKey("procurement_package.id"))
+    thu_tu: Mapped[int] = mapped_column(Integer, default=0)
+    nhom: Mapped[str] = mapped_column(String(16), default="hop_le")
+    ten: Mapped[str] = mapped_column(String(512), default="")
+    yeu_cau_goc: Mapped[str] = mapped_column(Text, default="")
+    hsdt_can_kiem_tra: Mapped[list[str]] = mapped_column(JSON, default=list)
+    tien_quyet: Mapped[bool] = mapped_column(default=False)
+    loi_ai: Mapped[str] = mapped_column(Text, default="")
+    noi_dung: Mapped[list[RubricNoiDung]] = relationship(
+        back_populates="criterion", cascade="all, delete-orphan",
+        order_by="RubricNoiDung.thu_tu")
+
+
+class RubricNoiDung(Base):
+    """Một nội dung cần kiểm tra của tiêu chí (kèm chuẩn HSMT đã tra)."""
+    __tablename__ = "rubric_noi_dung"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    criterion_id: Mapped[int] = mapped_column(ForeignKey("rubric_criterion.id"))
+    thu_tu: Mapped[int] = mapped_column(Integer, default=0)
+    noi_dung_kiem_tra: Mapped[str] = mapped_column(String(512), default="")
+    hsdt_kiem_tra: Mapped[str] = mapped_column(String(64), default="")
+    yeu_cau: Mapped[str] = mapped_column(Text, default="")
+    can_lam_ro: Mapped[str] = mapped_column(Text, default="")
+    can_tra_cuu: Mapped[bool] = mapped_column(default=False)
+    thong_tin_bo_sung: Mapped[str] = mapped_column(Text, default="")
+    nguon: Mapped[str] = mapped_column(String(128), default="")
+    can_review: Mapped[bool] = mapped_column(default=False)
+    criterion: Mapped[RubricCriterion] = relationship(back_populates="noi_dung")
