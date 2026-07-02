@@ -18,6 +18,11 @@ class VendorOut(BaseModel):
     ma_so_thue: str = ""
 
 
+class VendorCreate(BaseModel):
+    ten: str
+    ma_so_thue: str = ""
+
+
 class PackageOut(BaseModel):
     id: int
     ma_so: str

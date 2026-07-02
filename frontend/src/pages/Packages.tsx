@@ -88,21 +88,16 @@ export default function Packages() {
             },
             {
               title: "",
-              width: 160,
+              width: 90,
               render: (_, r) => (
-                <span style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                  <Link to={`/packages/${r.id}`} style={{ fontSize: 13, color: "var(--teal)" }}>
-                    Chi tiết →
-                  </Link>
-                  <Popconfirm
-                    title="Xóa gói thầu này?"
-                    description="Xóa toàn bộ tài liệu, tiêu chí và kết quả của gói."
-                    okText="Xóa" cancelText="Hủy" okButtonProps={{ danger: true }}
-                    onConfirm={() => del(r.id)}
-                  >
-                    <Button danger size="small" icon={<DeleteOutlined />}>Xóa</Button>
-                  </Popconfirm>
-                </span>
+                <Popconfirm
+                  title="Xóa gói thầu này?"
+                  description="Xóa toàn bộ tài liệu, tiêu chí và kết quả của gói."
+                  okText="Xóa" cancelText="Hủy" okButtonProps={{ danger: true }}
+                  onConfirm={() => del(r.id)}
+                >
+                  <Button danger size="small" icon={<DeleteOutlined />}>Xóa</Button>
+                </Popconfirm>
               ),
             },
           ]}

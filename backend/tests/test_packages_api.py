@@ -33,3 +33,18 @@ def test_delete_package(client):
 def test_delete_package_not_found(client):
     r = client.delete("/api/v1/packages/99999")
     assert r.status_code == 404
+
+
+def test_add_vendor_to_package(client):
+    pid = client.post("/api/v1/packages", json={
+        "ma_so": "G-V", "ten": "Gói V", "vendors": ["Công ty A"]}).json()["data"]["id"]
+    r = client.post(f"/api/v1/packages/{pid}/vendors", json={"ten": "Công ty B", "ma_so_thue": "123"})
+    assert r.status_code == 200
+    vendors = r.json()["data"]["vendors"]
+    assert len(vendors) == 2 and any(v["ten"] == "Công ty B" for v in vendors)
+
+
+def test_add_vendor_empty_name_400(client):
+    pid = client.post("/api/v1/packages", json={"ma_so": "G-VE", "ten": "g"}).json()["data"]["id"]
+    r = client.post(f"/api/v1/packages/{pid}/vendors", json={"ten": "  "})
+    assert r.status_code == 400

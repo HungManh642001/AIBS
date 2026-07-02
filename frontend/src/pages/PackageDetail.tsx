@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Button, Card, Select, Table, Upload, message } from "antd";
+import { Button, Card, Input, Select, Table, Tag, Upload, message } from "antd";
+import { PlusOutlined } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import type { Package } from "../api/types";
@@ -15,6 +16,7 @@ export default function PackageDetail() {
   const [vendorId, setVendorId] = useState<number | undefined>();
   const [evaluating, setEvaluating] = useState(false);
   const [artifactType, setArtifactType] = useState<string | undefined>();
+  const [newVendor, setNewVendor] = useState("");
 
   const load = () => {
     api.get(`/packages/${id}`).then((r) => setPkg(unwrap<Package>(r)));
@@ -38,6 +40,16 @@ export default function PackageDetail() {
       load();
     } catch (e: any) { message.error(e.message); }
     return false;
+  };
+
+  const addVendor = async () => {
+    if (!newVendor.trim()) { message.warning("Nhập tên nhà thầu"); return; }
+    try {
+      const r = await api.post(`/packages/${id}/vendors`, { ten: newVendor.trim() });
+      setPkg(unwrap<Package>(r));
+      setNewVendor("");
+      message.success("Đã thêm nhà thầu");
+    } catch (e: any) { message.error(e.message); }
   };
 
   const runEvaluate = async () => {
@@ -73,6 +85,16 @@ export default function PackageDetail() {
           <Button type="primary" loading={evaluating} onClick={runEvaluate}>
             Chạy đánh giá AI</Button>
         </div>
+      </Card>
+      <Card title="Nhà thầu">
+        <div className="flex gap-2 items-center" style={{ marginBottom: 12 }}>
+          <Input placeholder="Tên nhà thầu" value={newVendor} style={{ maxWidth: 320 }}
+            onChange={(e) => setNewVendor(e.target.value)} onPressEnter={addVendor} />
+          <Button icon={<PlusOutlined />} onClick={addVendor}>Thêm nhà thầu</Button>
+        </div>
+        {pkg.vendors.length === 0
+          ? <span style={{ color: "var(--ink-muted)" }}>Chưa có nhà thầu nào.</span>
+          : pkg.vendors.map((v) => <Tag key={v.id} style={{ marginBottom: 4 }}>{v.ten}</Tag>)}
       </Card>
       <Card title="Tài liệu">
         <Table rowKey="id" dataSource={docs} pagination={false} columns={[

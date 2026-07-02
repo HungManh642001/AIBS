@@ -10,7 +10,7 @@ import models
 import storage
 from database import get_db
 from responses import ok, fail
-from schemas import PackageCreate, PackageOut, VendorOut
+from schemas import PackageCreate, PackageOut, VendorCreate, VendorOut
 
 router = APIRouter(prefix="/api/v1/packages", tags=["packages"])
 
@@ -59,6 +59,21 @@ async def get_package(package_id: int, db: Session = Depends(get_db)):
     pkg = db.get(models.ProcurementPackage, package_id)
     if not pkg:
         return fail("Không tìm thấy gói thầu", 404)
+    return ok(_to_out(pkg))
+
+
+@router.post("/{package_id}/vendors")
+async def add_vendor(package_id: int, payload: VendorCreate, db: Session = Depends(get_db)):
+    """Thêm 1 nhà thầu vào gói thầu; trả gói kèm danh sách nhà thầu đã cập nhật."""
+    pkg = db.get(models.ProcurementPackage, package_id)
+    if not pkg:
+        return fail("Không tìm thấy gói thầu", 404)
+    if not payload.ten.strip():
+        return fail("Tên nhà thầu không được rỗng", 400)
+    db.add(models.Vendor(package_id=package_id, ten=payload.ten.strip(),
+                         ma_so_thue=payload.ma_so_thue.strip()))
+    db.commit()
+    db.refresh(pkg)
     return ok(_to_out(pkg))
 
 
