@@ -228,3 +228,14 @@ async def test_reference_following_injects_phan4():
     list_call = next(c for c in llm.calls if "[TAG:LIST]" in c)
     assert "NỘI DUNG THAM CHIẾU PHẦN 4" in list_call
     assert "công suất tối thiểu 10kW" in list_call
+
+
+def test_hit_source_attributes_tbmt_when_no_clause():
+    # có mã điều khoản -> ưu tiên mã (giữ hành vi cũ)
+    clause = [{"metadata": {"clause_id": "18.2", "clause_doc": "bdl"}}]
+    assert DecomposeWorkflow._hit_source(clause) == "E-BDL 18.2"
+    # không có mã, thuộc TBMT -> quy về tài liệu + trang
+    tbmt = [{"metadata": {"source_doc": "tbmt", "page_start": 1}}]
+    assert DecomposeWorkflow._hit_source(tbmt) == "Thông báo mời thầu tr 1"
+    # HSMT không mã điều khoản -> "" (không quy nguồn theo tài liệu)
+    assert DecomposeWorkflow._hit_source([{"metadata": {"source_doc": "hsmt"}}]) == ""

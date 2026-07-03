@@ -141,15 +141,24 @@ class DecomposeWorkflow(Workflow):
         """Nhóm nặng bảng (vd năng lực) -> bật critique chống sót; free-text -> bỏ qua."""
         return any(b.get("type") == "table" for b in group.get("blocks", []))
 
+    _SOURCE_LABELS = {"tbmt": "Thông báo mời thầu"}  # source_doc -> nhãn người đọc
+
     @staticmethod
     def _hit_source(hits: list[dict]) -> str:
-        """Backfill nguon: mã điều khoản của hit đầu tiên có clause_id (E-BDL/E-CDNT)."""
+        """nguon: ưu tiên mã điều khoản (E-BDL/E-CDNT); không có -> quy theo tài liệu nguồn (TBMT...)."""
         for h in hits or []:
             m = h.get("metadata") or {}
             cid = m.get("clause_id")
             if cid:
                 prefix = "E-BDL" if m.get("clause_doc") == "bdl" else "E-CDNT"
                 return f"{prefix} {cid}"
+        for h in hits or []:  # không có mã điều khoản -> nguồn theo tài liệu (không phải HSMT)
+            m = h.get("metadata") or {}
+            src = m.get("source_doc")
+            if src and src != "hsmt":
+                label = DecomposeWorkflow._SOURCE_LABELS.get(src, src)
+                page = m.get("page_start")
+                return f"{label} tr {page}" if page else label
         return ""
 
     @staticmethod
