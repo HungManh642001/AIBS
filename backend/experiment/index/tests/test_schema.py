@@ -49,17 +49,33 @@ def test_fake_dim_constant():
     assert FAKE_DIM == 256
 
 
-def test_keep_for_index_drops_tcdg_and_bieu_mau():
-    """Index step-3 chỉ giữ chương mang giá trị; bỏ TCĐG (nguồn tiêu chí) + Biểu mẫu (mẫu trống)."""
-    def _c(path):
-        return {"chunk_id": "x", "section_path": path}
-    # Bỏ: TCĐG + Biểu mẫu (phát hiện theo tiêu đề, không theo số chương).
+def _c(path):
+    return {"chunk_id": "x", "text": "nội dung", "section_path": path}
+
+
+def test_keep_for_index_drops_only_tcdg():
+    """Index bỏ TCĐG (nguồn tiêu chí, đã bóc riêng); GIỮ Biểu mẫu (tiêu chuẩn có thể yêu cầu
+    'đúng mẫu số N' -> step-3 phải tra được nội dung mẫu)."""
     assert not keep_for_index(_c(["PHẦN 4", "Chương III. TIÊU CHUẨN ĐÁNH GIÁ E-HSDT"]))
-    assert not keep_for_index(_c(["PHẦN 4", "Chương IV. BIỂU MẪU MỜI THẦU VÀ DỰ THẦU"]))
-    assert not keep_for_index(_c(["Chương V. BIỂU MẪU"]))  # Biểu mẫu có thể ở chương khác
+    assert keep_for_index(_c(["PHẦN 4", "Chương IV. BIỂU MẪU MỜI THẦU VÀ DỰ THẦU"]))
+    assert keep_for_index(_c(["Chương V. BIỂU MẪU"]))
     # Giữ: E-BDL, E-CDNT, Yêu cầu kỹ thuật.
     assert keep_for_index(_c(["PHẦN 4", "Chương II. BẢNG DỮ LIỆU ĐẤU THẦU"]))
     assert keep_for_index(_c(["PHẦN 4", "Chương I. CHỈ DẪN NHÀ THẦU"]))
     assert keep_for_index(_c(["PHẦN 4", "Yêu cầu kỹ thuật"]))
     # "Tiêu chí đánh giá kỹ thuật" (chí ≠ chuẩn) -> KHÔNG bị bỏ nhầm.
     assert keep_for_index(_c(["PHẦN 4", "Tiêu chí đánh giá kỹ thuật"]))
+
+
+def test_chunk_to_node_tags_form_metadata():
+    """Chunk Biểu mẫu được gắn is_form + form_id (để retrieve lọc theo need)."""
+    form = _c(["Chương IV. BIỂU MẪU MỜI THẦU VÀ DỰ THẦU"])
+    form["text"] = "Mẫu số 01. ĐƠN DỰ THẦU\nKính gửi: ..."
+    node = chunk_to_node(form)
+    assert node.metadata["is_form"] is True and node.metadata["form_id"] == "01"
+    # metadata suy diễn cũng bị loại khỏi chuỗi embed như mọi metadata khác
+    assert "is_form" in node.excluded_embed_metadata_keys
+
+    normal = _c(["PHẦN 4", "Chương I. CHỈ DẪN NHÀ THẦU"])
+    node2 = chunk_to_node(normal)
+    assert node2.metadata["is_form"] is False and node2.metadata["form_id"] == ""

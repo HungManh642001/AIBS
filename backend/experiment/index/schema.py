@@ -1,6 +1,7 @@
 """Map chunk dict (chunks.jsonl) -> LlamaIndex TextNode cho vector index."""
 from __future__ import annotations
 
+import re
 import unicodedata
 import uuid
 from typing import Any
@@ -11,11 +12,13 @@ COLLECTION = "hsmt_chunks"
 FAKE_DIM = 256  # số chiều của DeterministicEmbedding (offline/test)
 TEXT_KEY = "text"
 
-# Index CHỈ phục vụ step-3 (tra GIÁ TRỊ) -> bỏ chương không mang giá trị, giảm nhiễu retrieve:
-#  - TCĐG (Tiêu chuẩn đánh giá): nguồn tiêu chí, đã bóc ở list/analyze qua chuong3_groups.json.
-#  - Biểu mẫu: mẫu trống cho nhà thầu điền, không có giá trị HSMT.
+# Index bỏ TCĐG (nguồn tiêu chí, đã bóc ở list/analyze qua chuong3_groups.json).
+# Biểu mẫu GIỮ LẠI: tiêu chuẩn có thể yêu cầu 'đúng mẫu số N' -> step-3 phải tra được nội dung mẫu;
+# nhiễu mẫu-trống với need giá trị được lọc ở phía truy vấn (is_form metadata).
 # Phát hiện theo TIÊU ĐỀ (bền hơn số chương: Biểu mẫu có thể Chương IV/V tùy HSMT).
-_EXCLUDE_SECTIONS = ("tieu chuan danh gia", "bieu mau")
+_EXCLUDE_SECTIONS = ("tieu chuan danh gia",)
+_FORM_MARK = "bieu mau"
+_RE_FORM_ID = re.compile(r"mau\s*(?:so\s*)?(\d+[a-z]?)")  # chạy trên text đã _norm
 
 
 def _norm(s: str) -> str:
@@ -24,9 +27,21 @@ def _norm(s: str) -> str:
 
 
 def keep_for_index(chunk: dict[str, Any]) -> bool:
-    """True nếu chunk mang giá trị (E-BDL/E-CDNT/kỹ thuật...); False nếu là TCĐG/Biểu mẫu (nhiễu)."""
+    """True nếu chunk vào index (mọi chương trừ TCĐG — nguồn tiêu chí, đã bóc riêng)."""
     joined = _norm(" ".join(chunk.get("section_path") or []))
     return not any(x in joined for x in _EXCLUDE_SECTIONS)
+
+
+def is_form_chunk(chunk: dict[str, Any]) -> bool:
+    """True nếu chunk thuộc chương Biểu mẫu (mẫu trống cho nhà thầu điền)."""
+    return _FORM_MARK in _norm(" ".join(chunk.get("section_path") or []))
+
+
+def form_id_of(chunk: dict[str, Any]) -> str:
+    """Mã mẫu ('01', '04a') từ section_path/đầu text; '' nếu không thấy."""
+    hay = _norm(" ".join([*(chunk.get("section_path") or []), (chunk.get("text") or "")[:160]]))
+    m = _RE_FORM_ID.search(hay)
+    return m.group(1) if m else ""
 
 # Namespace cố định -> uuid5(chunk_id) ổn định giữa các lần build (upsert idempotent,
 # build lại không nhân đôi điểm). Qdrant yêu cầu point id là UUID/int hợp lệ.
@@ -42,6 +57,10 @@ def chunk_to_node(chunk: dict[str, Any]) -> TextNode:
     """chunk dict -> TextNode: chỉ `text` đem embed; mọi field còn lại vào metadata."""
     text = chunk.get(TEXT_KEY, "") or ""
     metadata = {k: v for k, v in chunk.items() if k != TEXT_KEY}
+    # Metadata suy diễn cho lọc phía truy vấn: need 'đúng mẫu số N' tra VÀO Biểu mẫu,
+    # need giá trị loại Biểu mẫu khỏi lượt tra chung.
+    metadata["is_form"] = is_form_chunk(chunk)
+    metadata["form_id"] = form_id_of(chunk) if metadata["is_form"] else ""
     node = TextNode(text=text, id_=point_id(chunk["chunk_id"]), metadata=metadata)
     # Loại toàn bộ metadata khỏi chuỗi đem embed/LLM -> embedding chỉ phản ánh nội dung chunk.
     keys = list(metadata.keys())
