@@ -32,12 +32,14 @@ class IndexRetriever:
     def __init__(self, index: Any):
         self._index = index
 
-    def __call__(self, query: str, k: int = 5, clause_doc: str | None = None) -> list[dict[str, Any]]:
-        filters = None
+    def __call__(self, query: str, k: int = 5, clause_doc: str | None = None,
+                 is_form: bool | None = None) -> list[dict[str, Any]]:
+        conds = []
         if clause_doc:
-            filters = MetadataFilters(
-                filters=[MetadataFilter(key="clause_doc", value=clause_doc, operator=FilterOperator.EQ)]
-            )
+            conds.append(MetadataFilter(key="clause_doc", value=clause_doc, operator=FilterOperator.EQ))
+        if is_form is not None:  # need 'đúng mẫu số N' -> tra VÀO chunk Biểu mẫu (payload int 0/1)
+            conds.append(MetadataFilter(key="is_form", value=int(is_form), operator=FilterOperator.EQ))
+        filters = MetadataFilters(filters=conds) if conds else None
         retriever = self._index.as_retriever(
             vector_store_query_mode="hybrid", similarity_top_k=k, sparse_top_k=k, filters=filters
         )

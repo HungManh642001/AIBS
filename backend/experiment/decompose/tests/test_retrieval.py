@@ -19,3 +19,34 @@ def test_index_retriever_clause_doc_filter(memory_retriever):
     ids = {h["metadata"]["chunk_id"] for h in hits}
     assert ids <= {"d1", "d3"}      # d1,d3 là bdl
     assert "d2" not in ids          # d2 (cdnt) bị loại dù query nhắm kỹ thuật
+
+
+def test_index_retriever_is_form_filter():
+    """Lọc is_form=True -> CHỈ trả chunk Biểu mẫu (need 'đúng mẫu số N' tra vào mẫu).
+
+    Index riêng (không dùng fixture chung): DeterministicEmbedding là hash nên thêm node
+    vào fixture chung sẽ xáo thứ hạng các test cũ.
+    """
+    from llama_index.core.schema import TextNode
+    from qdrant_client import QdrantClient
+
+    from experiment.decompose.retrieval import IndexRetriever
+    from experiment.index.embedder import DeterministicEmbedding
+    from experiment.index.schema import point_id
+    from experiment.index.store import build_index, build_vector_store
+
+    client = QdrantClient(location=":memory:")
+    store = build_vector_store(client, "t_form_filter")
+    nodes = []
+    for cid, text, is_form in [
+        ("f1", "Mẫu số 01 ĐƠN DỰ THẦU kính gửi bên mời thầu", 1),
+        ("f2", "Đơn dự thầu phải có chữ ký người đại diện", 0),
+    ]:
+        n = TextNode(text=text, id_=point_id(cid), metadata={"chunk_id": cid, "is_form": is_form})
+        n.excluded_embed_metadata_keys = ["chunk_id", "is_form"]
+        nodes.append(n)
+    retriever = IndexRetriever(build_index(nodes, store, DeterministicEmbedding()))
+
+    hits = retriever("mẫu đơn dự thầu", k=5, is_form=True)
+    assert hits
+    assert {h["metadata"]["chunk_id"] for h in hits} == {"f1"}

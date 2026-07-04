@@ -58,8 +58,8 @@ def chunk_to_node(chunk: dict[str, Any]) -> TextNode:
     text = chunk.get(TEXT_KEY, "") or ""
     metadata = {k: v for k, v in chunk.items() if k != TEXT_KEY}
     # Metadata suy diễn cho lọc phía truy vấn: need 'đúng mẫu số N' tra VÀO Biểu mẫu,
-    # need giá trị loại Biểu mẫu khỏi lượt tra chung.
-    metadata["is_form"] = is_form_chunk(chunk)
+    # need giá trị loại Biểu mẫu khỏi lượt tra chung. int 0/1 (MetadataFilter không nhận bool).
+    metadata["is_form"] = int(is_form_chunk(chunk))
     metadata["form_id"] = form_id_of(chunk) if metadata["is_form"] else ""
     node = TextNode(text=text, id_=point_id(chunk["chunk_id"]), metadata=metadata)
     # Loại toàn bộ metadata khỏi chuỗi đem embed/LLM -> embedding chỉ phản ánh nội dung chunk.

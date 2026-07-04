@@ -72,10 +72,10 @@ def test_chunk_to_node_tags_form_metadata():
     form = _c(["Chương IV. BIỂU MẪU MỜI THẦU VÀ DỰ THẦU"])
     form["text"] = "Mẫu số 01. ĐƠN DỰ THẦU\nKính gửi: ..."
     node = chunk_to_node(form)
-    assert node.metadata["is_form"] is True and node.metadata["form_id"] == "01"
+    assert node.metadata["is_form"] == 1 and node.metadata["form_id"] == "01"
     # metadata suy diễn cũng bị loại khỏi chuỗi embed như mọi metadata khác
     assert "is_form" in node.excluded_embed_metadata_keys
 
     normal = _c(["PHẦN 4", "Chương I. CHỈ DẪN NHÀ THẦU"])
     node2 = chunk_to_node(normal)
-    assert node2.metadata["is_form"] is False and node2.metadata["form_id"] == ""
+    assert node2.metadata["is_form"] == 0 and node2.metadata["form_id"] == ""
