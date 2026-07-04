@@ -126,10 +126,25 @@ def query_prompt(crit: dict[str, Any], need: dict[str, Any]) -> str:
     )
 
 
-def resolve_prompt(crit: dict[str, Any], need: dict[str, Any], evidence_text: str) -> str:
+def retry_query_prompt(crit: dict[str, Any], need: dict[str, Any], prev_query: str) -> str:
+    """Step search bậc retry — sinh query GÓC KHÁC sau khi lần 1 không ra kết quả."""
+    return (
+        f"[TAG:QUERY2:{need.get('noi_dung_kiem_tra', '')}]\n"
+        f"TIÊU CHÍ: {crit.get('ten')}\n"
+        f"YÊU CẦU GỐC (HSMT): {crit.get('yeu_cau_goc', '')}\n"
+        f"THÔNG TIN CẦN LÀM RÕ: {need.get('can_lam_ro', '')}\n"
+        f"QUERY ĐÃ THỬ (KHÔNG ra kết quả): {prev_query}\n\n"
+        "Đặt 1 query KHÁC góc nhìn: từ đồng nghĩa nghiệp vụ khác, hoặc tên NƠI thông tin có thể nằm "
+        "(bảng dữ liệu, chỉ dẫn nhà thầu, biểu mẫu, thông báo mời thầu). KHÔNG lặp từ khóa chính cũ.\n"
+        + cot_block('{"query":"..."}')
+    )
+
+
+def resolve_prompt(crit: dict[str, Any], need: dict[str, Any], evidence_text: str,
+                   attempt: int = 1) -> str:
     """Step search — trả thong_tin_bo_sung (tự đủ + quan hệ so sánh) + nguon; không thấy -> can_review."""
     return (
-        f"[TAG:RESOLVE:{need.get('noi_dung_kiem_tra', '')}]\n"
+        f"[TAG:RESOLVE{'' if attempt == 1 else '2'}:{need.get('noi_dung_kiem_tra', '')}]\n"
         f"TIÊU CHÍ: {crit.get('ten')}\n"
         f"YÊU CẦU: {need.get('yeu_cau', '')}\n"
         f"THÔNG TIN CẦN LÀM RÕ: {need.get('can_lam_ro', '')}\n\n"

@@ -66,7 +66,9 @@ async def test_critique_adds_missing_and_no_fabrication():
     assert bd["can_review"] is True  # KHÔNG bịa
     assert not bd["thong_tin_bo_sung"]
     assert bd["yeu_cau"] == "theo HSMT"  # yêu cầu (luật) giữ nguyên, KHÔNG bị ghi đè
-    assert any(n["ten"] == "Bảo đảm dự thầu" for n in gd.needs_review)
+    nr = next(n for n in gd.needs_review if n["ten"] == "Bảo đảm dự thầu")
+    # đo lường: need fail cả 2 bậc -> ghi lại các query đã thử (soi retrieval trượt trên server)
+    assert nr["queries_da_thu"]["Giá trị bảo lãnh"]
 
     # Nội dung không cần tra cứu -> không bị ép can_review.
     dd = _nd_by(_by_name(gd.criteria, "Đơn dự thầu hợp lệ"), "Có đơn dự thầu")
@@ -239,3 +241,86 @@ def test_hit_source_attributes_tbmt_when_no_clause():
     assert DecomposeWorkflow._hit_source(tbmt) == "Thông báo mời thầu tr 1"
     # HSMT không mã điều khoản -> "" (không quy nguồn theo tài liệu)
     assert DecomposeWorkflow._hit_source([{"metadata": {"source_doc": "hsmt"}}]) == ""
+
+
+async def test_search_form_need_routes_into_bieu_mau():
+    """Need 'đúng mẫu số 01' -> retrieve VÀO Biểu mẫu (is_form=True) + neo mã mẫu."""
+    captured: list[dict] = []
+
+    def retrieve_fn(q, k=5, clause_doc=None, is_form=None):
+        captured.append({"q": q, "is_form": is_form, "clause_doc": clause_doc})
+        if is_form:
+            return [{"text": "Mẫu số 01. ĐƠN DỰ THẦU: gồm tên nhà thầu, giá dự thầu, hiệu lực...",
+                     "metadata": {"chunk_id": "f1", "is_form": 1, "form_id": "01"}, "score": 1.0}]
+        return []
+
+    llm = ScriptedLlm({
+        "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Đơn dự thầu"}]},
+        "[TAG:STRUCT:Đơn dự thầu]": _crit(
+            "Đơn dự thầu", [_nd("Đúng mẫu quy định", can_lam_ro="Mẫu số 01 Chương IV")]),
+        "[TAG:QUERY:Đúng mẫu quy định]": {"query": "mẫu đơn dự thầu"},
+        "[TAG:RESOLVE:Đúng mẫu quy định]":
+            {"thong_tin_bo_sung": "Theo Mẫu số 01: tên nhà thầu, giá dự thầu, hiệu lực",
+             "nguon": "Mẫu số 01 Chương IV", "can_review": False},
+    })
+    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=retrieve_fn, timeout=30)
+    gd = await wf.run(group=_GROUP)
+
+    form_calls = [c for c in captured if c["is_form"]]
+    assert form_calls and "mẫu số 01" in form_calls[0]["q"].lower()
+    assert not any(c["clause_doc"] == "bdl" for c in captured)  # need mẫu KHÔNG đi đường bdl
+    nd = _nd_by(_by_name(gd.criteria, "Đơn dự thầu"), "Đúng mẫu quy định")
+    assert nd["thong_tin_bo_sung"].startswith("Theo Mẫu số 01") and nd["can_review"] is False
+
+
+async def test_search_bdl_appendix_resolves_without_hits():
+    """Retrieve trượt hoàn toàn nhưng giá trị nằm trong bảng E-BDL nạp kèm -> vẫn resolve được."""
+    llm = ScriptedLlm({
+        "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Bảo đảm dự thầu"}]},
+        "[TAG:STRUCT:Bảo đảm dự thầu]": _crit(
+            "Bảo đảm dự thầu", [_nd("Giá trị bảo lãnh", can_lam_ro="Giá trị bảo lãnh")]),
+        "[TAG:QUERY:Giá trị bảo lãnh]": {"query": "giá trị bảo đảm"},
+        "[TAG:RESOLVE:Giá trị bảo lãnh]":
+            {"thong_tin_bo_sung": "Giá trị: 6.100.000 VNĐ", "nguon": "E-BDL 18.2", "can_review": False},
+    })
+    bdl = [{"text": "E-CDNT 18.2 | Giá trị bảo đảm 6.100.000 VNĐ", "clause_doc": "bdl"}]
+    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=lambda q, k=5, clause_doc=None, is_form=None: [],
+                           timeout=30, bdl_rows=bdl)
+    gd = await wf.run(group=_GROUP)
+
+    nd = _nd_by(_by_name(gd.criteria, "Bảo đảm dự thầu"), "Giá trị bảo lãnh")
+    assert nd["thong_tin_bo_sung"] == "Giá trị: 6.100.000 VNĐ" and nd["can_review"] is False
+    resolves = [c for c in llm.calls if "[TAG:RESOLVE:" in c]
+    assert resolves and "PHỤ LỤC — BẢNG DỮ LIỆU" in resolves[0] and "6.100.000" in resolves[0]
+
+
+async def test_search_retry_second_query_succeeds_and_logs():
+    """Bậc retry: lần 1 không ra -> QUERY2 góc khác, retrieve KHÔNG filter -> RESOLVE2 đậu."""
+    calls: list[dict] = []
+
+    def retrieve_fn(q, k=5, clause_doc=None, is_form=None):
+        calls.append({"q": q, "k": k, "clause_doc": clause_doc, "is_form": is_form})
+        if "chủ đầu tư" in q:   # chỉ query góc mới mới ra
+            return [{"text": "Tên Chủ đầu tư: Vietsovpetro",
+                     "metadata": {"chunk_id": "x", "source_doc": "hsmt"}, "score": 1.0}]
+        return []
+
+    llm = ScriptedLlm({
+        "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Bảo đảm dự thầu"}]},
+        "[TAG:STRUCT:Bảo đảm dự thầu]": _crit(
+            "Bảo đảm dự thầu", [_nd("Đơn vị thụ hưởng", can_lam_ro="Đơn vị thụ hưởng bảo lãnh")]),
+        "[TAG:QUERY:Đơn vị thụ hưởng]": {"query": "đơn vị thụ hưởng bảo lãnh"},
+        "[TAG:QUERY2:Đơn vị thụ hưởng]": {"query": "tên chủ đầu tư bên mời thầu"},
+        "[TAG:RESOLVE2:Đơn vị thụ hưởng]":
+            {"thong_tin_bo_sung": "Đơn vị thụ hưởng = Chủ đầu tư: Vietsovpetro",
+             "nguon": "E-BDL 1.1", "can_review": False},
+    })
+    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=retrieve_fn, timeout=30)
+    gd = await wf.run(group=_GROUP)
+
+    nd = _nd_by(_by_name(gd.criteria, "Bảo đảm dự thầu"), "Đơn vị thụ hưởng")
+    assert nd["can_review"] is False and "Vietsovpetro" in nd["thong_tin_bo_sung"]
+    retry = [c for c in calls if c["clause_doc"] is None and c["is_form"] is None and c["k"] == 10]
+    assert retry and "chủ đầu tư" in retry[0]["q"]        # retry: bỏ filter + nới k
+    assert any("[TAG:QUERY2:" in c for c in llm.calls)     # đã hỏi query góc mới
+    assert gd.needs_review == []

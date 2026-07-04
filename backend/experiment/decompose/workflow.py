@@ -26,9 +26,10 @@ from experiment.decompose.prompts import (
     list_prompt,
     query_prompt,
     resolve_prompt,
+    retry_query_prompt,
     struct_prompt,
 )
-from experiment.decompose.refs import extract_clause_refs
+from experiment.decompose.refs import extract_clause_refs, extract_form_refs
 from experiment.decompose.retrieval import RetrieveFn
 from experiment.decompose.schema import (
     Coverage,
@@ -65,6 +66,8 @@ def _clamp_codes(item: dict[str, Any]) -> None:
 
 # Step analyze/search sinh JSON + Qwen3 có khối <think> -> cần budget rộng (mặc định chỉ 4096).
 _STRUCT_MAX_TOKENS = 8192
+_EVIDENCE_CAP = 9000   # ký tự bằng chứng hits (NGUYÊN VĂN chunk, không cắt 300 kẻo mất giá trị)
+_BDL_CAP = 15000       # trần phụ lục bảng E-BDL nạp kèm resolve
 
 
 class _Listed(Event):
@@ -94,10 +97,12 @@ def _render_rows(rows: list[list[Any]]) -> str:
 class DecomposeWorkflow(Workflow):
     """Chạy 1 lần/nhóm. wf.run(group=<dict trong chuong3_groups.json>) -> GroupDecomposition."""
 
-    def __init__(self, llm_fn: LlmFn, retrieve_fn: RetrieveFn | None = None, **kw: Any):
+    def __init__(self, llm_fn: LlmFn, retrieve_fn: RetrieveFn | None = None,
+                 bdl_rows: list[dict[str, Any]] | None = None, **kw: Any):
         super().__init__(**kw)
         self._llm = llm_fn
         self._retrieve = retrieve_fn
+        self._bdl_rows = bdl_rows or []  # dòng Bảng dữ liệu (E-BDL) — phụ lục resolve, recall tất định
 
     # ---- nguồn nội dung nhóm (kèm lần tham chiếu Mục 3 -> Phần 4) ----
     def _build_source(self, group: dict[str, Any]) -> str:
@@ -175,6 +180,46 @@ class DecomposeWorkflow(Workflow):
                 seen.add(key)
                 out.append(h)
         return out[:cap]
+
+    def _bdl_appendix(self) -> str:
+        """Toàn bộ dòng E-BDL (nếu được cấp) — recall tất định cho giá trị data-sheet."""
+        if not self._bdl_rows:
+            return ""
+        return "\n".join(r.get("text", "") for r in self._bdl_rows)[:_BDL_CAP]
+
+    @staticmethod
+    def _evidence(hits: list[dict]) -> str:
+        """Ghép NGUYÊN VĂN chunk (không cắt 300 — giá trị dễ nằm sau) trong trần _EVIDENCE_CAP."""
+        out: list[str] = []
+        used = 0
+        for h in hits or []:
+            t = h.get("text", "")
+            take = t[: _EVIDENCE_CAP - used]
+            out.append(take)
+            used += len(take)
+            if used >= _EVIDENCE_CAP:
+                break
+        return "\n".join(out)
+
+    async def _try_resolve(self, crit: dict, n: dict, hits: list[dict], appendix: str,
+                           attempt: int) -> bool:
+        """Resolve 1 lượt; True nếu điền được thong_tin_bo_sung (no-fab: can_review -> False)."""
+        if not hits and not appendix:
+            return False
+        body = self._evidence(hits)
+        if appendix:
+            body = f"{body}\n\n[PHỤ LỤC — BẢNG DỮ LIỆU (E-BDL) ĐẦY ĐỦ]\n{appendix}"
+        rout = await self._llm(SYS_RESOLVE, resolve_prompt(crit, n, body, attempt=attempt),
+                               validate=validate_resolved_value, max_tokens=_STRUCT_MAX_TOKENS)
+        if rout.status == "ok" and not rout.data.get("can_review") \
+                and (rout.data.get("thong_tin_bo_sung") or "").strip():
+            n["thong_tin_bo_sung"] = rout.data["thong_tin_bo_sung"]
+            n["nguon"] = rout.data.get("nguon", "") or self._hit_source(hits)
+            return True
+        if rout.status == "error":
+            log.warning("    [search] %s/%s -> lỗi resolve(%d): %s",
+                        crit.get("ten", ""), n.get("noi_dung_kiem_tra", ""), attempt, rout.error)
+        return False
 
     # ---- Step 1: liệt kê tiêu chí (+ critique CHỈ cho nhóm bảng lớn) ----
     @step
@@ -286,37 +331,56 @@ class DecomposeWorkflow(Workflow):
                 # 1) sinh query RIÊNG cho 'cần làm rõ' (LLM mở rộng nghiệp vụ: đồng nghĩa/nơi nằm)
                 qout = await self._llm(SYS_QUERY, query_prompt(crit, n), validate=validate_query)
                 base = (qout.data.get("query") if qout.status == "ok" else "") or f"{ten} {lam_ro}"
-                # 2) neo mã điều khoản (cần làm rõ + tiêu chí) + thiên vị mục dữ liệu
                 refs = list(dict.fromkeys(extract_clause_refs(lam_ro) + crit_refs))
-                query = " ".join([base, *refs, "bảng dữ liệu E-BDL"]).strip()
-                log.info("      [retrieve] %s", query)
-                # 3) truy hồi: ưu tiên BẢNG DỮ LIỆU E-BDL (data sheet, precision cao) + tra chung.
-                hits = self._merge_hits(
-                    self._retrieve(query, k=8, clause_doc="bdl"),  # chỉ E-BDL: dòng khai giá trị
-                    self._retrieve(query, k=3),                    # tra chung: recall (E-CDNT...)
-                )
-                if not hits:
+                # 2) định tuyến theo need: tham chiếu mẫu -> tra VÀO Biểu mẫu; còn lại -> giá trị.
+                form_refs = extract_form_refs(f"{lam_ro} {n.get('yeu_cau', '')}")
+                if form_refs:
+                    anchors = [f"mẫu số {f}" for f in form_refs]
+                    query = " ".join([base, *anchors, "biểu mẫu"]).strip()
+                    log.info("      [retrieve|mẫu] %s", query)
+                    hits = self._merge_hits(
+                        self._retrieve(query, k=6, is_form=True),  # VÀO chunk Biểu mẫu
+                        self._retrieve(query, k=3),                # recall chung
+                    )
+                    appendix = ""  # need mẫu: bảng dữ liệu không liên quan
+                else:
+                    query = " ".join([base, *refs, "bảng dữ liệu E-BDL"]).strip()
+                    log.info("      [retrieve] %s", query)
+                    general = [h for h in self._retrieve(query, k=6)
+                               if not (h.get("metadata") or {}).get("is_form")][:3]  # mẫu trống = nhiễu
+                    hits = self._merge_hits(
+                        self._retrieve(query, k=8, clause_doc="bdl"),  # dòng khai giá trị
+                        general,
+                    )
+                    appendix = self._bdl_appendix()
+                # 3) resolve bậc 1 (kèm phụ lục E-BDL nếu là need giá trị)
+                if await self._try_resolve(crit, n, hits, appendix, attempt=1):
                     continue
-                body = "\n".join(h["text"][:300] for h in hits)
-                # 4) resolve RIÊNG -> thong_tin_bo_sung (tự đủ + quan hệ so sánh) + nguon (mã điều khoản)
-                rout = await self._llm(SYS_RESOLVE, resolve_prompt(crit, n, body),
-                                       validate=validate_resolved_value, max_tokens=_STRUCT_MAX_TOKENS)
-                if rout.status == "ok" and not rout.data.get("can_review") \
-                        and (rout.data.get("thong_tin_bo_sung") or "").strip():
-                    n["thong_tin_bo_sung"] = rout.data["thong_tin_bo_sung"]
-                    n["nguon"] = rout.data.get("nguon", "") or self._hit_source(hits)
-                elif rout.status == "error":
-                    log.warning("    [search] %s/%s -> lỗi resolve: %s", ten, nd, rout.error)
+                # 4) bậc retry: query GÓC KHÁC, bỏ mọi filter, nới k (phủ Biểu mẫu/E-CDNT/TBMT)
+                q2out = await self._llm(SYS_QUERY, retry_query_prompt(crit, n, query),
+                                        validate=validate_query)
+                base2 = (q2out.data.get("query") if q2out.status == "ok" else "") or f"{lam_ro} {ten}"
+                query2 = " ".join([base2, *refs]).strip()
+                log.info("      [retrieve|retry] %s", query2)
+                hits2 = self._retrieve(query2, k=10)
+                if not await self._try_resolve(crit, n, hits2, self._bdl_appendix(), attempt=2):
+                    n["_queries_da_thu"] = [query, query2]  # đo lường; pop ở đoạn no-fab
 
         # No-fab: nội dung can_tra_cuu vẫn trống thong_tin_bo_sung -> can_review (KHÔNG bịa).
         flagged: list[str] = []
+        chi_tiet: dict[str, list[str]] = {}
         for n in item.get("noi_dung_can_kiem_tra", []):
+            tried = n.pop("_queries_da_thu", None)
             if n.get("can_tra_cuu") and not (n.get("thong_tin_bo_sung") or "").strip():
                 n["can_review"] = True
                 flagged.append(n.get("noi_dung_kiem_tra", ""))
+                if tried:
+                    chi_tiet[n.get("noi_dung_kiem_tra", "")] = tried
         nr = None
         if flagged:
             nr = {"ten": ten, "ly_do": f"chưa tra được thông tin HSMT cho: {', '.join(flagged)} — cần soi"}
+            if chi_tiet:
+                nr["queries_da_thu"] = chi_tiet
         return _Done(detail=item, needs_review=nr)
 
     # ---- Step 4: gom ----
