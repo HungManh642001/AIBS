@@ -52,7 +52,8 @@ async def run_multi(hsmt_pdf: str, scan_sources: list[tuple[str, str]], out_dir:
     log.info("[multi] (5/5) decompose")
     return await decompose_run(groups_path=str(out / "chuong3_groups.json"),
                                db_path=str(out / "qdrant"), out_dir=str(out),
-                               llm_fn=llm_fn, retrieve_fn=retrieve_fn)
+                               llm_fn=llm_fn, retrieve_fn=retrieve_fn,
+                               chunks_path=merged)  # nạp dòng E-BDL làm phụ lục resolve
 
 
 def main(argv: list[str] | None = None) -> int:

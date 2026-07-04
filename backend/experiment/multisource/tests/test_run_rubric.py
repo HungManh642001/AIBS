@@ -27,6 +27,8 @@ async def test_run_multi_orchestration(tmp_path, monkeypatch):
         calls.append(f"index:{n}"); return {"n_points": n}
 
     async def fake_decompose(groups_path, db_path, out_dir, **kw):
+        # chunks gộp phải được truyền xuống decompose (nạp dòng E-BDL làm phụ lục resolve)
+        assert str(kw.get("chunks_path", "")).endswith("chunks_merged.jsonl")
         calls.append("decompose"); return {"n_criteria": 0}
 
     monkeypatch.setattr(rr, "chunk_run", fake_chunk)

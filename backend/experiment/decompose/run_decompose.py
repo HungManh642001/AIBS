@@ -26,6 +26,18 @@ from experiment.decompose.workflow import DecomposeWorkflow
 _DEFAULT_GROUPS = "out/chuong3_groups.json"
 _DEFAULT_DB = "out/qdrant"
 _DEFAULT_OUT = "out"
+_DEFAULT_CHUNKS = "out/chunks.jsonl"
+
+
+def _load_bdl_rows(chunks_path: str | None) -> list[dict[str, Any]]:
+    """Đọc chunks.jsonl -> các dòng Bảng dữ liệu (clause_doc='bdl') cho phụ lục resolve."""
+    if not chunks_path:
+        return []
+    p = Path(chunks_path)
+    if not p.exists():
+        return []
+    rows = [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
+    return [c for c in rows if c.get("clause_doc") == "bdl"]
 
 
 def _to_markdown(r: DecomposeResult) -> str:
@@ -75,13 +87,21 @@ async def run(
     llm_fn: Any | None = None,
     retrieve_fn: Any | None = None,
     settings: Any | None = None,
+    chunks_path: str | None = None,
 ) -> dict[str, Any]:
-    """Phân rã 4 nhóm; ghi decomposition.json/.md + report; trả metrics."""
+    """Phân rã 4 nhóm; ghi decomposition.json/.md + report; trả metrics.
+
+    chunks_path (tùy chọn): chunks.jsonl để nạp dòng E-BDL làm phụ lục resolve (recall tất định).
+    """
     settings = settings or get_settings()
     gp = Path(groups_path)
     if not gp.exists():
         raise FileNotFoundError(f"Không thấy {gp} (chạy bước extract trước)")
     data = json.loads(gp.read_text(encoding="utf-8"))
+
+    bdl_rows = _load_bdl_rows(chunks_path)
+    if chunks_path:
+        log.info("Phụ lục E-BDL: %d dòng (từ %s)", len(bdl_rows), chunks_path)
 
     llm_fn = llm_fn or default_llm_fn
     close_client = None
@@ -93,7 +113,8 @@ async def run(
         groups = data.get("groups", [])
         for i, g in enumerate(groups, 1):
             log.info("=== Nhóm %d/%d: %s ===", i, len(groups), g.get("group", ""))
-            wf = DecomposeWorkflow(llm_fn=llm_fn, retrieve_fn=retrieve_fn, timeout=600)
+            wf = DecomposeWorkflow(llm_fn=llm_fn, retrieve_fn=retrieve_fn, timeout=600,
+                                   bdl_rows=bdl_rows or None)
             gd: GroupDecomposition = await wf.run(group=g)
             result.groups.append(gd)
     finally:
@@ -119,6 +140,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--groups", default=_DEFAULT_GROUPS)
     ap.add_argument("--db", default=_DEFAULT_DB)
     ap.add_argument("--out", default=_DEFAULT_OUT)
+    ap.add_argument("--chunks", default=_DEFAULT_CHUNKS,
+                    help="chunks.jsonl để nạp dòng E-BDL làm phụ lục resolve")
     ap.add_argument("--quiet", action="store_true", help="tắt log tiến độ")
     args = ap.parse_args(argv)
     logging.basicConfig(
@@ -127,7 +150,8 @@ def main(argv: list[str] | None = None) -> int:
         stream=sys.stderr,
     )
     try:
-        metrics = asyncio.run(run(groups_path=args.groups, db_path=args.db, out_dir=args.out))
+        metrics = asyncio.run(run(groups_path=args.groups, db_path=args.db, out_dir=args.out,
+                                  chunks_path=args.chunks))
     except Exception as exc:  # no-silent-mock: báo lỗi rõ
         print(f"[run_decompose] LỖI: {type(exc).__name__}: {exc}", file=sys.stderr)
         print("  Chế độ thật cần LiteLLM proxy chạy & phục vụ model. ", file=sys.stderr)
