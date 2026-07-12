@@ -115,14 +115,31 @@ def struct_prompt(crit: dict[str, Any]) -> str:
     )
 
 
-def query_prompt(crit: dict[str, Any], need: dict[str, Any]) -> str:
-    """Step search — sinh 1 truy vấn cho THÔNG TIN CẦN LÀM RÕ của một nội dung (kèm ngữ cảnh)."""
+def query_prompt(crit: dict[str, Any], need: dict[str, Any],
+                 sources: dict[str, str] | None = None) -> str:
+    """Step search — sinh 1 truy vấn cho THÔNG TIN CẦN LÀM RÕ của một nội dung (kèm ngữ cảnh).
+
+    sources (corpus đa nguồn): danh mục {mã nguồn: tóm tắt} -> model gợi ý thêm nguon_goi_y
+    (nguồn NHIỀU KHẢ NĂNG chứa thông tin) để retrieve lọc theo nguồn. None -> prompt như cũ.
+    """
+    routing = ""
+    schema = '{"query":"..."}'
+    if sources:
+        cat = "\n".join(f"- {code}: {mo_ta}" for code, mo_ta in sources.items())
+        routing = (
+            "\nCÁC NGUỒN TÀI LIỆU CÓ THỂ TRA (mã: tóm tắt nội dung):\n"
+            f"{cat}\n"
+            "nguon_goi_y: chọn các MÃ nguồn NHIỀU KHẢ NĂNG chứa thông tin nhất "
+            "(danh sách; để [] nếu không chắc — hệ thống sẽ tra mọi nguồn).\n"
+        )
+        schema = '{"query":"...","nguon_goi_y":["<mã nguồn>"]}'
     return (
         f"[TAG:QUERY:{need.get('noi_dung_kiem_tra', '')}]\n"
         f"TIÊU CHÍ: {crit.get('ten')}\n"
         f"YÊU CẦU GỐC (HSMT): {crit.get('yeu_cau_goc', '')}\n"
-        f"THÔNG TIN CẦN LÀM RÕ (tra trong HSMT): {need.get('can_lam_ro', '')}\n\n"
-        + cot_block('{"query":"..."}')
+        f"THÔNG TIN CẦN LÀM RÕ (tra trong HSMT): {need.get('can_lam_ro', '')}\n"
+        f"{routing}\n"
+        + cot_block(schema)
     )
 
 

@@ -57,8 +57,9 @@ class ResolvedInfo(_Base):
 
 
 class QueryOut(_Base):
-    """Output step search (sinh query 1 need)."""
+    """Output step search (sinh query 1 need). nguon_goi_y: mã nguồn tài liệu NÊN tra (route mềm)."""
     query: str = ""
+    nguon_goi_y: list[Any] = []
 
 
 class CriterionModel(_Base):
