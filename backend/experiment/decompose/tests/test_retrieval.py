@@ -50,3 +50,34 @@ def test_index_retriever_is_form_filter():
     hits = retriever("mẫu đơn dự thầu", k=5, is_form=True)
     assert hits
     assert {h["metadata"]["chunk_id"] for h in hits} == {"f1"}
+
+
+def test_index_retriever_source_doc_filter():
+    """Lọc source_doc='tbmt' -> CHỈ chunk TBMT (route theo nguồn tài liệu).
+
+    Index riêng (không dùng fixture chung): DeterministicEmbedding là hash nên thêm node
+    vào fixture chung sẽ xáo thứ hạng các test cũ.
+    """
+    from llama_index.core.schema import TextNode
+    from qdrant_client import QdrantClient
+
+    from experiment.decompose.retrieval import IndexRetriever
+    from experiment.index.embedder import DeterministicEmbedding
+    from experiment.index.schema import point_id
+    from experiment.index.store import build_index, build_vector_store
+
+    client = QdrantClient(location=":memory:")
+    store = build_vector_store(client, "t_source_filter")
+    nodes = []
+    for cid, text, src in [
+        ("t1", "Thời điểm đóng thầu 09 giờ 00 ngày 20/6/2025", "tbmt"),
+        ("t2", "Nhà thầu nộp bảo đảm dự thầu trước thời điểm đóng thầu", "hsmt"),
+    ]:
+        n = TextNode(text=text, id_=point_id(cid), metadata={"chunk_id": cid, "source_doc": src})
+        n.excluded_embed_metadata_keys = ["chunk_id", "source_doc"]
+        nodes.append(n)
+    retriever = IndexRetriever(build_index(nodes, store, DeterministicEmbedding()))
+
+    hits = retriever("thời điểm đóng thầu", k=5, source_doc="tbmt")
+    assert hits
+    assert {h["metadata"]["chunk_id"] for h in hits} == {"t1"}
