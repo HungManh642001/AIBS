@@ -1,7 +1,8 @@
 """Orchestrator RUBRIC ĐA NGUỒN (experiment) — đo chính xác trước khi tích hợp backend.
 
-Chuỗi: chunk HSMT (pdf-text) -> OCR mỗi tài liệu scan (TBMT...) -> gộp chunks (source_doc) ->
-build index (mọi nguồn) -> decompose. Trích tiêu chí (Chương III) CHỈ từ HSMT; scan chỉ góp giá trị.
+Chuỗi: chunk HSMT (pdf-text) -> OCR mỗi tài liệu scan (TBMT...) -> tóm tắt vai trò từng nguồn
+(source_summaries.json — người sửa tay được) -> gộp chunks (source_doc) -> build index (mọi
+nguồn) -> decompose (route mềm theo nguồn). Trích tiêu chí (Chương III) CHỈ từ HSMT.
 
 Đo chính xác (server có proxy): chạy có TBMT vs không TBMT, so trong decomposition.md các nội dung
 về thời gian (đóng thầu/hiệu lực): PASS nếu thong_tin_bo_sung được điền + nguon="Thông báo mời thầu tr N";
@@ -23,6 +24,7 @@ from experiment.index.build_index import run as index_run
 from experiment.decompose.run_decompose import run as decompose_run
 from experiment.multisource.merge import merge_chunk_files
 from experiment.multisource.ocr_chunks import ocr_scan_to_chunks
+from experiment.multisource.summarize import summarize_source
 
 log = logging.getLogger("experiment.multisource")
 
@@ -40,9 +42,15 @@ async def run_multi(hsmt_pdf: str, scan_sources: list[tuple[str, str]], out_dir:
     extract_run(hsmt_pdf, str(out))                     # -> out/chuong3_groups.json
 
     extra: list[dict] = []
+    summaries: dict[str, str] = {}
     for source_doc, pdf in scan_sources:
         log.info("[multi] (3/5) OCR %s", source_doc)
-        extra.extend(await ocr_scan_to_chunks(pdf, source_doc=source_doc, vision_fn=vision_fn))
+        sc = await ocr_scan_to_chunks(pdf, source_doc=source_doc, vision_fn=vision_fn)
+        extra.extend(sc)
+        summaries[source_doc] = await summarize_source(source_doc, sc, llm_fn=llm_fn)
+
+    spath = out / "source_summaries.json"
+    spath.write_text(json.dumps(summaries, ensure_ascii=False, indent=2), encoding="utf-8")
 
     merged = str(out / "chunks_merged.jsonl")
     n = merge_chunk_files(str(out / "chunks.jsonl"), extra, merged)
@@ -53,7 +61,8 @@ async def run_multi(hsmt_pdf: str, scan_sources: list[tuple[str, str]], out_dir:
     return await decompose_run(groups_path=str(out / "chuong3_groups.json"),
                                db_path=str(out / "qdrant"), out_dir=str(out),
                                llm_fn=llm_fn, retrieve_fn=retrieve_fn,
-                               chunks_path=merged)  # nạp dòng E-BDL làm phụ lục resolve
+                               chunks_path=merged,               # nạp E-BDL + nguyên văn nguồn scan
+                               summaries_path=str(spath))        # danh mục route theo nguồn
 
 
 def main(argv: list[str] | None = None) -> int:

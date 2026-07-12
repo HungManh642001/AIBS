@@ -22,6 +22,10 @@ async def test_run_multi_orchestration(tmp_path, monkeypatch):
         return [{"chunk_id": "tbmt-p1-0", "text": "đóng thầu 09h00", "section_path": ["Thông báo mời thầu"],
                  "source_doc": "tbmt"}]
 
+    async def fake_summarize(source_doc, chunks, llm_fn=None):
+        calls.append(f"summary:{source_doc}")
+        return "Thông báo mời thầu: thời gian phát hành/đóng/mở thầu"
+
     def fake_index(chunks_path, db_path, out_dir, **kw):
         n = sum(1 for _ in open(chunks_path, encoding="utf-8"))
         calls.append(f"index:{n}"); return {"n_points": n}
@@ -29,11 +33,14 @@ async def test_run_multi_orchestration(tmp_path, monkeypatch):
     async def fake_decompose(groups_path, db_path, out_dir, **kw):
         # chunks gộp phải được truyền xuống decompose (nạp dòng E-BDL làm phụ lục resolve)
         assert str(kw.get("chunks_path", "")).endswith("chunks_merged.jsonl")
+        # danh mục tóm tắt nguồn phải được truyền xuống (route mềm theo nguồn)
+        assert str(kw.get("summaries_path", "")).endswith("source_summaries.json")
         calls.append("decompose"); return {"n_criteria": 0}
 
     monkeypatch.setattr(rr, "chunk_run", fake_chunk)
     monkeypatch.setattr(rr, "extract_run", fake_extract)
     monkeypatch.setattr(rr, "ocr_scan_to_chunks", fake_ocr)
+    monkeypatch.setattr(rr, "summarize_source", fake_summarize)
     monkeypatch.setattr(rr, "index_run", fake_index)
     monkeypatch.setattr(rr, "decompose_run", fake_decompose)
 
@@ -42,5 +49,7 @@ async def test_run_multi_orchestration(tmp_path, monkeypatch):
 
     metrics = await rr.run_multi(str(hsmt), [("tbmt", str(tbmt))], str(tmp_path / "out"))
 
-    assert calls == ["chunk", "extract", "ocr:tbmt", "index:2", "decompose"]  # thứ tự + merge (2 chunk)
+    assert calls == ["chunk", "extract", "ocr:tbmt", "summary:tbmt", "index:2", "decompose"]  # thứ tự + merge (2 chunk)
     assert metrics["n_criteria"] == 0
+    sfile = tmp_path / "out" / "source_summaries.json"
+    assert json.loads(sfile.read_text(encoding="utf-8"))["tbmt"].startswith("Thông báo mời thầu")
