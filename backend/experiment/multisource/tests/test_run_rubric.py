@@ -24,7 +24,8 @@ async def test_run_multi_orchestration(tmp_path, monkeypatch):
 
     async def fake_summarize(source_doc, chunks, llm_fn=None):
         calls.append(f"summary:{source_doc}")
-        return "Thông báo mời thầu: thời gian phát hành/đóng/mở thầu"
+        return {"tom_tat": "Thông báo mời thầu: thông tin công bố gói thầu",
+                "cac_truong": ["thời điểm đóng/mở thầu"]}
 
     def fake_index(chunks_path, db_path, out_dir, **kw):
         n = sum(1 for _ in open(chunks_path, encoding="utf-8"))
@@ -52,4 +53,6 @@ async def test_run_multi_orchestration(tmp_path, monkeypatch):
     assert calls == ["chunk", "extract", "ocr:tbmt", "summary:tbmt", "index:2", "decompose"]  # thứ tự + merge (2 chunk)
     assert metrics["n_criteria"] == 0
     sfile = tmp_path / "out" / "source_summaries.json"
-    assert json.loads(sfile.read_text(encoding="utf-8"))["tbmt"].startswith("Thông báo mời thầu")
+    card = json.loads(sfile.read_text(encoding="utf-8"))["tbmt"]
+    assert card["tom_tat"].startswith("Thông báo mời thầu")
+    assert card["cac_truong"] == ["thời điểm đóng/mở thầu"]
