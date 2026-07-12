@@ -27,17 +27,45 @@ _DEFAULT_GROUPS = "out/chuong3_groups.json"
 _DEFAULT_DB = "out/qdrant"
 _DEFAULT_OUT = "out"
 _DEFAULT_CHUNKS = "out/chunks.jsonl"
+_DEFAULT_SUMMARIES = "out/source_summaries.json"
+# Tóm tắt tĩnh cho HSMT (nguồn chính, pdf-text) — mục danh mục route khi corpus đa nguồn.
+_HSMT_SUMMARY = ("Hồ sơ mời thầu chính: chỉ dẫn nhà thầu E-CDNT, bảng dữ liệu E-BDL, "
+                 "tiêu chuẩn, biểu mẫu, yêu cầu kỹ thuật")
 
 
-def _load_bdl_rows(chunks_path: str | None) -> list[dict[str, Any]]:
-    """Đọc chunks.jsonl -> các dòng Bảng dữ liệu (clause_doc='bdl') cho phụ lục resolve."""
+def _read_chunks(chunks_path: str | None) -> list[dict[str, Any]]:
     if not chunks_path:
         return []
     p = Path(chunks_path)
     if not p.exists():
         return []
-    rows = [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
-    return [c for c in rows if c.get("clause_doc") == "bdl"]
+    return [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
+
+
+def _load_bdl_rows(chunks_path: str | None) -> list[dict[str, Any]]:
+    """Đọc chunks.jsonl -> các dòng Bảng dữ liệu (clause_doc='bdl') cho phụ lục resolve."""
+    return [c for c in _read_chunks(chunks_path) if c.get("clause_doc") == "bdl"]
+
+
+def _load_scan_texts(chunks_path: str | None) -> dict[str, str]:
+    """chunks.jsonl -> {source_doc: nguyên văn} các nguồn NGOÀI hsmt (phụ lục nguồn scan nhỏ)."""
+    out: dict[str, list[str]] = {}
+    for c in _read_chunks(chunks_path):
+        src = c.get("source_doc") or "hsmt"
+        if src != "hsmt" and (c.get("text") or "").strip():
+            out.setdefault(src, []).append(c["text"])
+    return {k: "\n".join(v) for k, v in out.items()}
+
+
+def _load_summaries(path: str | None) -> dict[str, str]:
+    """source_summaries.json -> {source_doc: tóm tắt} (bỏ entry rỗng; file người sửa tay ĐƯỢC ưu tiên)."""
+    if not path:
+        return {}
+    p = Path(path)
+    if not p.exists():
+        return {}
+    data = json.loads(p.read_text(encoding="utf-8"))
+    return {str(k): str(v).strip() for k, v in data.items() if str(v).strip()}
 
 
 def _to_markdown(r: DecomposeResult) -> str:
@@ -88,10 +116,13 @@ async def run(
     retrieve_fn: Any | None = None,
     settings: Any | None = None,
     chunks_path: str | None = None,
+    summaries_path: str | None = None,
 ) -> dict[str, Any]:
     """Phân rã 4 nhóm; ghi decomposition.json/.md + report; trả metrics.
 
-    chunks_path (tùy chọn): chunks.jsonl để nạp dòng E-BDL làm phụ lục resolve (recall tất định).
+    chunks_path (tùy chọn): chunks.jsonl -> dòng E-BDL (phụ lục resolve) + nguyên văn nguồn scan.
+    summaries_path (tùy chọn): source_summaries.json -> danh mục {nguồn: tóm tắt} bật route mềm
+    theo nguồn ở step 3 (chỉ bật khi corpus THẬT SỰ đa nguồn — có chunk ngoài hsmt).
     """
     settings = settings or get_settings()
     gp = Path(groups_path)
@@ -102,6 +133,15 @@ async def run(
     bdl_rows = _load_bdl_rows(chunks_path)
     if chunks_path:
         log.info("Phụ lục E-BDL: %d dòng (từ %s)", len(bdl_rows), chunks_path)
+
+    scan_texts = _load_scan_texts(chunks_path)
+    sources: dict[str, str] | None = None
+    if scan_texts:  # chỉ bật route khi corpus đa nguồn; đơn nguồn giữ NGUYÊN hành vi cũ
+        summaries = _load_summaries(summaries_path)
+        sources = {"hsmt": _HSMT_SUMMARY}
+        for s in scan_texts:
+            sources[s] = summaries.get(s) or s  # thiếu tóm tắt -> dùng mã nguồn (không bịa)
+        log.info("Danh mục nguồn route: %s", list(sources))
 
     llm_fn = llm_fn or default_llm_fn
     close_client = None
@@ -114,7 +154,8 @@ async def run(
         for i, g in enumerate(groups, 1):
             log.info("=== Nhóm %d/%d: %s ===", i, len(groups), g.get("group", ""))
             wf = DecomposeWorkflow(llm_fn=llm_fn, retrieve_fn=retrieve_fn, timeout=600,
-                                   bdl_rows=bdl_rows or None)
+                                   bdl_rows=bdl_rows or None,
+                                   source_summaries=sources, scan_texts=scan_texts or None)
             gd: GroupDecomposition = await wf.run(group=g)
             result.groups.append(gd)
     finally:
@@ -142,6 +183,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default=_DEFAULT_OUT)
     ap.add_argument("--chunks", default=_DEFAULT_CHUNKS,
                     help="chunks.jsonl để nạp dòng E-BDL làm phụ lục resolve")
+    ap.add_argument("--summaries", default=_DEFAULT_SUMMARIES,
+                    help="source_summaries.json ({nguồn: tóm tắt}) bật route theo nguồn (đa nguồn)")
     ap.add_argument("--quiet", action="store_true", help="tắt log tiến độ")
     args = ap.parse_args(argv)
     logging.basicConfig(
@@ -151,7 +194,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         metrics = asyncio.run(run(groups_path=args.groups, db_path=args.db, out_dir=args.out,
-                                  chunks_path=args.chunks))
+                                  chunks_path=args.chunks, summaries_path=args.summaries))
     except Exception as exc:  # no-silent-mock: báo lỗi rõ
         print(f"[run_decompose] LỖI: {type(exc).__name__}: {exc}", file=sys.stderr)
         print("  Chế độ thật cần LiteLLM proxy chạy & phục vụ model. ", file=sys.stderr)
