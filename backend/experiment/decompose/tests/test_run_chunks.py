@@ -40,3 +40,17 @@ def test_load_summaries(tmp_path):
     assert got == {"tbmt": "Thông báo mời thầu: thời gian"}     # entry rỗng bị loại
     assert _load_summaries(None) == {}
     assert _load_summaries(str(tmp_path / "missing.json")) == {}
+
+
+def test_load_summaries_accepts_card(tmp_path):
+    """Thẻ nguồn {tom_tat, cac_truong} -> phẳng hoá thành chuỗi hiển thị cho danh mục route."""
+    f = tmp_path / "source_summaries.json"
+    f.write_text(json.dumps({
+        "tbmt": {"tom_tat": "Thông báo mời thầu", "cac_truong": ["thời điểm đóng/mở thầu", "địa điểm"]},
+        "phu_luc": {"tom_tat": "Phụ lục kỹ thuật", "cac_truong": []},
+        "rong": {"tom_tat": "", "cac_truong": []},
+    }, ensure_ascii=False), encoding="utf-8")
+    got = _load_summaries(str(f))
+    assert got["tbmt"] == "Thông báo mời thầu (chứa: thời điểm đóng/mở thầu, địa điểm)"
+    assert got["phu_luc"] == "Phụ lục kỹ thuật"
+    assert "rong" not in got                                     # thẻ rỗng bị loại

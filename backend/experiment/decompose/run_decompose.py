@@ -57,15 +57,30 @@ def _load_scan_texts(chunks_path: str | None) -> dict[str, str]:
     return {k: "\n".join(v) for k, v in out.items()}
 
 
+def _fmt_summary(v: Any) -> str:
+    """Giá trị summaries -> chuỗi hiển thị: thẻ {tom_tat, cac_truong} phẳng hoá; chuỗi giữ nguyên."""
+    if isinstance(v, dict):
+        tom_tat = str(v.get("tom_tat", "") or "").strip()
+        truong = [s for s in (str(t).strip() for t in (v.get("cac_truong") or [])) if s]
+        if truong:
+            return f"{tom_tat} (chứa: {', '.join(truong)})" if tom_tat else f"chứa: {', '.join(truong)}"
+        return tom_tat
+    return str(v).strip()
+
+
 def _load_summaries(path: str | None) -> dict[str, str]:
-    """source_summaries.json -> {source_doc: tóm tắt} (bỏ entry rỗng; file người sửa tay ĐƯỢC ưu tiên)."""
+    """source_summaries.json -> {source_doc: tóm tắt} (bỏ entry rỗng; file người sửa tay ĐƯỢC ưu tiên).
+
+    Giá trị nhận cả 2 dạng: chuỗi (cũ/sửa tay nhanh) hoặc thẻ {tom_tat, cac_truong} (summarize mới).
+    """
     if not path:
         return {}
     p = Path(path)
     if not p.exists():
         return {}
     data = json.loads(p.read_text(encoding="utf-8"))
-    return {str(k): str(v).strip() for k, v in data.items() if str(v).strip()}
+    out = {str(k): _fmt_summary(v) for k, v in data.items()}
+    return {k: v for k, v in out.items() if v}
 
 
 def _to_markdown(r: DecomposeResult) -> str:
