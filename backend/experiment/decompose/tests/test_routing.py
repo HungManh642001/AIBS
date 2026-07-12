@@ -1,6 +1,8 @@
 """Route theo nguồn tài liệu (step 3): schema + prompt + workflow."""
+from experiment.decompose.llm import ScriptedLlm
 from experiment.decompose.prompts import query_prompt
 from experiment.decompose.schema import validate_query
+from experiment.decompose.workflow import DecomposeWorkflow
 
 
 def test_validate_query_accepts_nguon_goi_y():
@@ -26,3 +28,103 @@ def test_query_prompt_without_sources_unchanged():
     p = query_prompt({"ten": "Bảo đảm"}, {"noi_dung_kiem_tra": "Giá trị", "can_lam_ro": "Giá trị"})
     assert "nguon_goi_y" not in p
     assert "NGUỒN TÀI LIỆU" not in p
+
+
+_GROUP = {
+    "group": "hop_le",
+    "muc": "Mục 1. Đánh giá tính hợp lệ",
+    "is_reference": False,
+    "ref_target": None,
+    "blocks": [{"type": "text", "page": [27, 27],
+                "text": "E-HSDT hợp lệ khi nộp trước thời điểm đóng thầu."}],
+}
+_SOURCES = {"hsmt": "Hồ sơ mời thầu chính: E-CDNT, E-BDL, biểu mẫu",
+            "tbmt": "Thông báo mời thầu: thời gian phát hành/đóng/mở thầu, chủ đầu tư"}
+
+
+def _nd(noi_dung, can_lam_ro=""):
+    return {"noi_dung_kiem_tra": noi_dung, "hsdt_kiem_tra": "don_du_thau",
+            "yeu_cau": "theo HSMT", "can_lam_ro": can_lam_ro, "can_tra_cuu": bool(can_lam_ro)}
+
+
+def _crit(ten, contents):
+    return {"nhom": "hop_le", "ten": ten, "yeu_cau_goc": f"{ten} theo HSMT",
+            "hsdt_can_kiem_tra": ["don_du_thau"], "tien_quyet": False,
+            "noi_dung_can_kiem_tra": contents}
+
+
+def _nd_of(gd, ten, noi_dung):
+    c = next(c for c in gd.criteria if c["ten"] == ten)
+    return next(n for n in c["noi_dung_can_kiem_tra"] if n["noi_dung_kiem_tra"] == noi_dung)
+
+
+def _llm_dong_thau(resolve_tag="[TAG:RESOLVE:Thời điểm đóng thầu]"):
+    return ScriptedLlm({
+        "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Nộp thầu đúng hạn"}]},
+        "[TAG:STRUCT:Nộp thầu đúng hạn]": _crit(
+            "Nộp thầu đúng hạn", [_nd("Thời điểm đóng thầu", can_lam_ro="Thời điểm đóng thầu")]),
+        "[TAG:QUERY:Thời điểm đóng thầu]": {"query": "thời điểm đóng thầu", "nguon_goi_y": ["tbmt"]},
+        resolve_tag: {"thong_tin_bo_sung": "Đóng thầu: 09h00 ngày 20/6/2025",
+                      "nguon": "", "can_review": False},
+    })
+
+
+async def test_search_routed_source_filters_and_attributes():
+    """nguon_goi_y=['tbmt'] -> có lượt retrieve lọc source_doc='tbmt'; nguon backfill về TBMT."""
+    captured: list[dict] = []
+
+    def retrieve_fn(q, k=5, clause_doc=None, is_form=None, source_doc=None):
+        captured.append({"q": q, "clause_doc": clause_doc, "source_doc": source_doc})
+        if source_doc == "tbmt":
+            return [{"text": "Thời điểm đóng thầu: 09 giờ 00 ngày 20/6/2025",
+                     "metadata": {"chunk_id": "t1", "source_doc": "tbmt", "page_start": 1}, "score": 1.0}]
+        return []
+
+    wf = DecomposeWorkflow(llm_fn=_llm_dong_thau(), retrieve_fn=retrieve_fn, timeout=30,
+                           source_summaries=_SOURCES)
+    gd = await wf.run(group=_GROUP)
+
+    nd = _nd_of(gd, "Nộp thầu đúng hạn", "Thời điểm đóng thầu")
+    assert nd["thong_tin_bo_sung"] == "Đóng thầu: 09h00 ngày 20/6/2025"
+    assert nd["nguon"] == "Thông báo mời thầu tr 1"          # nguon rỗng -> backfill theo source_doc
+    assert any(c["source_doc"] == "tbmt" for c in captured)   # lượt tra ưu tiên nguồn gợi ý
+    assert any(c["source_doc"] is None for c in captured)     # KÈM lượt không filter (route mềm)
+    assert not any(c["clause_doc"] == "bdl" for c in captured)  # need đã route: không đi nhánh bdl
+    assert gd.needs_review == []
+
+
+async def test_search_route_sai_van_duoc_retry_cuu():
+    """Route sai (nguồn gợi ý không chứa thông tin) -> bậc retry KHÔNG filter vẫn cứu."""
+    def retrieve_fn(q, k=5, clause_doc=None, is_form=None, source_doc=None):
+        if source_doc is None and "chủ đầu tư" in q:  # chỉ query retry (góc khác, không filter) mới thấy
+            return [{"text": "E-BDL 1.1 | Chủ đầu tư kiêm mốc đóng thầu: 09h00 20/6/2025",
+                     "metadata": {"chunk_id": "x", "clause_id": "1.1", "clause_doc": "bdl"}, "score": 1.0}]
+        return []
+
+    llm = _llm_dong_thau(resolve_tag="[TAG:RESOLVE2:Thời điểm đóng thầu]")
+    llm.by_match["[TAG:QUERY2:Thời điểm đóng thầu]"] = {"query": "chủ đầu tư thời gian nộp thầu"}
+    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=retrieve_fn, timeout=30,
+                           source_summaries=_SOURCES)
+    gd = await wf.run(group=_GROUP)
+
+    nd = _nd_of(gd, "Nộp thầu đúng hạn", "Thời điểm đóng thầu")
+    assert nd["can_review"] is False and "09h00" in nd["thong_tin_bo_sung"]
+    assert gd.needs_review == []
+
+
+async def test_search_scan_appendix_resolves_without_hits():
+    """Nguồn scan NHỎ nạp NGUYÊN VĂN làm phụ lục -> resolve được dù retrieve trượt hoàn toàn."""
+    llm = _llm_dong_thau()
+    wf = DecomposeWorkflow(
+        llm_fn=llm,
+        retrieve_fn=lambda q, k=5, clause_doc=None, is_form=None, source_doc=None: [],
+        timeout=30, source_summaries=_SOURCES,
+        scan_texts={"tbmt": "THÔNG BÁO MỜI THẦU\nThời điểm đóng thầu: 09 giờ 00 ngày 20/6/2025"},
+    )
+    gd = await wf.run(group=_GROUP)
+
+    nd = _nd_of(gd, "Nộp thầu đúng hạn", "Thời điểm đóng thầu")
+    assert nd["can_review"] is False and "09h00" in nd["thong_tin_bo_sung"]
+    resolves = [c for c in llm.calls if "[TAG:RESOLVE:" in c]
+    assert resolves and "PHỤ LỤC — THÔNG BÁO MỜI THẦU" in resolves[0]
+    assert "09 giờ 00" in resolves[0]           # nguyên văn TBMT có mặt trong bằng chứng

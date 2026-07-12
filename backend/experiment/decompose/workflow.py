@@ -68,6 +68,7 @@ def _clamp_codes(item: dict[str, Any]) -> None:
 _STRUCT_MAX_TOKENS = 8192
 _EVIDENCE_CAP = 9000   # ký tự bằng chứng hits (NGUYÊN VĂN chunk, không cắt 300 kẻo mất giá trị)
 _BDL_CAP = 15000       # trần phụ lục bảng E-BDL nạp kèm resolve
+_SCAN_CAP = 12000      # trần NGUYÊN VĂN 1 nguồn scan nhỏ (TBMT...) nạp làm phụ lục resolve
 
 
 class _Listed(Event):
@@ -98,11 +99,15 @@ class DecomposeWorkflow(Workflow):
     """Chạy 1 lần/nhóm. wf.run(group=<dict trong chuong3_groups.json>) -> GroupDecomposition."""
 
     def __init__(self, llm_fn: LlmFn, retrieve_fn: RetrieveFn | None = None,
-                 bdl_rows: list[dict[str, Any]] | None = None, **kw: Any):
+                 bdl_rows: list[dict[str, Any]] | None = None,
+                 source_summaries: dict[str, str] | None = None,
+                 scan_texts: dict[str, str] | None = None, **kw: Any):
         super().__init__(**kw)
         self._llm = llm_fn
         self._retrieve = retrieve_fn
         self._bdl_rows = bdl_rows or []  # dòng Bảng dữ liệu (E-BDL) — phụ lục resolve, recall tất định
+        self._sources = source_summaries or {}  # {source_doc: tóm tắt} — bật route mềm theo nguồn
+        self._scan_texts = scan_texts or {}     # {source_doc: nguyên văn} — phụ lục nguồn scan nhỏ
 
     # ---- nguồn nội dung nhóm (kèm lần tham chiếu Mục 3 -> Phần 4) ----
     def _build_source(self, group: dict[str, Any]) -> str:
@@ -185,7 +190,18 @@ class DecomposeWorkflow(Workflow):
         """Toàn bộ dòng E-BDL (nếu được cấp) — recall tất định cho giá trị data-sheet."""
         if not self._bdl_rows:
             return ""
-        return "\n".join(r.get("text", "") for r in self._bdl_rows)[:_BDL_CAP]
+        body = "\n".join(r.get("text", "") for r in self._bdl_rows)[:_BDL_CAP]
+        return f"[PHỤ LỤC — BẢNG DỮ LIỆU (E-BDL) ĐẦY ĐỦ]\n{body}"
+
+    def _scan_appendix(self, srcs: list[str]) -> str:
+        """Nguyên văn các nguồn scan NHỎ (<= _SCAN_CAP) — recall tất định, không phụ thuộc query."""
+        parts: list[str] = []
+        for s in srcs:
+            t = (self._scan_texts.get(s) or "").strip()
+            if t and len(t) <= _SCAN_CAP:
+                label = self._SOURCE_LABELS.get(s, s)
+                parts.append(f"[PHỤ LỤC — {label.upper()} (NGUYÊN VĂN)]\n{t}")
+        return "\n\n".join(parts)
 
     @staticmethod
     def _evidence(hits: list[dict]) -> str:
@@ -207,8 +223,8 @@ class DecomposeWorkflow(Workflow):
         if not hits and not appendix:
             return False
         body = self._evidence(hits)
-        if appendix:
-            body = f"{body}\n\n[PHỤ LỤC — BẢNG DỮ LIỆU (E-BDL) ĐẦY ĐỦ]\n{appendix}"
+        if appendix:  # appendix đã gắn nhãn sẵn (_bdl_appendix/_scan_appendix)
+            body = f"{body}\n\n{appendix}"
         rout = await self._llm(SYS_RESOLVE, resolve_prompt(crit, n, body, attempt=attempt),
                                validate=validate_resolved_value, max_tokens=_STRUCT_MAX_TOKENS)
         if rout.status == "ok" and not rout.data.get("can_review") \
@@ -328,11 +344,14 @@ class DecomposeWorkflow(Workflow):
             for n in needs:
                 nd = n.get("noi_dung_kiem_tra", "")
                 lam_ro = n.get("can_lam_ro", "") or nd
-                # 1) sinh query RIÊNG cho 'cần làm rõ' (LLM mở rộng nghiệp vụ: đồng nghĩa/nơi nằm)
-                qout = await self._llm(SYS_QUERY, query_prompt(crit, n), validate=validate_query)
+                # 1) sinh query RIÊNG cho 'cần làm rõ' (LLM mở rộng nghiệp vụ; kèm danh mục nguồn nếu đa nguồn)
+                qout = await self._llm(SYS_QUERY, query_prompt(crit, n, sources=self._sources or None),
+                                       validate=validate_query)
                 base = (qout.data.get("query") if qout.status == "ok" else "") or f"{ten} {lam_ro}"
+                sugg = qout.data.get("nguon_goi_y", []) if qout.status == "ok" else []
+                route = [str(s) for s in sugg if str(s) in self._sources and str(s) != "hsmt"]
                 refs = list(dict.fromkeys(extract_clause_refs(lam_ro) + crit_refs))
-                # 2) định tuyến theo need: tham chiếu mẫu -> tra VÀO Biểu mẫu; còn lại -> giá trị.
+                # 2) định tuyến theo need: tham chiếu mẫu > nguồn gợi ý > giá trị (bdl-first).
                 form_refs = extract_form_refs(f"{lam_ro} {n.get('yeu_cau', '')}")
                 if form_refs:
                     anchors = [f"mẫu số {f}" for f in form_refs]
@@ -343,6 +362,14 @@ class DecomposeWorkflow(Workflow):
                         self._retrieve(query, k=3),                # recall chung
                     )
                     appendix = ""  # need mẫu: bảng dữ liệu không liên quan
+                elif route:
+                    query = " ".join([base, *refs]).strip()
+                    log.info("      [retrieve|nguồn %s] %s", ",".join(route), query)
+                    hits = self._merge_hits(
+                        *[self._retrieve(query, k=4, source_doc=s) for s in route],  # VÀO nguồn gợi ý
+                        self._retrieve(query, k=4),               # recall chung (route sai vẫn có cửa)
+                    )
+                    appendix = self._scan_appendix(route)          # nguồn nhỏ: nguyên văn, recall tất định
                 else:
                     query = " ".join([base, *refs, "bảng dữ liệu E-BDL"]).strip()
                     log.info("      [retrieve] %s", query)
@@ -356,14 +383,17 @@ class DecomposeWorkflow(Workflow):
                 # 3) resolve bậc 1 (kèm phụ lục E-BDL nếu là need giá trị)
                 if await self._try_resolve(crit, n, hits, appendix, attempt=1):
                     continue
-                # 4) bậc retry: query GÓC KHÁC, bỏ mọi filter, nới k (phủ Biểu mẫu/E-CDNT/TBMT)
+                # 4) bậc retry: query GÓC KHÁC, bỏ mọi filter, nới k + phụ lục vét cạn (E-BDL + scan nhỏ)
                 q2out = await self._llm(SYS_QUERY, retry_query_prompt(crit, n, query),
                                         validate=validate_query)
                 base2 = (q2out.data.get("query") if q2out.status == "ok" else "") or f"{lam_ro} {ten}"
                 query2 = " ".join([base2, *refs]).strip()
                 log.info("      [retrieve|retry] %s", query2)
                 hits2 = self._retrieve(query2, k=10)
-                if not await self._try_resolve(crit, n, hits2, self._bdl_appendix(), attempt=2):
+                retry_appendix = "\n\n".join(
+                    a for a in (self._bdl_appendix(), self._scan_appendix(list(self._scan_texts))) if a
+                )
+                if not await self._try_resolve(crit, n, hits2, retry_appendix, attempt=2):
                     n["_queries_da_thu"] = [query, query2]  # đo lường; pop ở đoạn no-fab
 
         # No-fab: nội dung can_tra_cuu vẫn trống thong_tin_bo_sung -> can_review (KHÔNG bịa).
