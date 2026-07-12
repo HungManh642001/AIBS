@@ -32,3 +32,26 @@ async def test_ocr_scan_to_chunks(tmp_path):
     assert keep_for_index(c) is True
     node = chunk_to_node(c)
     assert node.metadata["source_doc"] == "tbmt" and node.text == c["text"]
+
+
+async def test_ocr_page_gist_attached_to_chunks(tmp_path):
+    """Vision trả thêm gist 1 dòng/trang -> mọi chunk của trang mang page_gist (nuôi thẻ nguồn)."""
+    pdf = tmp_path / "tbmt.pdf"
+    pdf.write_bytes(_pdf("Thông báo mời thầu"))
+    vision = ScriptedVision({SYS_OCR: {"text": "Thời điểm đóng thầu 09h00",
+                                       "gist": "thời điểm đóng/mở thầu, địa điểm"}})
+
+    chunks = await ocr_scan_to_chunks(str(pdf), source_doc="tbmt", vision_fn=vision)
+
+    assert chunks and all(c["page_gist"] == "thời điểm đóng/mở thầu, địa điểm" for c in chunks)
+
+
+async def test_ocr_without_gist_defaults_empty(tmp_path):
+    """Vision cũ không trả gist -> page_gist rỗng (tương thích ngược, summarize tự fallback text)."""
+    pdf = tmp_path / "tbmt.pdf"
+    pdf.write_bytes(_pdf("Thông báo mời thầu"))
+    vision = ScriptedVision({SYS_OCR: {"text": "Thời điểm đóng thầu 09h00"}})
+
+    chunks = await ocr_scan_to_chunks(str(pdf), source_doc="tbmt", vision_fn=vision)
+
+    assert chunks and all(c["page_gist"] == "" for c in chunks)
