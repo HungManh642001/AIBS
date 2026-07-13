@@ -18,6 +18,7 @@ log = logging.getLogger("experiment.decompose")
 
 from config import get_settings
 
+from experiment.decompose.anchors import build_anchors
 from experiment.decompose.llm import default_llm_fn
 from experiment.decompose.retrieval import open_disk_index
 from experiment.decompose.schema import DecomposeResult, GroupDecomposition, result_to_json
@@ -183,6 +184,14 @@ async def run(
         log.info("Danh mục nguồn route: %s", list(sources))
 
     llm_fn = llm_fn or default_llm_fn
+
+    # Bảng neo gói thầu (hướng A): 1 call/run trích mốc chung -> mọi RESOLVE tự đủ.
+    anchors: dict[str, dict[str, str]] = {}
+    if bdl_rows or scan_texts:
+        anchors = await build_anchors(llm_fn, bdl_rows, scan_texts)
+        if anchors:
+            log.info("Bảng neo gói thầu: %s", list(anchors))
+
     close_client = None
     if retrieve_fn is None:
         close_client, retrieve_fn = open_disk_index(db_path, settings)
@@ -195,7 +204,8 @@ async def run(
             wf = DecomposeWorkflow(llm_fn=llm_fn, retrieve_fn=retrieve_fn, timeout=600,
                                    bdl_rows=bdl_rows or None,
                                    source_summaries=sources, scan_texts=scan_texts or None,
-                                   form_texts=_load_form_texts(chunks_path) or None)
+                                   form_texts=_load_form_texts(chunks_path) or None,
+                                   anchors=anchors or None)
             gd: GroupDecomposition = await wf.run(group=g)
             result.groups.append(gd)
     finally:

@@ -1,11 +1,13 @@
 import json
 
+from experiment.decompose.llm import ScriptedLlm
 from experiment.decompose.run_decompose import (
     _load_bdl_rows,
     _load_form_texts,
     _load_scan_texts,
     _load_summaries,
 )
+from experiment.decompose.run_decompose import run as decompose_run
 
 
 def test_load_bdl_rows_filters_clause_doc(tmp_path):
@@ -87,6 +89,68 @@ def test_markdown_renders_doi_chieu_hsdt():
 
     assert "(đối chiếu trực tiếp trên HSDT)" in md
     assert "cần tra cứu" not in md      # không rơi nhầm nhánh can_tra_cuu
+
+
+def _run_fixtures(tmp_path, with_chunks: bool):
+    """groups.json (2 nhóm) + chunks.jsonl (1 dòng bdl + 1 chunk tbmt) + ScriptedLlm đủ ladder."""
+    blocks = [{"type": "text", "page": [1, 1], "text": "Bảo lãnh dự thầu hiệu lực theo E-BDL."}]
+    groups = {"doc": "HSMT", "groups": [
+        {"group": "hop_le", "muc": "Mục 1", "is_reference": False, "ref_target": None, "blocks": blocks},
+        {"group": "nang_luc", "muc": "Mục 2", "is_reference": False, "ref_target": None, "blocks": blocks},
+    ]}
+    gp = tmp_path / "groups.json"
+    gp.write_text(json.dumps(groups, ensure_ascii=False), encoding="utf-8")
+    cp = None
+    if with_chunks:
+        rows = [
+            {"chunk_id": "b1", "text": "E-BDL 19.1 | Hiệu lực bảo đảm: ≥120 ngày kể từ thời điểm đóng thầu",
+             "clause_doc": "bdl"},
+            {"chunk_id": "t1", "text": "Đóng thầu: 09h00 ngày 20/6/2025", "source_doc": "tbmt"},
+        ]
+        cp = tmp_path / "chunks.jsonl"
+        cp.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows), encoding="utf-8")
+    llm = ScriptedLlm({
+        "[TAG:ANCHORS]": {"neo": [
+            {"ten": "thời điểm đóng thầu", "gia_tri": "09h00 ngày 20/6/2025", "nguon": "TBMT"}]},
+        "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Hiệu lực bảo lãnh"}]},
+        "[TAG:STRUCT:": {
+            "nhom": "hop_le", "ten": "Hiệu lực bảo lãnh", "yeu_cau_goc": "Hiệu lực theo E-BDL",
+            "hsdt_can_kiem_tra": ["bao_dam_du_thau"], "tien_quyet": False,
+            "noi_dung_can_kiem_tra": [{
+                "noi_dung_kiem_tra": "Thời hạn hiệu lực bảo lãnh", "hsdt_kiem_tra": "bao_dam_du_thau",
+                "yeu_cau": "theo E-BDL", "can_lam_ro": "Thời hạn hiệu lực bảo lãnh", "can_tra_cuu": True}]},
+        "[TAG:QUERY:": {"query": "hiệu lực bảo đảm dự thầu"},
+        "[TAG:RESOLVE": {
+            "thong_tin_bo_sung": "≥ 120 ngày kể từ thời điểm đóng thầu (= 09h00 ngày 20/6/2025 [TBMT])",
+            "nguon": "E-BDL 19.1", "can_review": False},
+    })
+
+    def retrieve_fn(q, k=5, clause_doc=None, is_form=None, source_doc=None):
+        return [{"text": "E-BDL 19.1 | Hiệu lực bảo đảm: ≥120 ngày kể từ thời điểm đóng thầu",
+                 "metadata": {"chunk_id": "b1", "clause_id": "19.1", "clause_doc": "bdl"}, "score": 1.0}]
+
+    return gp, cp, llm, retrieve_fn
+
+
+async def test_run_builds_anchors_once_and_feeds_workflow(tmp_path):
+    """Có chunks (bdl+scan) -> đúng 1 call ANCHORS cho CẢ run (2 nhóm); neo vào prompt RESOLVE."""
+    gp, cp, llm, retrieve_fn = _run_fixtures(tmp_path, with_chunks=True)
+    metrics = await decompose_run(groups_path=str(gp), out_dir=str(tmp_path / "out"),
+                                  llm_fn=llm, retrieve_fn=retrieve_fn, chunks_path=str(cp))
+    assert metrics["n_needs_review"] == 0
+    anchors_calls = [c for c in llm.calls if "[TAG:ANCHORS]" in c]
+    assert len(anchors_calls) == 1                              # 1 call/run, KHÔNG phải 1 call/nhóm
+    assert "E-BDL 19.1" in anchors_calls[0] and "Đóng thầu: 09h00" in anchors_calls[0]
+    resolves = [c for c in llm.calls if "[TAG:RESOLVE" in c]
+    assert resolves and all("[BẢNG NEO — MỐC CHUNG GÓI THẦU]" in c for c in resolves)
+
+
+async def test_run_without_chunks_no_anchors_call(tmp_path):
+    """Không chunks -> KHÔNG call ANCHORS (hành vi cũ giữ nguyên)."""
+    gp, _, llm, retrieve_fn = _run_fixtures(tmp_path, with_chunks=False)
+    await decompose_run(groups_path=str(gp), out_dir=str(tmp_path / "out"),
+                        llm_fn=llm, retrieve_fn=retrieve_fn)
+    assert not any("[TAG:ANCHORS]" in c for c in llm.calls)
 
 
 def test_load_summaries_accepts_card(tmp_path):
