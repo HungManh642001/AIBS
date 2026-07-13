@@ -103,7 +103,8 @@ class DecomposeWorkflow(Workflow):
                  bdl_rows: list[dict[str, Any]] | None = None,
                  source_summaries: dict[str, str] | None = None,
                  scan_texts: dict[str, str] | None = None,
-                 form_texts: dict[str, str] | None = None, **kw: Any):
+                 form_texts: dict[str, str] | None = None,
+                 anchors: dict[str, dict[str, str]] | None = None, **kw: Any):
         super().__init__(**kw)
         self._llm = llm_fn
         self._retrieve = retrieve_fn
@@ -111,6 +112,7 @@ class DecomposeWorkflow(Workflow):
         self._sources = source_summaries or {}  # {source_doc: tóm tắt} — bật route mềm theo nguồn
         self._scan_texts = scan_texts or {}     # {source_doc: nguyên văn} — phụ lục nguồn scan nhỏ
         self._form_texts = form_texts or {}     # {mã mẫu: nguyên văn TRỌN mẫu} — phụ lục need mẫu
+        self._anchors = anchors or {}           # {tên neo: {gia_tri, nguon}} — mốc chung gói thầu
 
     # ---- nguồn nội dung nhóm (kèm lần tham chiếu Mục 3 -> Phần 4) ----
     def _build_source(self, group: dict[str, Any]) -> str:
@@ -206,6 +208,17 @@ class DecomposeWorkflow(Workflow):
                 parts.append(f"[PHỤ LỤC — {label.upper()} (NGUYÊN VĂN)]\n{t}")
         return "\n\n".join(parts)
 
+    def _anchor_appendix(self) -> str:
+        """Bảng neo mốc chung — giúp thong_tin_bo_sung TỰ ĐỦ khi chuẩn tham chiếu mốc."""
+        lines: list[str] = []
+        for ten, v in self._anchors.items():
+            gia_tri = (v.get("gia_tri") or "").strip()
+            if not gia_tri:
+                continue
+            nguon = (v.get("nguon") or "").strip()
+            lines.append(f"- {ten}: {gia_tri}" + (f" [{nguon}]" if nguon else ""))
+        return "[BẢNG NEO — MỐC CHUNG GÓI THẦU]\n" + "\n".join(lines) if lines else ""
+
     def _form_appendix(self, refs: list[str]) -> str:
         """Nguyên văn TRỌN biểu mẫu theo mã — vá mẫu tách nhiều chunk (phần bảng không từ khóa)."""
         parts: list[str] = []
@@ -237,6 +250,9 @@ class DecomposeWorkflow(Workflow):
         body = self._evidence(hits)
         if appendix:  # appendix đã gắn nhãn sẵn (_bdl_appendix/_scan_appendix)
             body = f"{body}\n\n{appendix}"
+        anchor = self._anchor_appendix()  # neo KHÔNG tự kích hoạt resolve (guard ở trên giữ nguyên)
+        if anchor:
+            body = f"{body}\n\n{anchor}"
         rout = await self._llm(SYS_RESOLVE, resolve_prompt(crit, n, body, attempt=attempt),
                                validate=validate_resolved_value, max_tokens=_STRUCT_MAX_TOKENS)
         if rout.status == "ok" and rout.data.get("thuoc_hsdt"):
