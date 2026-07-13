@@ -273,6 +273,31 @@ async def test_search_form_need_routes_into_bieu_mau():
     assert nd["thong_tin_bo_sung"].startswith("Theo Mẫu số 01") and nd["can_review"] is False
 
 
+async def test_search_form_appendix_resolves_without_hits():
+    """Mẫu tách nhiều chunk, retrieve trượt hoàn toàn -> phụ lục NGUYÊN VĂN cả mẫu vẫn cứu
+    (kể cả phần bảng không chứa từ khóa mẫu)."""
+    llm = ScriptedLlm({
+        "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Bảng chào giá"}]},
+        "[TAG:STRUCT:Bảng chào giá]": _crit(
+            "Bảng chào giá", [_nd("Đúng mẫu quy định", can_lam_ro="Bảng chào giá theo mẫu 05C.1")]),
+        "[TAG:QUERY:Đúng mẫu quy định]": {"query": "bảng chào giá"},
+        "[TAG:RESOLVE:Đúng mẫu quy định]":
+            {"thong_tin_bo_sung": "Theo Mẫu số 05C.1: STT, hạng mục, đơn giá, thành tiền",
+             "nguon": "Mẫu số 05C.1 Chương IV", "can_review": False},
+    })
+    form_texts = {"05c.1": "Mẫu số 05C.1. BẢNG CHÀO GIÁ\nSTT | Hạng mục | Đơn giá | Thành tiền"}
+    wf = DecomposeWorkflow(llm_fn=llm,
+                           retrieve_fn=lambda q, k=5, clause_doc=None, is_form=None: [],
+                           timeout=30, form_texts=form_texts)
+    gd = await wf.run(group=_GROUP)
+
+    nd = _nd_by(_by_name(gd.criteria, "Bảng chào giá"), "Đúng mẫu quy định")
+    assert nd["can_review"] is False and "05C.1" in nd["thong_tin_bo_sung"]
+    resolves = [c for c in llm.calls if "[TAG:RESOLVE:" in c]
+    assert resolves and "PHỤ LỤC — MẪU SỐ 05C.1" in resolves[0]
+    assert "Đơn giá | Thành tiền" in resolves[0]   # phần bảng (không từ khóa) có mặt
+
+
 async def test_search_bdl_appendix_resolves_without_hits():
     """Retrieve trượt hoàn toàn nhưng giá trị nằm trong bảng E-BDL nạp kèm -> vẫn resolve được."""
     llm = ScriptedLlm({

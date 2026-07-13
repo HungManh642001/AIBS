@@ -68,6 +68,28 @@ def _fmt_summary(v: Any) -> str:
     return str(v).strip()
 
 
+def _load_form_texts(chunks_path: str | None) -> dict[str, str]:
+    """chunks.jsonl -> {mã mẫu: nguyên văn TRỌN mẫu} cho phụ lục resolve của need 'đúng mẫu số N'.
+
+    Mẫu (text + bảng) bị chunk tách nhiều mảnh mà CHỈ mảnh đầu mang từ khóa 'Mẫu số X'
+    (tên mẫu không phải heading -> không vào section_path) -> retrieve trượt phần bảng.
+    Vá bằng quét TUẦN TỰ: chunk Biểu mẫu có marker -> mở mẫu mới; không marker -> KẾ THỪA
+    mẫu đang mở; chunk ngoài chương Biểu mẫu -> reset.
+    """
+    from experiment.index.schema import form_id_of, is_form_chunk  # tái dùng detector của index
+
+    out: dict[str, list[str]] = {}
+    current = ""
+    for c in _read_chunks(chunks_path):
+        if not is_form_chunk(c):
+            current = ""
+            continue
+        current = form_id_of(c) or current
+        if current and (c.get("text") or "").strip():
+            out.setdefault(current, []).append(c["text"])
+    return {k: "\n".join(v) for k, v in out.items()}
+
+
 def _load_summaries(path: str | None) -> dict[str, str]:
     """source_summaries.json -> {source_doc: tóm tắt} (bỏ entry rỗng; file người sửa tay ĐƯỢC ưu tiên).
 
@@ -170,7 +192,8 @@ async def run(
             log.info("=== Nhóm %d/%d: %s ===", i, len(groups), g.get("group", ""))
             wf = DecomposeWorkflow(llm_fn=llm_fn, retrieve_fn=retrieve_fn, timeout=600,
                                    bdl_rows=bdl_rows or None,
-                                   source_summaries=sources, scan_texts=scan_texts or None)
+                                   source_summaries=sources, scan_texts=scan_texts or None,
+                                   form_texts=_load_form_texts(chunks_path) or None)
             gd: GroupDecomposition = await wf.run(group=g)
             result.groups.append(gd)
     finally:

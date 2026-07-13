@@ -69,6 +69,7 @@ _STRUCT_MAX_TOKENS = 8192
 _EVIDENCE_CAP = 9000   # ký tự bằng chứng hits (NGUYÊN VĂN chunk, không cắt 300 kẻo mất giá trị)
 _BDL_CAP = 15000       # trần phụ lục bảng E-BDL nạp kèm resolve
 _SCAN_CAP = 12000      # trần NGUYÊN VĂN 1 nguồn scan nhỏ (TBMT...) nạp làm phụ lục resolve
+_FORM_CAP = 12000      # trần NGUYÊN VĂN 1 biểu mẫu (text + bảng) nạp làm phụ lục resolve
 
 
 class _Listed(Event):
@@ -101,13 +102,15 @@ class DecomposeWorkflow(Workflow):
     def __init__(self, llm_fn: LlmFn, retrieve_fn: RetrieveFn | None = None,
                  bdl_rows: list[dict[str, Any]] | None = None,
                  source_summaries: dict[str, str] | None = None,
-                 scan_texts: dict[str, str] | None = None, **kw: Any):
+                 scan_texts: dict[str, str] | None = None,
+                 form_texts: dict[str, str] | None = None, **kw: Any):
         super().__init__(**kw)
         self._llm = llm_fn
         self._retrieve = retrieve_fn
         self._bdl_rows = bdl_rows or []  # dòng Bảng dữ liệu (E-BDL) — phụ lục resolve, recall tất định
         self._sources = source_summaries or {}  # {source_doc: tóm tắt} — bật route mềm theo nguồn
         self._scan_texts = scan_texts or {}     # {source_doc: nguyên văn} — phụ lục nguồn scan nhỏ
+        self._form_texts = form_texts or {}     # {mã mẫu: nguyên văn TRỌN mẫu} — phụ lục need mẫu
 
     # ---- nguồn nội dung nhóm (kèm lần tham chiếu Mục 3 -> Phần 4) ----
     def _build_source(self, group: dict[str, Any]) -> str:
@@ -201,6 +204,15 @@ class DecomposeWorkflow(Workflow):
             if t and len(t) <= _SCAN_CAP:
                 label = self._SOURCE_LABELS.get(s, s)
                 parts.append(f"[PHỤ LỤC — {label.upper()} (NGUYÊN VĂN)]\n{t}")
+        return "\n\n".join(parts)
+
+    def _form_appendix(self, refs: list[str]) -> str:
+        """Nguyên văn TRỌN biểu mẫu theo mã — vá mẫu tách nhiều chunk (phần bảng không từ khóa)."""
+        parts: list[str] = []
+        for f in refs:
+            t = (self._form_texts.get(f) or "").strip()
+            if t:
+                parts.append(f"[PHỤ LỤC — MẪU SỐ {f.upper()} (NGUYÊN VĂN)]\n{t[:_FORM_CAP]}")
         return "\n\n".join(parts)
 
     @staticmethod
@@ -361,7 +373,7 @@ class DecomposeWorkflow(Workflow):
                         self._retrieve(query, k=6, is_form=True),  # VÀO chunk Biểu mẫu
                         self._retrieve(query, k=3),                # recall chung
                     )
-                    appendix = ""  # need mẫu: bảng dữ liệu không liên quan
+                    appendix = self._form_appendix(form_refs)  # trọn mẫu (kể cả bảng không từ khóa)
                 elif route:
                     query = " ".join([base, *refs]).strip()
                     log.info("      [retrieve|nguồn %s] %s", ",".join(route), query)
@@ -390,9 +402,11 @@ class DecomposeWorkflow(Workflow):
                 query2 = " ".join([base2, *refs]).strip()
                 log.info("      [retrieve|retry] %s", query2)
                 hits2 = self._retrieve(query2, k=10)
-                retry_appendix = "\n\n".join(
-                    a for a in (self._bdl_appendix(), self._scan_appendix(list(self._scan_texts))) if a
-                )
+                retry_appendix = "\n\n".join(a for a in (
+                    self._form_appendix(form_refs),   # need mẫu: giữ trọn mẫu ở bậc retry
+                    self._bdl_appendix(),
+                    self._scan_appendix(list(self._scan_texts)),
+                ) if a)
                 if not await self._try_resolve(crit, n, hits2, retry_appendix, attempt=2):
                     n["_queries_da_thu"] = [query, query2]  # đo lường; pop ở đoạn no-fab
 
