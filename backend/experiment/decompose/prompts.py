@@ -71,6 +71,29 @@ SYS_RESOLVE = (
     '"thuoc_hsdt":false} — TUYỆT ĐỐI KHÔNG bịa.'
 )
 
+SYS_ANCHORS = (
+    "Bạn là chuyên gia đấu thầu. Đọc TƯ LIỆU GÓI THẦU (Bảng dữ liệu E-BDL + thông báo mời thầu/"
+    "nguồn kèm theo) và trích BẢNG NEO — các MỐC CHUNG mà nhiều chuẩn khác tham chiếu tới. "
+    "CHỈ trả các neo TÌM THẤY nguyên văn trong tư liệu; neo không thấy thì BỎ QUA — TUYỆT ĐỐI "
+    "KHÔNG bịa. 'nguon': nơi chứa mốc (vd 'TBMT', 'E-BDL 19.1')."
+)
+
+_ANCHOR_CATALOG = (
+    "- thời điểm đóng thầu\n- thời điểm mở thầu\n- thời gian hiệu lực E-HSDT\n"
+    "- tên gói thầu\n- bên mời thầu\n- chủ đầu tư\n- giá gói thầu"
+)
+
+
+def anchors_prompt(body: str) -> str:
+    """1 call/run đầu decompose — trích mốc chung từ E-BDL + nguyên văn nguồn scan."""
+    return (
+        "[TAG:ANCHORS]\n"
+        f"DANH MỤC NEO CẦN TÌM:\n{_ANCHOR_CATALOG}\n\n"
+        f"TƯ LIỆU GÓI THẦU:\n{body}\n\n"
+        + cot_block('{"neo":[{"ten":"<tên neo trong danh mục>","gia_tri":"...","nguon":"..."}]}')
+    )
+
+
 # Schema step structure — noi_dung_can_kiem_tra là ô hạng nhất.
 _CRIT_SCHEMA = (
     '{"nhom","ten","yeu_cau_goc","hsdt_can_kiem_tra":[...],"tien_quyet":false,'

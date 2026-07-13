@@ -68,6 +68,17 @@ class QueryOut(_Base):
     nguon_goi_y: list[Any] = []
 
 
+class AnchorItem(_Base):
+    """Một mốc chung của gói thầu (bảng neo) — chuẩn tương đối tham chiếu tới."""
+    ten: str = ""
+    gia_tri: str = ""
+    nguon: str = ""
+
+
+class AnchorsModel(_Base):
+    neo: list[AnchorItem] = []
+
+
 class CriterionModel(_Base):
     """Output step structure/resolve — tiêu chí hoàn chỉnh."""
     nhom: str = "hop_le"
@@ -103,6 +114,10 @@ def validate_query(d: dict[str, Any]) -> dict[str, Any]:
 
 def validate_resolved_value(d: dict[str, Any]) -> dict[str, Any]:
     return ResolvedInfo(**d).model_dump()
+
+
+def validate_anchors(d: dict[str, Any]) -> dict[str, Any]:
+    return AnchorsModel(**d).model_dump()
 
 
 # ---- gom kết quả 1 nhóm / cả tài liệu ----
