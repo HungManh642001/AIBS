@@ -47,13 +47,19 @@ class NoiDungKiemTra(_Base):
     thong_tin_bo_sung: str = ""   # (step 3) chuẩn ĐÃ RESOLVE, tự đủ, có quan hệ so sánh
     nguon: str = ""               # (step 3) mã điều khoản nguồn (E-BDL/E-CDNT), cho audit
     can_review: bool = False      # (step 3) True nếu can_tra_cuu mà tra không ra (KHÔNG bịa)
+    doi_chieu_hsdt: bool = False  # (step 3) True nếu thông tin THUỘC hồ sơ nhà thầu -> chấm trực tiếp
 
 
 class ResolvedInfo(_Base):
-    """Output step search (resolve 1 need): thông tin bổ sung đã tra + nguồn, hoặc cần review."""
+    """Output step search (resolve 1 need): thông tin bổ sung đã tra + nguồn, hoặc cần review.
+
+    thuoc_hsdt: escape — thông tin cần làm rõ THUỘC hồ sơ nhà thầu nộp (không có trong HSMT)
+    -> need chuyển 'đối chiếu trực tiếp trên HSDT', không phải lỗi tra cứu.
+    """
     thong_tin_bo_sung: str = ""
     nguon: str = ""
     can_review: bool = False
+    thuoc_hsdt: bool = False
 
 
 class QueryOut(_Base):

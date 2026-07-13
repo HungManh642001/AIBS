@@ -239,6 +239,13 @@ class DecomposeWorkflow(Workflow):
             body = f"{body}\n\n{appendix}"
         rout = await self._llm(SYS_RESOLVE, resolve_prompt(crit, n, body, attempt=attempt),
                                validate=validate_resolved_value, max_tokens=_STRUCT_MAX_TOKENS)
+        if rout.status == "ok" and rout.data.get("thuoc_hsdt"):
+            # Escape: thông tin THUỘC hồ sơ nhà thầu (HSMT không thể chứa) -> chấm trực tiếp
+            # trên HSDT, không phải lỗi tra cứu -> dừng ladder, không flag cần soi.
+            n["doi_chieu_hsdt"] = True
+            log.info("    [search] %s/%s -> thuộc HSDT (đối chiếu trực tiếp khi chấm)",
+                     crit.get("ten", ""), n.get("noi_dung_kiem_tra", ""))
+            return True
         if rout.status == "ok" and not rout.data.get("can_review") \
                 and (rout.data.get("thong_tin_bo_sung") or "").strip():
             n["thong_tin_bo_sung"] = rout.data["thong_tin_bo_sung"]
@@ -415,6 +422,8 @@ class DecomposeWorkflow(Workflow):
         chi_tiet: dict[str, list[str]] = {}
         for n in item.get("noi_dung_can_kiem_tra", []):
             tried = n.pop("_queries_da_thu", None)
+            if n.get("doi_chieu_hsdt"):
+                continue  # thuộc hồ sơ nhà thầu -> chấm trực tiếp trên HSDT, không phải lỗi tra
             if n.get("can_tra_cuu") and not (n.get("thong_tin_bo_sung") or "").strip():
                 n["can_review"] = True
                 flagged.append(n.get("noi_dung_kiem_tra", ""))

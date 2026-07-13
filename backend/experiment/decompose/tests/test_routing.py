@@ -23,6 +23,16 @@ def test_query_prompt_with_sources_lists_catalog():
     assert "nguon_goi_y" in p                               # schema mở rộng
 
 
+def test_struct_prompt_teaches_hsdt_side_rule():
+    """SYS_STRUCT phân biệt thông tin phía mời thầu vs nội dung hồ sơ nhà thầu (VÍ DỤ 3 negative)."""
+    from experiment.decompose.prompts import SYS_STRUCT, struct_prompt
+
+    assert "hồ sơ nhà thầu" in SYS_STRUCT.lower() or "hồ sơ nhà thầu" in SYS_STRUCT
+    p = struct_prompt({"ten": "Thỏa thuận liên danh", "nhom": "hop_le"})
+    assert "VÍ DỤ 3" in p and "thỏa thuận liên danh" in p.lower()
+    assert '"can_tra_cuu":false' in p.replace(" ", "")      # ví dụ negative: KHÔNG tra cứu
+
+
 def test_query_prompt_without_sources_unchanged():
     """Đơn nguồn: prompt KHÔNG nhắc gì tới nguồn — hành vi cũ giữ nguyên."""
     p = query_prompt({"ten": "Bảo đảm"}, {"noi_dung_kiem_tra": "Giá trị", "can_lam_ro": "Giá trị"})

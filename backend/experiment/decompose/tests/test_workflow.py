@@ -319,6 +319,32 @@ async def test_search_bdl_appendix_resolves_without_hits():
     assert resolves and "PHỤ LỤC — BẢNG DỮ LIỆU" in resolves[0] and "6.100.000" in resolves[0]
 
 
+async def test_search_resolve_thuoc_hsdt_stops_ladder():
+    """RESOLVE nhận ra thông tin thuộc HỒ SƠ NHÀ THẦU (không có trong HSMT) -> doi_chieu_hsdt,
+    KHÔNG cần soi oan, KHÔNG retry (dừng ladder)."""
+    llm = ScriptedLlm({
+        "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Thỏa thuận liên danh"}]},
+        "[TAG:STRUCT:Thỏa thuận liên danh]": _crit(
+            "Thỏa thuận liên danh",
+            [_nd("Phân công trách nhiệm ký kết",
+                 can_lam_ro="Nội dung phân công trách nhiệm trong thỏa thuận liên danh")]),
+        "[TAG:QUERY:Phân công trách nhiệm ký kết]": {"query": "phân công trách nhiệm liên danh"},
+        "[TAG:RESOLVE:Phân công trách nhiệm ký kết]":
+            {"thong_tin_bo_sung": "", "nguon": "", "can_review": True, "thuoc_hsdt": True},
+    })
+    hits = [{"text": "E-CDNT: thỏa thuận liên danh theo Mẫu số 03", "metadata": {"chunk_id": "x"},
+             "score": 1.0}]
+    wf = DecomposeWorkflow(llm_fn=llm,
+                           retrieve_fn=lambda q, k=5, clause_doc=None, is_form=None: hits, timeout=30)
+    gd = await wf.run(group=_GROUP)
+
+    nd = _nd_by(_by_name(gd.criteria, "Thỏa thuận liên danh"), "Phân công trách nhiệm ký kết")
+    assert nd["doi_chieu_hsdt"] is True
+    assert nd["can_review"] is False and not nd["thong_tin_bo_sung"]
+    assert gd.needs_review == []                            # không "cần soi" oan
+    assert not any("[TAG:QUERY2:" in c for c in llm.calls)  # dừng ladder, không retry
+
+
 async def test_search_retry_second_query_succeeds_and_logs():
     """Bậc retry: lần 1 không ra -> QUERY2 góc khác, retrieve KHÔNG filter -> RESOLVE2 đậu."""
     calls: list[dict] = []

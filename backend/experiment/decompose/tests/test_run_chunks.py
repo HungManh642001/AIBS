@@ -72,6 +72,23 @@ def test_load_form_texts_inherits_open_form(tmp_path):
     assert _load_form_texts(None) == {}
 
 
+def test_markdown_renders_doi_chieu_hsdt():
+    """Need thuộc hồ sơ nhà thầu -> markdown ghi rõ '(đối chiếu trực tiếp trên HSDT)'."""
+    from experiment.decompose.run_decompose import _to_markdown
+    from experiment.decompose.schema import DecomposeResult, GroupDecomposition
+
+    nd = {"noi_dung_kiem_tra": "Phân công trách nhiệm ký kết", "hsdt_kiem_tra": "lien_danh",
+          "yeu_cau": "ký đúng phân công trong thỏa thuận liên danh",
+          "can_lam_ro": "Nội dung phân công trách nhiệm", "can_tra_cuu": True,
+          "thong_tin_bo_sung": "", "doi_chieu_hsdt": True, "can_review": False}
+    g = GroupDecomposition(group="hop_le", muc="Mục 1", criteria=[
+        {"ten": "Thỏa thuận liên danh", "nhom": "hop_le", "noi_dung_can_kiem_tra": [nd]}])
+    md = _to_markdown(DecomposeResult(doc="HSMT", groups=[g]))
+
+    assert "(đối chiếu trực tiếp trên HSDT)" in md
+    assert "cần tra cứu" not in md      # không rơi nhầm nhánh can_tra_cuu
+
+
 def test_load_summaries_accepts_card(tmp_path):
     """Thẻ nguồn {tom_tat, cac_truong} -> phẳng hoá thành chuỗi hiển thị cho danh mục route."""
     f = tmp_path / "source_summaries.json"

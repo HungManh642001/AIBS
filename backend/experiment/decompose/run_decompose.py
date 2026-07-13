@@ -129,6 +129,8 @@ def _to_markdown(r: DecomposeResult) -> str:
                     val = n["thong_tin_bo_sung"]
                     if n.get("nguon"):
                         val += f" [nguồn: {n['nguon']}]"
+                elif n.get("doi_chieu_hsdt"):
+                    val = "(đối chiếu trực tiếp trên HSDT)"
                 elif n.get("can_review"):
                     val = "⚠️cần soi"
                 elif n.get("can_tra_cuu"):

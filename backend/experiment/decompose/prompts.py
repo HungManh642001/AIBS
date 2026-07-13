@@ -38,6 +38,11 @@ SYS_STRUCT = (
     "- can_lam_ro: nếu yeu_cau còn CHƯA RÕ (trỏ tới điều khoản/BDS mà chưa nêu con số/nội dung cụ thể) "
     "-> ghi NGẮN thứ cần làm rõ (vd 'Giá trị bảo lãnh', 'Nội dung tư cách hợp lệ tại Mục 5 E-CDNT'). "
     "Nếu đã rõ (không cần tra) -> để trống.\n"
+    "  QUAN TRỌNG: can_lam_ro CHỈ dành cho thông tin PHÍA MỜI THẦU (chuẩn nêu trong E-BDL/E-CDNT/"
+    "biểu mẫu/thông báo mời thầu). Nếu điều chưa rõ là NỘI DUNG NẰM TRONG hồ sơ nhà thầu nộp "
+    "(vd phân công trách nhiệm trong thỏa thuận liên danh CỦA nhà thầu, nội dung đơn CỦA nhà thầu) "
+    "-> KHÔNG tra được trong HSMT: để trống can_lam_ro, can_tra_cuu=false (bước chấm sẽ đối chiếu "
+    "trực tiếp trên HSDT).\n"
     "- can_tra_cuu: true nếu can_lam_ro khác rỗng; false nếu không.\n"
     "TUYỆT ĐỐI KHÔNG bịa số/nội dung. Đặt tien_quyet=true nếu là tiêu chí loại/cổng."
 )
@@ -57,8 +62,12 @@ SYS_RESOLVE = (
     "- CÓ QUAN HỆ SO SÁNH: vd 'Giá trị bảo lãnh: 6.100.000 VNĐ', 'Thời gian hiệu lực: ≥ 120 ngày', "
     "'Đơn vị thụ hưởng: Liên doanh Việt - Nga Vietsovpetro', 'Đáp ứng đủ điều kiện: (a)...(b)...'.\n"
     "- 'nguon': mã điều khoản chứa thông tin (vd 'E-BDL 18.2', 'E-CDNT 1.1') trích từ bằng chứng.\n"
-    'Trả {"thong_tin_bo_sung":"...","nguon":"...","can_review":false}. Nếu bằng chứng KHÔNG chứa/không '
-    'chắc -> {"thong_tin_bo_sung":"","nguon":"","can_review":true} — TUYỆT ĐỐI KHÔNG bịa.'
+    "- 'thuoc_hsdt': true nếu THÔNG TIN CẦN LÀM RÕ thực chất là NỘI DUNG NẰM TRONG hồ sơ nhà thầu "
+    "nộp (vd phân công trách nhiệm trong thỏa thuận liên danh CỦA nhà thầu) — HSMT không thể chứa; "
+    "bước chấm sẽ đối chiếu trực tiếp trên HSDT.\n"
+    'Trả {"thong_tin_bo_sung":"...","nguon":"...","can_review":false,"thuoc_hsdt":false}. Nếu bằng '
+    'chứng KHÔNG chứa/không chắc -> {"thong_tin_bo_sung":"","nguon":"","can_review":true,'
+    '"thuoc_hsdt":false} — TUYỆT ĐỐI KHÔNG bịa.'
 )
 
 # Schema step structure — noi_dung_can_kiem_tra là ô hạng nhất.
@@ -110,7 +119,12 @@ def struct_prompt(crit: dict[str, Any]) -> str:
         '  [{"noi_dung_kiem_tra":"Giá trị bảo lãnh","hsdt_kiem_tra":"bao_dam_du_thau",'
         '"yeu_cau":"Thỏa mãn giá trị bảo lãnh theo HSMT","can_lam_ro":"Giá trị bảo lãnh","can_tra_cuu":true},\n'
         '   {"noi_dung_kiem_tra":"Thời gian hiệu lực","hsdt_kiem_tra":"bao_dam_du_thau",'
-        '"yeu_cau":"Thỏa mãn thời gian hiệu lực theo HSMT","can_lam_ro":"Thời gian hiệu lực bảo lãnh","can_tra_cuu":true}]\n\n'
+        '"yeu_cau":"Thỏa mãn thời gian hiệu lực theo HSMT","can_lam_ro":"Thời gian hiệu lực bảo lãnh","can_tra_cuu":true}]\n'
+        "VÍ DỤ 3 — 'Thành viên đứng đầu ký thay mặt phải phù hợp phân công trách nhiệm trong Thỏa thuận "
+        "liên danh' (hsdt=[lien_danh]) — phân công trách nhiệm nằm TRONG hồ sơ nhà thầu, KHÔNG tra HSMT:\n"
+        '  [{"noi_dung_kiem_tra":"Ký đúng phân công trách nhiệm","hsdt_kiem_tra":"lien_danh",'
+        '"yeu_cau":"Người ký phù hợp phân công trách nhiệm trong thỏa thuận liên danh",'
+        '"can_lam_ro":"","can_tra_cuu":false}]\n\n'
         + cot_block(_CRIT_SCHEMA)
     )
 
@@ -166,5 +180,5 @@ def resolve_prompt(crit: dict[str, Any], need: dict[str, Any], evidence_text: st
         f"YÊU CẦU: {need.get('yeu_cau', '')}\n"
         f"THÔNG TIN CẦN LÀM RÕ: {need.get('can_lam_ro', '')}\n\n"
         f"BẰNG CHỨNG (truy hồi từ HSMT/E-BDL/E-CDNT):\n{evidence_text or '(không có)'}\n\n"
-        + cot_block('{"thong_tin_bo_sung":"<chuẩn cụ thể, tự đủ, có quan hệ so sánh>","nguon":"<mã điều khoản>","can_review":false}')
+        + cot_block('{"thong_tin_bo_sung":"<chuẩn cụ thể, tự đủ, có quan hệ so sánh>","nguon":"<mã điều khoản>","can_review":false,"thuoc_hsdt":false}')
     )
