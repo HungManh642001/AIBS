@@ -16,3 +16,9 @@ def test_extract_form_refs():
     assert extract_form_refs("theo mẫu 04A và Mẫu số 04B") == ["04a", "04b"]
     assert extract_form_refs("Giá trị bảo lãnh theo E-BDL 18.2") == []
     assert extract_form_refs("") == []
+
+
+def test_extract_form_refs_sub_numbered():
+    # Mẫu đánh số phụ 'mẫu 05C.1' -> giữ TRỌN mã (trước đây nuốt mất '.1').
+    assert extract_form_refs("Bảng chào giá theo mẫu 05C.1") == ["05c.1"]
+    assert extract_form_refs("Mẫu số 07a.2.1 chương IV") == ["07a.2.1"]

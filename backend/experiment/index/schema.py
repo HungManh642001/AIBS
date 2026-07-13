@@ -18,7 +18,7 @@ TEXT_KEY = "text"
 # Phát hiện theo TIÊU ĐỀ (bền hơn số chương: Biểu mẫu có thể Chương IV/V tùy HSMT).
 _EXCLUDE_SECTIONS = ("tieu chuan danh gia",)
 _FORM_MARK = "bieu mau"
-_RE_FORM_ID = re.compile(r"mau\s*(?:so\s*)?(\d+[a-z]?)")  # chạy trên text đã _norm
+_RE_FORM_ID = re.compile(r"mau\s*(?:so\s*)?(\d+[a-z]?(?:\.\d+)*)")  # chạy trên text đã _norm; giữ số phụ '05c.1'
 
 
 def _norm(s: str) -> str:
@@ -38,7 +38,7 @@ def is_form_chunk(chunk: dict[str, Any]) -> bool:
 
 
 def form_id_of(chunk: dict[str, Any]) -> str:
-    """Mã mẫu ('01', '04a') từ section_path/đầu text; '' nếu không thấy."""
+    """Mã mẫu ('01', '04a', '05c.1') từ section_path/đầu text; '' nếu không thấy."""
     hay = _norm(" ".join([*(chunk.get("section_path") or []), (chunk.get("text") or "")[:160]]))
     m = _RE_FORM_ID.search(hay)
     return m.group(1) if m else ""

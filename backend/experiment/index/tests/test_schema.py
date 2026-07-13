@@ -79,3 +79,12 @@ def test_chunk_to_node_tags_form_metadata():
     normal = _c(["PHẦN 4", "Chương I. CHỈ DẪN NHÀ THẦU"])
     node2 = chunk_to_node(normal)
     assert node2.metadata["is_form"] == 0 and node2.metadata["form_id"] == ""
+
+
+def test_form_id_sub_numbered():
+    """Mẫu đánh số phụ 'Mẫu số 05C.1' -> form_id giữ TRỌN mã (trước đây nuốt mất '.1')."""
+    from experiment.index.schema import form_id_of
+
+    form = _c(["Chương IV. BIỂU MẪU MỜI THẦU VÀ DỰ THẦU"])
+    form["text"] = "Mẫu số 05C.1. BẢNG CHÀO GIÁ\nSTT | Hạng mục | Đơn giá"
+    assert form_id_of(form) == "05c.1"
