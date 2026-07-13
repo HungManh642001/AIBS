@@ -366,6 +366,8 @@ class DecomposeWorkflow(Workflow):
                 # 1) sinh query RIÊNG cho 'cần làm rõ' (LLM mở rộng nghiệp vụ; kèm danh mục nguồn nếu đa nguồn)
                 qout = await self._llm(SYS_QUERY, query_prompt(crit, n, sources=self._sources or None),
                                        validate=validate_query)
+                if qout.status == "ok" and not str(qout.data.get("query") or "").strip():
+                    log.warning("      [query] LLM trả query rỗng -> fallback: %s %s", ten, lam_ro)
                 base = (qout.data.get("query") if qout.status == "ok" else "") or f"{ten} {lam_ro}"
                 sugg = qout.data.get("nguon_goi_y", []) if qout.status == "ok" else []
                 route = [str(s) for s in sugg if str(s) in self._sources and str(s) != "hsmt"]
@@ -405,6 +407,8 @@ class DecomposeWorkflow(Workflow):
                 # 4) bậc retry: query GÓC KHÁC, bỏ mọi filter, nới k + phụ lục vét cạn (E-BDL + scan nhỏ)
                 q2out = await self._llm(SYS_QUERY, retry_query_prompt(crit, n, query),
                                         validate=validate_query)
+                if q2out.status == "ok" and not str(q2out.data.get("query") or "").strip():
+                    log.warning("      [query|retry] LLM trả query rỗng -> fallback: %s %s", lam_ro, ten)
                 base2 = (q2out.data.get("query") if q2out.status == "ok" else "") or f"{lam_ro} {ten}"
                 query2 = " ".join([base2, *refs]).strip()
                 log.info("      [retrieve|retry] %s", query2)

@@ -34,6 +34,13 @@ def test_query_prompt_with_sources_lists_catalog():
     assert "nguon_goi_y" in p                               # schema mở rộng
 
 
+def test_sys_query_flat_no_hard_schema():
+    """SYS_QUERY không chốt cứng schema (xung đột nguon_goi_y đa nguồn) + cấm bọc khóa con."""
+    from experiment.decompose.prompts import SYS_QUERY
+    assert '{"query":"..."}' not in SYS_QUERY
+    assert "PHẲNG" in SYS_QUERY and "result" in SYS_QUERY
+
+
 def test_struct_prompt_teaches_hsdt_side_rule():
     """SYS_STRUCT phân biệt thông tin phía mời thầu vs nội dung hồ sơ nhà thầu (VÍ DỤ 3 negative)."""
     from experiment.decompose.prompts import SYS_STRUCT, struct_prompt
@@ -112,6 +119,29 @@ async def test_search_routed_source_filters_and_attributes():
     assert any(c["source_doc"] is None for c in captured)     # KÈM lượt không filter (route mềm)
     assert not any(c["clause_doc"] == "bdl" for c in captured)  # need đã route: không đi nhánh bdl
     assert gd.needs_review == []
+
+
+async def test_search_wrapped_query_still_routes():
+    """QUERY bị bọc trong 'result' -> vẫn route được nguồn (end-to-end vá vấn đề 1)."""
+    captured: list[dict] = []
+
+    def retrieve_fn(q, k=5, clause_doc=None, is_form=None, source_doc=None):
+        captured.append({"q": q, "source_doc": source_doc})
+        if source_doc == "tbmt":
+            return [{"text": "Thời điểm đóng thầu: 09 giờ 00 ngày 20/6/2025",
+                     "metadata": {"chunk_id": "t1", "source_doc": "tbmt", "page_start": 1}, "score": 1.0}]
+        return []
+
+    llm = _llm_dong_thau()
+    llm.by_match["[TAG:QUERY:Thời điểm đóng thầu]"] = {
+        "ly_do": "cần tra TBMT",
+        "result": {"query": "thời điểm đóng thầu", "nguon_goi_y": ["tbmt"]},
+    }
+    wf = DecomposeWorkflow(llm_fn=llm, retrieve_fn=retrieve_fn, timeout=30,
+                           source_summaries=_SOURCES)
+    gd = await wf.run(group=_GROUP)
+    nd = _nd_of(gd, "Nộp thầu đúng hạn", "Thời điểm đóng thầu")
+    assert nd["thong_tin_bo_sung"] and any(c["source_doc"] == "tbmt" for c in captured)
 
 
 async def test_search_route_sai_van_duoc_retry_cuu():

@@ -52,7 +52,8 @@ SYS_QUERY = (
     "QUAN TRỌNG — MỞ RỘNG THEO NGHIỆP VỤ: thông tin có thể được HSMT ghi dưới MỘT KHÁI NIỆM KHÁC; "
     "hãy THÊM từ đồng nghĩa / nơi thông tin thường nằm. Ví dụ: 'đơn vị thụ hưởng (của) bảo đảm dự "
     "thầu' THƯỜNG CHÍNH LÀ 'Chủ đầu tư / Bên mời thầu'. Query gồm CẢ từ gốc LẪN từ đồng nghĩa.\n"
-    'Trả đúng dạng {"query":"..."}.'
+    "Trả JSON PHẲNG đúng cấu trúc nêu ở CUỐI prompt — KHÔNG bọc kết quả trong khóa khác "
+    '(vd "result").'
 )
 SYS_RESOLVE = (
     "Bạn là chuyên gia đấu thầu. Cho THÔNG TIN CẦN LÀM RÕ của một nội dung và PHẦN BẰNG CHỨNG truy "
