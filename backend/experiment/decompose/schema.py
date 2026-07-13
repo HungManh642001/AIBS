@@ -87,8 +87,18 @@ def validate_criterion(d: dict[str, Any]) -> dict[str, Any]:
     return CriterionModel(**d).model_dump()
 
 
+def _unwrap_query(d: dict[str, Any]) -> dict[str, Any]:
+    """Qwen có lúc bọc kết quả trong khóa con (vd 'result') -> lấy dict con chứa 'query'."""
+    if str(d.get("query") or "").strip():
+        return d
+    for v in d.values():
+        if isinstance(v, dict) and str(v.get("query") or "").strip():
+            return v
+    return d
+
+
 def validate_query(d: dict[str, Any]) -> dict[str, Any]:
-    return QueryOut(**d).model_dump()
+    return QueryOut(**_unwrap_query(d)).model_dump()
 
 
 def validate_resolved_value(d: dict[str, Any]) -> dict[str, Any]:

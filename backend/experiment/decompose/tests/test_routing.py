@@ -12,6 +12,17 @@ def test_validate_query_accepts_nguon_goi_y():
     assert validate_query({"query": "q"})["nguon_goi_y"] == []
 
 
+def test_validate_query_unwraps_nested_result():
+    """Qwen đôi khi bọc JSON trong khóa con (cot_block 'lý do TRƯỚC result') -> mở gói."""
+    out = validate_query({"ly_do": "x", "result": {"query": "thời điểm đóng thầu", "nguon_goi_y": ["tbmt"]}})
+    assert out["query"] == "thời điểm đóng thầu"
+    assert out["nguon_goi_y"] == ["tbmt"]
+    # top-level có query -> KHÔNG mở gói (giữ nguyên hành vi cũ)
+    assert validate_query({"query": "q", "result": {"query": "khac"}})["query"] == "q"
+    # không đâu có query -> giữ default rỗng (fallback ở workflow lo)
+    assert validate_query({"ly_do": "x"})["query"] == ""
+
+
 def test_query_prompt_with_sources_lists_catalog():
     p = query_prompt(
         {"ten": "Thời điểm đóng thầu"},
