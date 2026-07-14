@@ -109,6 +109,75 @@ async def test_rollup_empty_verdicts_still_soi():
     assert ce.ket_qua == KET_QUA_SOI and ce.loai is False
 
 
+def _profile(hinh_thuc, nguon="khai báo", **kw):
+    from experiment.evaluate.schema import VendorProfile
+    return VendorProfile(hinh_thuc=hinh_thuc, nguon=nguon, **kw)
+
+
+async def test_gate_lien_danh_doc_lap_is_na_zero_call():
+    """Nhà thầu độc lập + hồ sơ CHỈ dành cho liên danh -> N/A TẤT ĐỊNH, 0 call AI."""
+    from experiment.evaluate.schema import HINH_THUC_DOC_LAP, KET_QUA_KHONG_AP_DUNG
+
+    v = ScriptedVision({})
+    got = await eval_noi_dung(_nd("Thỏa thuận liên danh hợp lệ", "thoa_thuan_lien_danh"),
+                              [_page("don_du_thau", "đơn")], v,
+                              profile=_profile(HINH_THUC_DOC_LAP, do_tin=1.0))
+    assert got.ket_qua == KET_QUA_KHONG_AP_DUNG
+    assert v.calls == []
+    assert "độc lập" in got.ghi_chu and "khai báo" in got.ghi_chu   # căn cứ hiện rõ để kiểm chứng
+
+
+async def test_gate_off_when_hinh_thuc_khong_ro_falls_back_to_thieu():
+    """FAIL-SAFE: hình thức không rõ -> KHÔNG gate -> vẫn 'thiếu hồ sơ' như hiện nay."""
+    from experiment.evaluate.schema import VendorProfile
+
+    got = await eval_noi_dung(_nd("TTLD hợp lệ", "thoa_thuan_lien_danh"),
+                              [_page("don_du_thau", "đơn")], ScriptedVision({}),
+                              profile=VendorProfile())
+    assert got.ket_qua == KET_QUA_THIEU
+
+
+async def test_gate_off_for_lien_danh_vendor():
+    """Liên danh thiếu thỏa thuận -> 'thiếu hồ sơ' (PHÁT HIỆN THẬT), tuyệt đối KHÔNG N/A."""
+    from experiment.evaluate.schema import HINH_THUC_LIEN_DANH
+
+    got = await eval_noi_dung(_nd("TTLD hợp lệ", "thoa_thuan_lien_danh"),
+                              [_page("don_du_thau", "đơn")], ScriptedVision({}),
+                              profile=_profile(HINH_THUC_LIEN_DANH))
+    assert got.ket_qua == KET_QUA_THIEU
+
+
+async def test_gate_only_hits_thoa_thuan_lien_danh():
+    """Độc lập KHÔNG được N/A hồ sơ khác — chỉ hồ sơ riêng của liên danh."""
+    from experiment.evaluate.schema import HINH_THUC_DOC_LAP
+
+    got = await eval_noi_dung(_nd("Giá trị bảo lãnh", "bao_dam_du_thau"),
+                              [_page("don_du_thau", "đơn")], ScriptedVision({}),
+                              profile=_profile(HINH_THUC_DOC_LAP))
+    assert got.ket_qua == KET_QUA_THIEU
+
+
+async def test_gate_matches_via_norm():
+    """hsdt_kiem_tra có dấu/hoa vẫn gate được (chuẩn hoá _norm)."""
+    from experiment.evaluate.schema import HINH_THUC_DOC_LAP, KET_QUA_KHONG_AP_DUNG
+
+    got = await eval_noi_dung(_nd("TTLD", "Thỏa_Thuận_Liên_Danh"),
+                              [_page("don_du_thau", "đơn")], ScriptedVision({}),
+                              profile=_profile(HINH_THUC_DOC_LAP))
+    assert got.ket_qua == KET_QUA_KHONG_AP_DUNG
+
+
+async def test_gate_beats_can_review():
+    """Gate đứng TRƯỚC can_review: N/A thông tin hơn 'chuẩn HSMT chưa tra được'."""
+    from experiment.evaluate.schema import HINH_THUC_DOC_LAP, KET_QUA_KHONG_AP_DUNG
+
+    nd = {"noi_dung_kiem_tra": "TTLD", "hsdt_kiem_tra": "thoa_thuan_lien_danh",
+          "yeu_cau": "theo HSMT", "thong_tin_bo_sung": "", "can_review": True}
+    got = await eval_noi_dung(nd, [_page("don_du_thau", "đơn")], ScriptedVision({}),
+                              profile=_profile(HINH_THUC_DOC_LAP))
+    assert got.ket_qua == KET_QUA_KHONG_AP_DUNG
+
+
 async def test_eval_can_review_short_circuits_no_llm():
     """Need decompose cờ can_review (chuẩn HSMT tra không ra) -> 'cần làm rõ' TẤT ĐỊNH, 0 call."""
     from experiment.evaluate.schema import KET_QUA_SOI

@@ -5,11 +5,12 @@ import logging
 from typing import Any
 
 from experiment.evaluate.prompts import SYS_EVAL, eval_prompt
-from experiment.evaluate.route import pages_by_type, pages_text, route_pages
+from experiment.evaluate.route import _norm, pages_by_type, pages_text, route_pages
 from experiment.evaluate.rules.registry import RuleRegistry, dispatch_rules
 from experiment.evaluate.schema import (
+    HINH_THUC_DOC_LAP,
     KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_KHONG_AP_DUNG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU,
-    CriterionEval, PageRecord, VendorContext, Verdict, validate_eval_verdict,
+    CriterionEval, PageRecord, VendorContext, VendorProfile, Verdict, validate_eval_verdict,
 )
 from experiment.evaluate.vision import VisionFn
 
@@ -17,6 +18,7 @@ log = logging.getLogger("experiment.evaluate")
 _KET_QUA_HOP_LE = {KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_SOI}
 _EVAL_MAX_TOKENS = 4096
 _CROSS_TYPE_CAP = 3000  # trần text MỖI loại hồ sơ khi đối chiếu chéo (thay [:6000] toàn cục)
+_HO_SO_CHI_LIEN_DANH = {"thoa_thuan_lien_danh"}   # hồ sơ CHỈ nhà thầu liên danh mới phải nộp
 
 
 def _verdict(nd: dict[str, Any], ket_qua: str, bang_chung: str = "",
@@ -42,12 +44,35 @@ def _cross_text(nd: dict[str, Any], matched: list[PageRecord], pages: list[PageR
     return "\n\n".join(blocks)
 
 
+def _gate_khong_ap_dung(nd: dict[str, Any], profile: VendorProfile | None) -> Verdict | None:
+    """Nhà thầu ĐỘC LẬP + hồ sơ chỉ dành cho liên danh -> N/A tất định, 0 call AI.
+
+    profile=None hoặc hình thức không rõ -> None (không gate) = hành vi cũ, fail-safe.
+    """
+    if profile is None or profile.hinh_thuc != HINH_THUC_DOC_LAP:
+        return None
+    if _norm(nd.get("hsdt_kiem_tra", "")) not in _HO_SO_CHI_LIEN_DANH:
+        return None
+    can_cu = f"căn cứ: {profile.nguon}"
+    if profile.bang_chung:
+        can_cu += f"; {profile.bang_chung}"
+    return _verdict(nd, KET_QUA_KHONG_AP_DUNG, do_tin=profile.do_tin,
+                    ghi_chu=(f"nhà thầu dự thầu theo hình thức độc lập ({can_cu}) — hồ sơ "
+                             f"'thỏa thuận liên danh' chỉ áp dụng cho nhà thầu liên danh"))
+
+
 async def eval_noi_dung(nd: dict[str, Any], pages: list[PageRecord], vision_fn: VisionFn,
-                        *, extra_types: list[str] | None = None) -> Verdict:
+                        *, extra_types: list[str] | None = None,
+                        vendor_ctx: VendorContext | None = None,
+                        profile: VendorProfile | None = None) -> Verdict:
     """1 nội dung kiểm tra -> verdict (route + đối chiếu THUẦN TEXT; chữ ký/dấu đã có trong text ingest).
 
     extra_types (need doi_chieu_hsdt): các loại hồ sơ khác của tiêu chí để đối chiếu chéo trong HSDT.
+    profile: hình thức dự thầu -> gate 'không áp dụng' (đặt TRƯỚC can_review: N/A thông tin hơn).
     """
+    gated = _gate_khong_ap_dung(nd, profile)
+    if gated is not None:
+        return gated
     if nd.get("can_review") and not (nd.get("thong_tin_bo_sung") or "").strip():
         # Chuẩn HSMT chưa tra được (decompose cờ can_review) -> không có căn cứ đối chiếu (no-fab).
         return _verdict(nd, KET_QUA_SOI, ghi_chu="chuẩn HSMT chưa tra được — cần chuyên gia đối chiếu")
@@ -75,6 +100,7 @@ async def evaluate_criterion(crit: dict[str, Any], pages: list[PageRecord],
                              vision_fn: VisionFn, *,
                              registry: RuleRegistry | None = None,
                              vendor_ctx: VendorContext | None = None,
+                             profile: VendorProfile | None = None,
                              by_type: dict[str, list[PageRecord]] | None = None,
                              fired: set[str] | None = None) -> CriterionEval:
     """Đánh giá mọi nội dung của 1 tiêu chí + verdict luật (nếu có registry) + roll-up.
@@ -89,7 +115,8 @@ async def evaluate_criterion(crit: dict[str, Any], pages: list[PageRecord],
     verdicts: list[Verdict] = []
     for nd in crit.get("noi_dung_can_kiem_tra", []):
         extra = crit.get("hsdt_can_kiem_tra", []) if nd.get("doi_chieu_hsdt") else None
-        verdicts.append(await eval_noi_dung(nd, pages, vision_fn, extra_types=extra))
+        verdicts.append(await eval_noi_dung(nd, pages, vision_fn, extra_types=extra,
+                                            vendor_ctx=vendor_ctx, profile=profile))
     if registry is not None:
         verdicts.extend(await dispatch_rules(
             registry, crit, by_type if by_type is not None else pages_by_type(pages),
