@@ -51,6 +51,20 @@ def test_struct_prompt_teaches_hsdt_side_rule():
     assert '"can_tra_cuu":false' in p.replace(" ", "")      # ví dụ negative: KHÔNG tra cứu
 
 
+def test_sys_struct_forbids_inflating_yeu_cau():
+    """SYS_STRUCT cấm yeu_cau đẻ điều kiện ngoài yeu_cau_goc — STRUCT không hề thấy HSMT.
+
+    struct_prompt chỉ đưa tiêu chí (docstring: 'KHÔNG đưa source toàn nhóm') nên mọi điều kiện
+    model thêm vào yeu_cau đều là bịa -> bước chấm gặp con trỏ ma -> 'cần làm rõ' giả.
+    """
+    from experiment.decompose.prompts import SYS_STRUCT
+
+    low = SYS_STRUCT.lower()
+    assert "không được thấy hsmt" in low or "không thấy hsmt" in low   # nêu rõ giới hạn suy diễn
+    assert "không siết chặt hơn" in low
+    assert "chính yeu_cau_goc" in low                                  # can_lam_ro bám gốc
+
+
 def test_query_prompt_without_sources_unchanged():
     """Đơn nguồn: prompt KHÔNG nhắc gì tới nguồn — hành vi cũ giữ nguyên."""
     p = query_prompt({"ten": "Bảo đảm"}, {"noi_dung_kiem_tra": "Giá trị", "can_lam_ro": "Giá trị"})
