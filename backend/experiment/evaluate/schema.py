@@ -62,6 +62,15 @@ class Verdict:
     trang: list[int]
     do_tin: float
     ghi_chu: str
+    nguon_doc: list[str] = field(default_factory=list)  # luật liên-tài-liệu: các hồ sơ đã đối chiếu
+
+
+@dataclass
+class VendorContext:
+    """Danh tính nhà thầu đang chấm — luật can_vendor dò đúng dòng trong tài liệu dùng chung."""
+    ten: str
+    ma_so_thue: str = ""
+    aliases: list[str] = field(default_factory=list)
 
 
 @dataclass

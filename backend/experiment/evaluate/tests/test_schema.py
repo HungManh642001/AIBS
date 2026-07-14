@@ -1,6 +1,6 @@
 from experiment.evaluate.schema import (
     validate_ingest_page, validate_eval_verdict, CriterionEval, Verdict,
-    EvalResult, result_to_json, PageRecord,
+    EvalResult, result_to_json, PageRecord, VendorContext,
 )
 
 
@@ -31,6 +31,26 @@ def test_result_to_json_omits_image_and_summary():
     assert d["criteria"][0]["verdicts"][0]["ket_qua"] == "đạt"
     assert "image" not in str(d)  # bytes ảnh KHÔNG lọt vào JSON
     assert d["summary"]["n_dat"] == 1 and d["summary"]["n_tieu_chi"] == 1
+
+
+def test_verdict_nguon_doc_backward_compat():
+    """Verdict dựng kiểu cũ (không nguon_doc) vẫn OK; JSON chứa nguon_doc; luật đặt được đa nguồn."""
+    v = _v("đạt")                                     # positional cũ — không nguon_doc
+    assert v.nguon_doc == []
+    ce = CriterionEval(nhom="hop_le", ten="Đơn dự thầu", tien_quyet=False,
+                       ket_qua="đạt", loai=False, verdicts=[v])
+    d = result_to_json(EvalResult(doc="A", criteria=[ce]))
+    assert d["criteria"][0]["verdicts"][0]["nguon_doc"] == []
+    v2 = _v("đạt")
+    v2.nguon_doc = ["don_du_thau", "tu_cach_phap_ly"]
+    assert v2.nguon_doc == ["don_du_thau", "tu_cach_phap_ly"]
+
+
+def test_vendor_context_defaults():
+    ctx = VendorContext(ten="Công ty TNHH ABC")
+    assert ctx.ten == "Công ty TNHH ABC" and ctx.ma_so_thue == "" and ctx.aliases == []
+    ctx2 = VendorContext(ten="ABC", ma_so_thue="0123", aliases=["abc jsc"])
+    assert ctx2.aliases == ["abc jsc"]
 
 
 def test_page_record_holds_image_bytes():
