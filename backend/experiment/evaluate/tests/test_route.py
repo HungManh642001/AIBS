@@ -1,4 +1,4 @@
-from experiment.evaluate.route import route_pages, pages_text
+from experiment.evaluate.route import pages_by_type, pages_text, route_pages
 from experiment.evaluate.schema import PageRecord
 
 
@@ -12,6 +12,17 @@ def test_route_selects_matching_doc_type():
     got = route_pages(pages, "bao_dam_du_thau")
     assert [p.trang for p in got] == [2]
     assert route_pages(pages, "khong_co") == []      # không loại nào khớp -> rỗng (thiếu hồ sơ)
+
+
+def test_pages_by_type_groups_normalized_keys():
+    """Nhóm trang theo loại hồ sơ chuẩn hoá (bỏ dấu/hoa thường), giữ thứ tự trang."""
+    pages = [_p(1, "Đơn_Dự_Thầu", "đơn tr1"), _p(2, "bao_dam_du_thau", "bảo lãnh"),
+             _p(3, "don_du_thau", "đơn tr3"), _p(4, "", "trống")]
+    got = pages_by_type(pages)
+    assert [p.trang for p in got["don_du_thau"]] == [1, 3]   # hoa/có dấu về cùng key
+    assert [p.trang for p in got["bao_dam_du_thau"]] == [2]
+    assert "" not in got                                      # loại rỗng bị bỏ
+    assert pages_by_type([]) == {}
 
 
 def test_pages_text_joins_with_page_markers():

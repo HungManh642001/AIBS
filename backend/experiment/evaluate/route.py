@@ -16,6 +16,16 @@ def route_pages(pages: list[PageRecord], hsdt_kiem_tra: str) -> list[PageRecord]
     return [p for p in pages if _norm(p.loai_ho_so) == key] if key else []
 
 
+def pages_by_type(pages: list[PageRecord]) -> dict[str, list[PageRecord]]:
+    """Nhóm trang theo loại hồ sơ chuẩn hoá — luật liên-tài-liệu lấy nhiều loại một lúc."""
+    out: dict[str, list[PageRecord]] = {}
+    for p in pages:
+        key = _norm(p.loai_ho_so)
+        if key:
+            out.setdefault(key, []).append(p)
+    return out
+
+
 def _flags(p: PageRecord) -> str:
     """Hiện cờ thị giác trong text để eval biết có chữ ký/đóng dấu (bù cho việc không đính ảnh)."""
     fs = []
