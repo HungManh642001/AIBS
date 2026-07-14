@@ -20,6 +20,28 @@ def ingest_prompt() -> str:
     )
 
 
+SYS_VENDOR_FORM = (
+    "Bạn là chuyên gia chấm thầu. Đọc ĐƠN DỰ THẦU và xác định nhà thầu dự thầu theo hình thức "
+    "'độc lập' (một pháp nhân duy nhất đứng tên) hay 'liên danh' (nhiều thành viên cùng đứng tên, "
+    "thường ghi 'liên danh A-B', 'thành viên đứng đầu liên danh', 'thay mặt liên danh'). "
+    "hinh_thuc: 'độc lập' | 'liên danh' | '' nếu đơn KHÔNG nêu rõ — TUYỆT ĐỐI KHÔNG suy đoán từ "
+    "việc đơn chỉ nhắc MỘT tên công ty. bang_chung: TRÍCH nguyên văn câu trong đơn làm căn cứ "
+    "(KHÔNG bịa); trang: số trang chứa căn cứ; do_tin: 0-1, chỉ >= 0.7 khi đơn nêu RÕ RÀNG. "
+    "Chỉ trả JSON."
+)
+
+
+def vendor_form_prompt(don_text: str, vendor: Any | None = None) -> str:
+    ten = f"NHÀ THẦU ĐANG CHẤM: {vendor.ten}\n" if vendor is not None and vendor.ten else ""
+    return (
+        "[VENDOR_FORM]\n"
+        f"{ten}"
+        f"ĐƠN DỰ THẦU (bóc từ ảnh):\n{don_text}\n\n"
+        + cot_block('{"hinh_thuc":"độc lập|liên danh|","bang_chung":"<trích nguyên văn từ đơn>",'
+                    '"trang":[...],"do_tin":0.0,"ghi_chu":""}')
+    )
+
+
 SYS_EVAL = (
     "Bạn là chuyên gia chấm thầu. Đối chiếu NỘI DUNG HSDT của nhà thầu với CHUẨN của HSMT để kết "
     "luận. ket_qua: 'đạt' nếu HSDT thỏa mãn; 'không đạt' nếu vi phạm/không thỏa; 'cần làm rõ' nếu "

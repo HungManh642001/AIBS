@@ -13,6 +13,17 @@ KET_QUA_THIEU = "thiếu hồ sơ"
 KET_QUA_LOI = "lỗi"
 KET_QUA_KHONG_AP_DUNG = "không áp dụng"   # nội dung không áp dụng với nhà thầu này (vd điều kiện liên danh)
 
+# Hình thức dự thầu — "" (không rõ) là FAIL-SAFE: không gate, chấm đủ như khi chưa có tính năng.
+HINH_THUC_DOC_LAP = "độc lập"
+HINH_THUC_LIEN_DANH = "liên danh"
+HINH_THUC_KHONG_RO = ""
+
+# Căn cứ xác định hình thức (audit — báo cáo luôn in kèm).
+NGUON_KHAI_BAO = "khai báo"
+NGUON_HO_SO = "hồ sơ HSDT"
+NGUON_DON_DU_THAU = "đơn dự thầu (AI đọc)"
+NGUON_KHONG_DU_CAN_CU = "không đủ căn cứ"
+
 
 class _Base(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -33,8 +44,21 @@ class EvalVerdictModel(_Base):
     ghi_chu: str = ""
 
 
+class VendorFormModel(_Base):
+    """Output AI đọc đơn dự thầu để xác định hình thức dự thầu (độc lập/liên danh)."""
+    hinh_thuc: str = ""
+    bang_chung: str = ""
+    trang: list[int] = []
+    do_tin: float = 0.0
+    ghi_chu: str = ""
+
+
 def validate_ingest_page(d: dict[str, Any]) -> dict[str, Any]:
     return IngestPageModel(**d).model_dump()
+
+
+def validate_vendor_form(d: dict[str, Any]) -> dict[str, Any]:
+    return VendorFormModel(**d).model_dump()
 
 
 def validate_eval_verdict(d: dict[str, Any]) -> dict[str, Any]:
@@ -72,6 +96,27 @@ class VendorContext:
     ten: str
     ma_so_thue: str = ""
     aliases: list[str] = field(default_factory=list)
+    hinh_thuc: str = ""           # hình thức dự thầu KHAI BÁO (thô, vd "doc_lap") — "" = không khai
+
+
+@dataclass
+class VendorProfile:
+    """Hình thức dự thầu của nhà thầu đang chấm + CĂN CỨ — gate 'không áp dụng' và audit."""
+    hinh_thuc: str = HINH_THUC_KHONG_RO
+    nguon: str = NGUON_KHONG_DU_CAN_CU
+    bang_chung: str = ""
+    trang: list[int] = field(default_factory=list)
+    do_tin: float = 0.0
+    mau_thuan: bool = False       # khai báo ≠ hồ sơ -> fail-safe (hinh_thuc="") + cảnh báo báo cáo
+    ghi_chu: str = ""
+
+
+@dataclass
+class HoSoNhanDuoc:
+    """Danh mục hồ sơ HSDT đã nhận — dựng TẤT ĐỊNH từ pages (đầu báo cáo + tra file cho số trang)."""
+    loai_ho_so: str
+    files: list[str] = field(default_factory=list)
+    n_trang: int = 0
 
 
 @dataclass
