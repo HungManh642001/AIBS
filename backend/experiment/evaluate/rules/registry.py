@@ -43,10 +43,12 @@ class RuleRegistry:
 
 def default_registry() -> RuleRegistry:
     """Registry mặc định — các luật built-in đăng ký tại đây (import cục bộ, tránh vòng import)."""
+    from experiment.evaluate.rules.bang_gia_khop_webform import SKILL as bang_gia
     from experiment.evaluate.rules.chu_ky_khop_dkkd import SKILL as chu_ky
 
     reg = RuleRegistry()
     reg.register(chu_ky)
+    reg.register(bang_gia)
     return reg
 
 
