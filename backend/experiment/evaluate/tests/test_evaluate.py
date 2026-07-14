@@ -234,6 +234,25 @@ async def test_eval_prompt_gets_vendor_form_through_criterion():
     assert "Công ty ABC" in v.calls[-1][0] and "độc lập" in v.calls[-1][0]
 
 
+async def test_criterion_passes_yeu_cau_goc_and_siblings_to_each_need():
+    """1 yeu_cau_goc -> N yeu_cau: mỗi call thấy nguyên văn gốc + đúng tên anh em (không có tên nó)."""
+    crit = {"nhom": "hop_le", "ten": "Bảo đảm dự thầu", "tien_quyet": True,
+            "yeu_cau_goc": "Nộp bảo đảm dự thầu 6.100.000 VNĐ, hiệu lực 120 ngày",
+            "noi_dung_can_kiem_tra": [_nd("Giá trị bảo lãnh", "bao_dam_du_thau"),
+                                      _nd("Thời gian hiệu lực", "bao_dam_du_thau"),
+                                      _nd("Đơn vị thụ hưởng", "bao_dam_du_thau")]}
+    vision = ScriptedVision({"[EV:Giá trị bảo lãnh]": {"ket_qua": "đạt", "bang_chung": "6.1tr"},
+                             "[EV:Thời gian hiệu lực]": {"ket_qua": "đạt", "bang_chung": "120n"},
+                             "[EV:Đơn vị thụ hưởng]": {"ket_qua": "đạt", "bang_chung": "CĐT"}})
+    await evaluate_criterion(crit, [_page("bao_dam_du_thau", "thư bảo lãnh")], vision)
+
+    assert len(vision.calls) == 3
+    for hay, _ in vision.calls:
+        assert "Nộp bảo đảm dự thầu 6.100.000 VNĐ, hiệu lực 120 ngày" in hay   # gốc xuống mọi need
+    dau = vision.calls[0][0]        # need "Giá trị bảo lãnh" -> anh em là 2 need còn lại
+    assert "Thời gian hiệu lực" in dau and "Đơn vị thụ hưởng" in dau
+
+
 async def test_eval_can_review_short_circuits_no_llm():
     """Need decompose cờ can_review (chuẩn HSMT tra không ra) -> 'cần làm rõ' TẤT ĐỊNH, 0 call."""
     from experiment.evaluate.schema import KET_QUA_SOI

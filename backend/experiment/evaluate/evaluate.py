@@ -75,11 +75,16 @@ def _gate_khong_ap_dung(nd: dict[str, Any], profile: VendorProfile | None) -> Ve
 async def eval_noi_dung(nd: dict[str, Any], pages: list[PageRecord], vision_fn: VisionFn,
                         *, extra_types: list[str] | None = None,
                         vendor_ctx: VendorContext | None = None,
-                        profile: VendorProfile | None = None) -> Verdict:
+                        profile: VendorProfile | None = None,
+                        yeu_cau_goc: str = "", anh_em: list[str] | None = None) -> Verdict:
     """1 nội dung kiểm tra -> verdict (route + đối chiếu THUẦN TEXT; chữ ký/dấu đã có trong text ingest).
 
     extra_types (need doi_chieu_hsdt): các loại hồ sơ khác của tiêu chí để đối chiếu chéo trong HSDT.
     profile: hình thức dự thầu -> gate 'không áp dụng' (đặt TRƯỚC can_review: N/A thông tin hơn).
+    yeu_cau_goc/anh_em: chống lạm phát yêu cầu + trôi phạm vi — xem eval_prompt.
+
+    GIỚI HẠN: nhánh can_review short-circuit 0 call, nên yeu_cau_goc KHÔNG cứu được need mà
+    decompose bịa can_lam_ro cho thứ HSMT không đòi — bệnh đó phải chữa ở SYS_STRUCT.
     """
     gated = _gate_khong_ap_dung(nd, profile)
     if gated is not None:
@@ -95,7 +100,8 @@ async def eval_noi_dung(nd: dict[str, Any], pages: list[PageRecord], vision_fn: 
     text = _cross_text(nd, matched, pages, [str(t) for t in extra_types]) if cross \
         else pages_text(matched)
     out = await vision_fn(SYS_EVAL, eval_prompt(nd, text, cross=cross, vendor_ctx=vendor_ctx,
-                                                profile=profile),
+                                                profile=profile, yeu_cau_goc=yeu_cau_goc,
+                                                anh_em=anh_em),
                           validate=validate_eval_verdict, max_tokens=_EVAL_MAX_TOKENS)
     if out.status == "error":
         return _verdict(nd, KET_QUA_LOI, bang_chung=f"AI lỗi: {out.error}", ghi_chu="cần soi lại")
@@ -128,10 +134,15 @@ async def evaluate_criterion(crit: dict[str, Any], pages: list[PageRecord],
     ten = crit.get("ten", "")
     log.info("  [eval] %s", ten)
     verdicts: list[Verdict] = []
-    for nd in crit.get("noi_dung_can_kiem_tra", []):
+    nds = crit.get("noi_dung_can_kiem_tra", [])
+    ten_nds = [str(n.get("noi_dung_kiem_tra", "")) for n in nds]
+    for i, nd in enumerate(nds):
         extra = crit.get("hsdt_can_kiem_tra", []) if nd.get("doi_chieu_hsdt") else None
+        anh_em = [t for j, t in enumerate(ten_nds) if j != i and t]   # 1 gốc -> N need: phân công rõ
         verdicts.append(await eval_noi_dung(nd, pages, vision_fn, extra_types=extra,
-                                            vendor_ctx=vendor_ctx, profile=profile))
+                                            vendor_ctx=vendor_ctx, profile=profile,
+                                            yeu_cau_goc=str(crit.get("yeu_cau_goc", "")),
+                                            anh_em=anh_em or None))
     if registry is not None:
         verdicts.extend(await dispatch_rules(
             registry, crit, by_type if by_type is not None else pages_by_type(pages),

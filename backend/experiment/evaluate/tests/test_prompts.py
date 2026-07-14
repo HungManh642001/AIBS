@@ -55,6 +55,43 @@ def test_eval_prompt_default_unchanged():
     assert "[NHÀ THẦU]" not in eval_prompt(_ND, "text")
 
 
+def test_eval_prompt_carries_yeu_cau_goc():
+    """Nguyên văn HSMT vào prompt để đối chứng với diễn giải (chống lạm phát yêu cầu)."""
+    p = eval_prompt(_ND, "text", yeu_cau_goc="Nhà thầu phải nộp bảo đảm dự thầu theo E-BDL 18.1")
+    assert "YÊU CẦU GỐC (nguyên văn HSMT" in p
+    assert "E-BDL 18.1" in p
+    assert "(theo HSMT)" not in p          # nhãn cũ SAI SỰ THẬT: yeu_cau là diễn giải, không phải lời HSMT
+    assert "diễn giải" in p
+
+
+def test_eval_prompt_lists_sibling_needs_not_itself():
+    """Nội dung anh em -> phân công lao động tường minh, chống trôi phạm vi khi 1 gốc -> N yêu cầu."""
+    p = eval_prompt(_ND, "text", anh_em=["Thời gian hiệu lực", "Đơn vị thụ hưởng"])
+    assert "Thời gian hiệu lực" in p and "Đơn vị thụ hưởng" in p
+    assert "ĐỪNG kết luận thay" in p
+    # tên CHÍNH nó chỉ xuất hiện ở NỘI DUNG KIỂM TRA, không nằm trong danh sách anh em
+    assert p.count("Giá trị bảo lãnh") == 2   # tag [EV:...] + dòng NỘI DUNG KIỂM TRA
+
+
+def test_eval_prompt_no_sibling_block_when_alone():
+    p = eval_prompt(_ND, "text", anh_em=[])
+    assert "ĐỪNG kết luận thay" not in p
+
+
+def test_eval_prompt_default_unchanged_with_new_params():
+    """yeu_cau_goc='' + anh_em=None -> prompt BẰNG HỆT bản không truyền (backward-compat)."""
+    assert eval_prompt(_ND, "text") == eval_prompt(_ND, "text", yeu_cau_goc="", anh_em=None)
+    assert "YÊU CẦU GỐC" not in eval_prompt(_ND, "text")
+
+
+def test_sys_eval_teaches_asymmetric_precedence():
+    """Thứ bậc BẤT ĐỐI XỨNG: diễn giải dùng để CHO QUA, không được dùng để ĐÁNH TRƯỢT."""
+    assert "YÊU CẦU GỐC" in SYS_EVAL
+    assert "CHUẨN" in SYS_EVAL
+    assert "ghi_chu" in SYS_EVAL
+    assert "diễn giải" in SYS_EVAL.lower()      # SYS_EVAL viết hoa để nhấn mạnh
+
+
 def test_sys_eval_teaches_na_rule_without_tag_collision():
     """SYS_EVAL dạy quy tắc N/A nhưng KHÔNG chứa tag [NHÀ THẦU] — chống assert phủ định fail giả."""
     assert "không áp dụng" in SYS_EVAL and "liên danh" in SYS_EVAL
