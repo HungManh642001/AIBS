@@ -46,3 +46,35 @@ async def test_criterion_rollup_blocking_fail_marks_loai():
                              {"ket_qua": "không đạt", "bang_chung": "3 triệu < 6.1tr", "trang": [1]}})
     ce = await evaluate_criterion(crit, [_page("bao_dam_du_thau", "bảo lãnh 3.000.000")], vision)
     assert ce.ket_qua == KET_QUA_KHONG and ce.loai is True
+
+
+async def test_criterion_rule_verdict_joins_rollup():
+    """Verdict luật append vào verdicts tiêu chí -> vào roll-up: luật không đạt + tiên quyết -> loại."""
+    from experiment.evaluate.rules.registry import RuleRegistry, RuleSkill
+    from experiment.evaluate.schema import Verdict
+
+    async def handler(by_type, ctx, c, vision_fn):
+        assert [p.trang for p in by_type["don_du_thau"]] == [1]   # luật thấy by_type
+        return Verdict(noi_dung_kiem_tra="Người ký khớp ĐKKD", hsdt_kiem_tra="don_du_thau",
+                       yeu_cau="", thong_tin_bo_sung="", ket_qua="không đạt",
+                       bang_chung="ký: A ≠ đại diện: B", trang=[1], do_tin=0.9, ghi_chu="",
+                       nguon_doc=["don_du_thau", "tu_cach_phap_ly"])
+
+    reg = RuleRegistry()
+    reg.register(RuleSkill(id="luat_gia", ten="Người ký khớp ĐKKD", ho_so_can=["don_du_thau"],
+                           can_vendor=False, kich_hoat=lambda c: c.get("ten") == "Đơn dự thầu",
+                           handler=handler))
+    crit = {"nhom": "hop_le", "ten": "Đơn dự thầu", "tien_quyet": True,
+            "noi_dung_can_kiem_tra": [_nd("Có đơn dự thầu", "don_du_thau")]}
+    vision = ScriptedVision({"[EV:Có đơn dự thầu]": {"ket_qua": "đạt", "bang_chung": "có đơn", "trang": [1]}})
+    pages = [_page("don_du_thau", "đơn dự thầu ký bởi A")]
+    fired: set[str] = set()
+
+    ce = await evaluate_criterion(crit, pages, vision, registry=reg, fired=fired)
+    assert [v.noi_dung_kiem_tra for v in ce.verdicts] == ["Có đơn dự thầu", "Người ký khớp ĐKKD"]
+    assert ce.ket_qua == KET_QUA_KHONG and ce.loai is True    # luật kéo roll-up
+    assert fired == {"luat_gia"}
+
+    # tiêu chí sau cùng vendor: luật KHÔNG bắn lần 2
+    ce2 = await evaluate_criterion(crit, pages, vision, registry=reg, fired=fired)
+    assert [v.noi_dung_kiem_tra for v in ce2.verdicts] == ["Có đơn dự thầu"]

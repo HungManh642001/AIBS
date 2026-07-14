@@ -5,10 +5,11 @@ import logging
 from typing import Any
 
 from experiment.evaluate.prompts import SYS_EVAL, eval_prompt
-from experiment.evaluate.route import pages_text, route_pages
+from experiment.evaluate.route import pages_by_type, pages_text, route_pages
+from experiment.evaluate.rules.registry import RuleRegistry, dispatch_rules
 from experiment.evaluate.schema import (
     KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU,
-    CriterionEval, PageRecord, Verdict, validate_eval_verdict,
+    CriterionEval, PageRecord, VendorContext, Verdict, validate_eval_verdict,
 )
 from experiment.evaluate.vision import VisionFn
 
@@ -46,13 +47,25 @@ async def eval_noi_dung(nd: dict[str, Any], pages: list[PageRecord], vision_fn: 
 
 
 async def evaluate_criterion(crit: dict[str, Any], pages: list[PageRecord],
-                             vision_fn: VisionFn) -> CriterionEval:
-    """Đánh giá mọi nội dung của 1 tiêu chí + roll-up. tien_quyet + không đạt -> loại."""
+                             vision_fn: VisionFn, *,
+                             registry: RuleRegistry | None = None,
+                             vendor_ctx: VendorContext | None = None,
+                             by_type: dict[str, list[PageRecord]] | None = None,
+                             fired: set[str] | None = None) -> CriterionEval:
+    """Đánh giá mọi nội dung của 1 tiêu chí + verdict luật (nếu có registry) + roll-up.
+
+    tien_quyet + không đạt -> loại. Luật bắn 1 lần/vendor ở tiêu chí ĐẦU TIÊN khớp kich_hoat
+    (caller giữ `fired` xuyên các tiêu chí); verdict luật vào chung roll-up.
+    """
     ten = crit.get("ten", "")
     log.info("  [eval] %s", ten)
     verdicts: list[Verdict] = []
     for nd in crit.get("noi_dung_can_kiem_tra", []):
         verdicts.append(await eval_noi_dung(nd, pages, vision_fn))
+    if registry is not None:
+        verdicts.extend(await dispatch_rules(
+            registry, crit, by_type if by_type is not None else pages_by_type(pages),
+            vendor_ctx, vision_fn, fired if fired is not None else set()))
     kq = {v.ket_qua for v in verdicts}
     if KET_QUA_KHONG in kq:
         ket_qua = KET_QUA_KHONG
