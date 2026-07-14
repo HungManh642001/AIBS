@@ -11,6 +11,7 @@ KET_QUA_KHONG = "không đạt"
 KET_QUA_SOI = "cần làm rõ"
 KET_QUA_THIEU = "thiếu hồ sơ"
 KET_QUA_LOI = "lỗi"
+KET_QUA_KHONG_AP_DUNG = "không áp dụng"   # nội dung không áp dụng với nhà thầu này (vd điều kiện liên danh)
 
 
 class _Base(BaseModel):
@@ -97,6 +98,7 @@ class EvalResult:
             "n_dat": cnt(KET_QUA_DAT),
             "n_khong_dat": cnt(KET_QUA_KHONG),
             "n_can_lam_ro": cnt(KET_QUA_SOI),
+            "n_khong_ap_dung": cnt(KET_QUA_KHONG_AP_DUNG),
             "n_loai": sum(1 for c in self.criteria if c.loai),
         }
 

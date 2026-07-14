@@ -1,6 +1,7 @@
 from experiment.evaluate.schema import (
     validate_ingest_page, validate_eval_verdict, CriterionEval, Verdict,
     EvalResult, result_to_json, PageRecord, VendorContext,
+    KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_SOI, KET_QUA_KHONG_AP_DUNG,
 )
 
 
@@ -51,6 +52,20 @@ def test_vendor_context_defaults():
     assert ctx.ten == "Công ty TNHH ABC" and ctx.ma_so_thue == "" and ctx.aliases == []
     ctx2 = VendorContext(ten="ABC", ma_so_thue="0123", aliases=["abc jsc"])
     assert ctx2.aliases == ["abc jsc"]
+
+
+def test_summary_counts_khong_ap_dung_separately():
+    """'không áp dụng' có counter RIÊNG — không lẫn vào đạt/không đạt/cần làm rõ."""
+    def _ce(ket_qua):
+        return CriterionEval(nhom="hop_le", ten=ket_qua, tien_quyet=False,
+                             ket_qua=ket_qua, loai=False, verdicts=[_v(ket_qua)])
+    r = EvalResult(doc="A", criteria=[_ce(KET_QUA_DAT), _ce(KET_QUA_KHONG),
+                                      _ce(KET_QUA_SOI), _ce(KET_QUA_KHONG_AP_DUNG)])
+    s = r.summary
+    assert s["n_tieu_chi"] == 4
+    assert s["n_dat"] == 1 and s["n_khong_dat"] == 1 and s["n_can_lam_ro"] == 1
+    assert s["n_khong_ap_dung"] == 1
+    assert s["n_loai"] == 0
 
 
 def test_page_record_holds_image_bytes():
