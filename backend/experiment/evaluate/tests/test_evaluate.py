@@ -48,6 +48,67 @@ async def test_criterion_rollup_blocking_fail_marks_loai():
     assert ce.ket_qua == KET_QUA_KHONG and ce.loai is True
 
 
+def _rule_reg(ket_qua):
+    """Registry 1 luật giả trả verdict ket_qua cho tiêu chí bất kỳ — bơm verdict vào roll-up."""
+    from experiment.evaluate.rules.registry import RuleRegistry, RuleSkill
+    from experiment.evaluate.schema import Verdict
+
+    async def handler(by_type, ctx, c, vision_fn):
+        return Verdict(noi_dung_kiem_tra="luật", hsdt_kiem_tra="don_du_thau", yeu_cau="",
+                       thong_tin_bo_sung="", ket_qua=ket_qua, bang_chung="", trang=[],
+                       do_tin=0.0, ghi_chu="")
+
+    reg = RuleRegistry()
+    reg.register(RuleSkill(id="luat_gia", ten="luật", ho_so_can=["don_du_thau"], can_vendor=False,
+                           kich_hoat=lambda c: True, handler=handler))
+    return reg
+
+
+async def test_rollup_na_is_neutral():
+    """N/A trung tính: [đạt, N/A] -> tiêu chí 'đạt' (N/A không kéo xuống 'cần làm rõ')."""
+    from experiment.evaluate.schema import KET_QUA_KHONG_AP_DUNG
+
+    crit = {"nhom": "hop_le", "ten": "Đơn dự thầu", "tien_quyet": True,
+            "noi_dung_can_kiem_tra": [_nd("Có đơn dự thầu", "don_du_thau")]}
+    vision = ScriptedVision({"[EV:Có đơn dự thầu]": {"ket_qua": "đạt", "bang_chung": "có", "trang": [1]}})
+    ce = await evaluate_criterion(crit, [_page("don_du_thau", "đơn")], vision,
+                                  registry=_rule_reg(KET_QUA_KHONG_AP_DUNG))
+    assert [v.ket_qua for v in ce.verdicts] == [KET_QUA_DAT, KET_QUA_KHONG_AP_DUNG]
+    assert ce.ket_qua == KET_QUA_DAT and ce.loai is False
+
+
+async def test_rollup_all_na_criterion_is_na_not_loai():
+    """Toàn bộ verdict N/A -> tiêu chí 'không áp dụng', loai=False DÙ tien_quyet=True."""
+    from experiment.evaluate.schema import KET_QUA_KHONG_AP_DUNG
+
+    crit = {"nhom": "hop_le", "ten": "Thỏa thuận liên danh", "tien_quyet": True,
+            "noi_dung_can_kiem_tra": []}
+    ce = await evaluate_criterion(crit, [_page("don_du_thau", "đơn")], ScriptedVision({}),
+                                  registry=_rule_reg(KET_QUA_KHONG_AP_DUNG))
+    assert ce.ket_qua == KET_QUA_KHONG_AP_DUNG and ce.loai is False
+
+
+async def test_rollup_na_plus_khong_dat_still_loai():
+    """N/A KHÔNG che 'không đạt': tiên quyết -> vẫn loại."""
+    from experiment.evaluate.schema import KET_QUA_KHONG_AP_DUNG
+
+    crit = {"nhom": "hop_le", "ten": "Đơn dự thầu", "tien_quyet": True,
+            "noi_dung_can_kiem_tra": [_nd("Có đơn dự thầu", "don_du_thau")]}
+    vision = ScriptedVision({"[EV:Có đơn dự thầu]": {"ket_qua": "không đạt", "bang_chung": "x", "trang": [1]}})
+    ce = await evaluate_criterion(crit, [_page("don_du_thau", "đơn")], vision,
+                                  registry=_rule_reg(KET_QUA_KHONG_AP_DUNG))
+    assert ce.ket_qua == KET_QUA_KHONG and ce.loai is True
+
+
+async def test_rollup_empty_verdicts_still_soi():
+    """Tiêu chí KHÔNG có verdict nào -> 'cần làm rõ' (giữ hành vi cũ, không thành N/A)."""
+    from experiment.evaluate.schema import KET_QUA_SOI
+
+    ce = await evaluate_criterion({"nhom": "hop_le", "ten": "X", "noi_dung_can_kiem_tra": []},
+                                  [], ScriptedVision({}))
+    assert ce.ket_qua == KET_QUA_SOI and ce.loai is False
+
+
 async def test_eval_can_review_short_circuits_no_llm():
     """Need decompose cờ can_review (chuẩn HSMT tra không ra) -> 'cần làm rõ' TẤT ĐỊNH, 0 call."""
     from experiment.evaluate.schema import KET_QUA_SOI

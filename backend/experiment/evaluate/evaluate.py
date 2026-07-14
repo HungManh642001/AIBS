@@ -8,7 +8,7 @@ from experiment.evaluate.prompts import SYS_EVAL, eval_prompt
 from experiment.evaluate.route import pages_by_type, pages_text, route_pages
 from experiment.evaluate.rules.registry import RuleRegistry, dispatch_rules
 from experiment.evaluate.schema import (
-    KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU,
+    KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_KHONG_AP_DUNG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU,
     CriterionEval, PageRecord, VendorContext, Verdict, validate_eval_verdict,
 )
 from experiment.evaluate.vision import VisionFn
@@ -81,6 +81,8 @@ async def evaluate_criterion(crit: dict[str, Any], pages: list[PageRecord],
 
     tien_quyet + không đạt -> loại. Luật bắn 1 lần/vendor ở tiêu chí ĐẦU TIÊN khớp kich_hoat
     (caller giữ `fired` xuyên các tiêu chí); verdict luật vào chung roll-up.
+    Verdict 'không áp dụng' TRUNG TÍNH: không kéo tiêu chí xuống 'cần làm rõ', không tính là 'đạt';
+    toàn bộ N/A -> tiêu chí N/A (loai=False dù tiên quyết) — nhưng KHÔNG che 'không đạt'.
     """
     ten = crit.get("ten", "")
     log.info("  [eval] %s", ten)
@@ -92,14 +94,17 @@ async def evaluate_criterion(crit: dict[str, Any], pages: list[PageRecord],
         verdicts.extend(await dispatch_rules(
             registry, crit, by_type if by_type is not None else pages_by_type(pages),
             vendor_ctx, vision_fn, fired if fired is not None else set()))
-    kq = {v.ket_qua for v in verdicts}
+    xet = [v for v in verdicts if v.ket_qua != KET_QUA_KHONG_AP_DUNG]   # N/A trung tính
+    kq = {v.ket_qua for v in xet}
     if KET_QUA_KHONG in kq:
         ket_qua = KET_QUA_KHONG
     elif kq & {KET_QUA_SOI, KET_QUA_THIEU, KET_QUA_LOI}:
         ket_qua = KET_QUA_SOI
-    elif verdicts and kq == {KET_QUA_DAT}:
+    elif kq == {KET_QUA_DAT}:
         ket_qua = KET_QUA_DAT
-    else:
+    elif verdicts and not xet:          # có verdict nhưng TẤT CẢ đều N/A
+        ket_qua = KET_QUA_KHONG_AP_DUNG
+    else:                               # verdicts rỗng -> giữ hành vi cũ
         ket_qua = KET_QUA_SOI
     loai = ket_qua == KET_QUA_KHONG and bool(crit.get("tien_quyet"))
     return CriterionEval(nhom=crit.get("nhom", "hop_le"), ten=ten, tien_quyet=bool(crit.get("tien_quyet")),
