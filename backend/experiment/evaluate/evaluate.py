@@ -44,6 +44,20 @@ def _cross_text(nd: dict[str, Any], matched: list[PageRecord], pages: list[PageR
     return "\n\n".join(blocks)
 
 
+def _allowed_ket_qua(profile: VendorProfile | None) -> set[str]:
+    """'không áp dụng' CHỈ hợp lệ khi CODE đã xác định nhà thầu độc lập — không tin AI tự khai."""
+    if profile is not None and profile.hinh_thuc == HINH_THUC_DOC_LAP:
+        return _KET_QUA_HOP_LE | {KET_QUA_KHONG_AP_DUNG}
+    return _KET_QUA_HOP_LE
+
+
+def _can_cu_doc_lap(profile: VendorProfile) -> str:
+    can_cu = f"căn cứ: {profile.nguon}"
+    if profile.bang_chung:
+        can_cu += f"; {profile.bang_chung}"
+    return f"nhà thầu dự thầu theo hình thức độc lập ({can_cu})"
+
+
 def _gate_khong_ap_dung(nd: dict[str, Any], profile: VendorProfile | None) -> Verdict | None:
     """Nhà thầu ĐỘC LẬP + hồ sơ chỉ dành cho liên danh -> N/A tất định, 0 call AI.
 
@@ -53,12 +67,9 @@ def _gate_khong_ap_dung(nd: dict[str, Any], profile: VendorProfile | None) -> Ve
         return None
     if _norm(nd.get("hsdt_kiem_tra", "")) not in _HO_SO_CHI_LIEN_DANH:
         return None
-    can_cu = f"căn cứ: {profile.nguon}"
-    if profile.bang_chung:
-        can_cu += f"; {profile.bang_chung}"
     return _verdict(nd, KET_QUA_KHONG_AP_DUNG, do_tin=profile.do_tin,
-                    ghi_chu=(f"nhà thầu dự thầu theo hình thức độc lập ({can_cu}) — hồ sơ "
-                             f"'thỏa thuận liên danh' chỉ áp dụng cho nhà thầu liên danh"))
+                    ghi_chu=(f"{_can_cu_doc_lap(profile)} — hồ sơ 'thỏa thuận liên danh' chỉ áp "
+                             f"dụng cho nhà thầu liên danh"))
 
 
 async def eval_noi_dung(nd: dict[str, Any], pages: list[PageRecord], vision_fn: VisionFn,
@@ -83,17 +94,21 @@ async def eval_noi_dung(nd: dict[str, Any], pages: list[PageRecord], vision_fn: 
     cross = bool(nd.get("doi_chieu_hsdt") and extra_types)
     text = _cross_text(nd, matched, pages, [str(t) for t in extra_types]) if cross \
         else pages_text(matched)
-    out = await vision_fn(SYS_EVAL, eval_prompt(nd, text, cross=cross),
+    out = await vision_fn(SYS_EVAL, eval_prompt(nd, text, cross=cross, vendor_ctx=vendor_ctx,
+                                                profile=profile),
                           validate=validate_eval_verdict, max_tokens=_EVAL_MAX_TOKENS)
     if out.status == "error":
         return _verdict(nd, KET_QUA_LOI, bang_chung=f"AI lỗi: {out.error}", ghi_chu="cần soi lại")
     d = out.data
     ket_qua = d.get("ket_qua", KET_QUA_SOI)
-    if ket_qua not in _KET_QUA_HOP_LE:
+    if ket_qua not in _allowed_ket_qua(profile):   # AI tự khai N/A khi chưa rõ hình thức -> chặn
         ket_qua = KET_QUA_SOI
+    ghi_chu = d.get("ghi_chu", "")
+    if ket_qua == KET_QUA_KHONG_AP_DUNG and not ghi_chu.strip() and profile is not None:
+        ghi_chu = _can_cu_doc_lap(profile)        # AI quên nêu căn cứ -> điền căn cứ ĐÃ BIẾT
     return _verdict(nd, ket_qua, bang_chung=d.get("bang_chung", ""),
                     trang=[int(t) for t in d.get("trang", []) if str(t).isdigit()],
-                    do_tin=float(d.get("do_tin", 0.0) or 0.0), ghi_chu=d.get("ghi_chu", ""))
+                    do_tin=float(d.get("do_tin", 0.0) or 0.0), ghi_chu=ghi_chu)
 
 
 async def evaluate_criterion(crit: dict[str, Any], pages: list[PageRecord],

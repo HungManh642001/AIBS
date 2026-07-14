@@ -178,6 +178,62 @@ async def test_gate_beats_can_review():
     assert got.ket_qua == KET_QUA_KHONG_AP_DUNG
 
 
+async def test_ai_na_blocked_when_form_unknown():
+    """AI trả 'không áp dụng' mà hình thức không rõ -> CODE ép về 'cần làm rõ' (không tin AI)."""
+    from experiment.evaluate.schema import KET_QUA_SOI, VendorProfile
+
+    v = ScriptedVision({"[EV:X]": {"ket_qua": "không áp dụng", "bang_chung": "b", "trang": [1]}})
+    got = await eval_noi_dung(_nd("X", "don_du_thau"), [_page("don_du_thau", "t")], v,
+                              profile=VendorProfile())
+    assert got.ket_qua == KET_QUA_SOI
+
+
+async def test_ai_na_blocked_when_form_is_lien_danh():
+    """Liên danh -> N/A vô nghĩa -> ép 'cần làm rõ'."""
+    from experiment.evaluate.schema import HINH_THUC_LIEN_DANH, KET_QUA_SOI
+
+    v = ScriptedVision({"[EV:X]": {"ket_qua": "không áp dụng", "bang_chung": "b"}})
+    got = await eval_noi_dung(_nd("X", "don_du_thau"), [_page("don_du_thau", "t")], v,
+                              profile=_profile(HINH_THUC_LIEN_DANH))
+    assert got.ket_qua == KET_QUA_SOI
+
+
+async def test_ai_na_accepted_when_doc_lap():
+    """Độc lập + yêu cầu chỉ dành cho liên danh -> AI được trả N/A."""
+    from experiment.evaluate.schema import HINH_THUC_DOC_LAP, KET_QUA_KHONG_AP_DUNG
+
+    v = ScriptedVision({"[EV:X]": {"ket_qua": "không áp dụng", "bang_chung": "",
+                                   "ghi_chu": "yêu cầu chỉ áp dụng cho liên danh"}})
+    got = await eval_noi_dung(_nd("X", "don_du_thau"), [_page("don_du_thau", "t")], v,
+                              profile=_profile(HINH_THUC_DOC_LAP))
+    assert got.ket_qua == KET_QUA_KHONG_AP_DUNG
+    assert got.ghi_chu == "yêu cầu chỉ áp dụng cho liên danh"
+
+
+async def test_ai_na_without_ghi_chu_gets_code_generated_basis():
+    """AI trả N/A nhưng bỏ trống ghi_chu -> code điền căn cứ ĐÃ BIẾT (không bịa lý do)."""
+    from experiment.evaluate.schema import HINH_THUC_DOC_LAP, KET_QUA_KHONG_AP_DUNG
+
+    v = ScriptedVision({"[EV:X]": {"ket_qua": "không áp dụng", "ghi_chu": ""}})
+    got = await eval_noi_dung(_nd("X", "don_du_thau"), [_page("don_du_thau", "t")], v,
+                              profile=_profile(HINH_THUC_DOC_LAP))
+    assert got.ket_qua == KET_QUA_KHONG_AP_DUNG
+    assert "độc lập" in got.ghi_chu and "khai báo" in got.ghi_chu
+
+
+async def test_eval_prompt_gets_vendor_form_through_criterion():
+    """evaluate_criterion truyền profile/vendor_ctx xuống tận prompt của mỗi nội dung."""
+    from experiment.evaluate.schema import HINH_THUC_DOC_LAP, VendorContext
+
+    crit = {"nhom": "hop_le", "ten": "Đơn dự thầu", "tien_quyet": False,
+            "noi_dung_can_kiem_tra": [_nd("Có đơn dự thầu", "don_du_thau")]}
+    v = ScriptedVision({"[EV:Có đơn dự thầu]": {"ket_qua": "đạt", "bang_chung": "có", "trang": [1]}})
+    await evaluate_criterion(crit, [_page("don_du_thau", "đơn")], v,
+                             vendor_ctx=VendorContext(ten="Công ty ABC"),
+                             profile=_profile(HINH_THUC_DOC_LAP))
+    assert "Công ty ABC" in v.calls[-1][0] and "độc lập" in v.calls[-1][0]
+
+
 async def test_eval_can_review_short_circuits_no_llm():
     """Need decompose cờ can_review (chuẩn HSMT tra không ra) -> 'cần làm rõ' TẤT ĐỊNH, 0 call."""
     from experiment.evaluate.schema import KET_QUA_SOI
