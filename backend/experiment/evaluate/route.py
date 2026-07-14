@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import unicodedata
 
-from experiment.evaluate.schema import PageRecord
+from experiment.evaluate.schema import HoSoNhanDuoc, PageRecord
 
 
 def _norm(s: str) -> str:
@@ -24,6 +24,20 @@ def pages_by_type(pages: list[PageRecord]) -> dict[str, list[PageRecord]]:
         if key:
             out.setdefault(key, []).append(p)
     return out
+
+
+def inventory_pages(pages: list[PageRecord]) -> list[HoSoNhanDuoc]:
+    """Danh mục hồ sơ HSDT đã nhận — đầu báo cáo + tra tên file cho số trang bằng chứng."""
+    out: dict[str, HoSoNhanDuoc] = {}
+    for p in pages:
+        key = _norm(p.loai_ho_so)
+        if not key:
+            continue
+        hs = out.setdefault(key, HoSoNhanDuoc(loai_ho_so=key))
+        if p.file and p.file not in hs.files:
+            hs.files.append(p.file)
+        hs.n_trang += 1
+    return list(out.values())
 
 
 def _flags(p: PageRecord) -> str:

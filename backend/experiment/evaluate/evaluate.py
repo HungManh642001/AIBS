@@ -27,6 +27,7 @@ def _verdict(nd: dict[str, Any], ket_qua: str, bang_chung: str = "",
         noi_dung_kiem_tra=nd.get("noi_dung_kiem_tra", ""), hsdt_kiem_tra=nd.get("hsdt_kiem_tra", ""),
         yeu_cau=nd.get("yeu_cau", ""), thong_tin_bo_sung=nd.get("thong_tin_bo_sung", ""),
         ket_qua=ket_qua, bang_chung=bang_chung, trang=trang or [], do_tin=do_tin, ghi_chu=ghi_chu,
+        nguon_hsmt=nd.get("nguon", ""),   # 1 chỗ -> phủ MỌI đường verdict (đạt/thiếu/review/N/A)
     )
 
 
@@ -161,4 +162,5 @@ async def evaluate_criterion(crit: dict[str, Any], pages: list[PageRecord],
         ket_qua = KET_QUA_SOI
     loai = ket_qua == KET_QUA_KHONG and bool(crit.get("tien_quyet"))
     return CriterionEval(nhom=crit.get("nhom", "hop_le"), ten=ten, tien_quyet=bool(crit.get("tien_quyet")),
-                         ket_qua=ket_qua, loai=loai, verdicts=verdicts)
+                         ket_qua=ket_qua, loai=loai, verdicts=verdicts,
+                         yeu_cau_goc=str(crit.get("yeu_cau_goc", "")))

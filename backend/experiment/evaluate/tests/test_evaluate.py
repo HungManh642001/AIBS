@@ -253,6 +253,39 @@ async def test_criterion_passes_yeu_cau_goc_and_siblings_to_each_need():
     assert "Thời gian hiệu lực" in dau and "Đơn vị thụ hưởng" in dau
 
 
+async def test_verdict_carries_nguon_hsmt_on_every_path():
+    """Mã điều khoản HSMT theo verdict trên MỌI đường — chuỗi audit không được đứt."""
+    from experiment.evaluate.schema import HINH_THUC_DOC_LAP
+
+    nd_thieu = dict(_nd("Giá trị bảo lãnh", "bao_dam_du_thau"), nguon="E-BDL 18.1")
+    v = await eval_noi_dung(nd_thieu, [], ScriptedVision({}))
+    assert v.ket_qua == KET_QUA_THIEU and v.nguon_hsmt == "E-BDL 18.1"
+
+    nd_review = {"noi_dung_kiem_tra": "X", "hsdt_kiem_tra": "don_du_thau", "yeu_cau": "y",
+                 "thong_tin_bo_sung": "", "can_review": True, "nguon": "E-CDNT 1.1"}
+    v2 = await eval_noi_dung(nd_review, [_page("don_du_thau", "đơn")], ScriptedVision({}))
+    assert v2.nguon_hsmt == "E-CDNT 1.1"
+
+    nd_na = dict(_nd("TTLD", "thoa_thuan_lien_danh"), nguon="E-BDL 2.3")
+    v3 = await eval_noi_dung(nd_na, [_page("don_du_thau", "đơn")], ScriptedVision({}),
+                             profile=_profile(HINH_THUC_DOC_LAP))
+    assert v3.nguon_hsmt == "E-BDL 2.3"
+
+    vision = ScriptedVision({"[EV:Giá trị bảo lãnh]": {"ket_qua": "đạt", "bang_chung": "6tr"}})
+    v4 = await eval_noi_dung(nd_thieu, [_page("bao_dam_du_thau", "6tr")], vision)
+    assert v4.ket_qua == KET_QUA_DAT and v4.nguon_hsmt == "E-BDL 18.1"
+
+    assert (await eval_noi_dung(_nd("X", "don_du_thau"), [], ScriptedVision({}))).nguon_hsmt == ""
+
+
+async def test_criterion_carries_yeu_cau_goc():
+    crit = {"nhom": "hop_le", "ten": "X", "yeu_cau_goc": "Nhà thầu phải nộp bảo đảm 6.100.000 VNĐ",
+            "noi_dung_can_kiem_tra": []}
+    ce = await evaluate_criterion(crit, [], ScriptedVision({}))
+    assert ce.yeu_cau_goc == "Nhà thầu phải nộp bảo đảm 6.100.000 VNĐ"
+    assert (await evaluate_criterion({"ten": "Y"}, [], ScriptedVision({}))).yeu_cau_goc == ""
+
+
 async def test_eval_can_review_short_circuits_no_llm():
     """Need decompose cờ can_review (chuẩn HSMT tra không ra) -> 'cần làm rõ' TẤT ĐỊNH, 0 call."""
     from experiment.evaluate.schema import KET_QUA_SOI

@@ -68,6 +68,24 @@ def test_summary_counts_khong_ap_dung_separately():
     assert s["n_loai"] == 0
 
 
+def test_result_to_json_carries_vendor_and_inventory():
+    """Đầu báo cáo cần: danh tính nhà thầu, hình thức + căn cứ, danh mục hồ sơ nhận được."""
+    from experiment.evaluate.schema import HINH_THUC_DOC_LAP, HoSoNhanDuoc, VendorProfile
+
+    r = EvalResult(doc="A", vendor=VendorContext(ten="ABC"),
+                   vendor_profile=VendorProfile(hinh_thuc=HINH_THUC_DOC_LAP, nguon="khai báo"),
+                   ho_so_nhan_duoc=[HoSoNhanDuoc("don_du_thau", ["don.pdf"], 2)])
+    d = result_to_json(r)
+    assert d["vendor"]["ten"] == "ABC" and d["vendor_profile"]["hinh_thuc"] == "độc lập"
+    assert d["ho_so_nhan_duoc"][0]["n_trang"] == 2
+    assert "image" not in str(d)
+
+
+def test_result_to_json_vendor_none_backward_compat():
+    d = result_to_json(EvalResult(doc="A"))
+    assert d["vendor"] is None and d["vendor_profile"] is None and d["ho_so_nhan_duoc"] == []
+
+
 def test_page_record_holds_image_bytes():
     p = PageRecord(file="a.pdf", trang=1, loai_ho_so="don_du_thau", text="x",
                    co_chu_ky=True, co_dau=False, image=b"\x89PNG")

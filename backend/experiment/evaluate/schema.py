@@ -88,6 +88,7 @@ class Verdict:
     do_tin: float
     ghi_chu: str
     nguon_doc: list[str] = field(default_factory=list)  # luật liên-tài-liệu: các hồ sơ đã đối chiếu
+    nguon_hsmt: str = ""       # mã điều khoản HSMT của CHUẨN (E-BDL/E-CDNT) — audit chiều HSMT
 
 
 @dataclass
@@ -127,12 +128,16 @@ class CriterionEval:
     ket_qua: str
     loai: bool
     verdicts: list[Verdict] = field(default_factory=list)
+    yeu_cau_goc: str = ""      # nguyên văn HSMT (cấp tiêu chí) — audit chiều HSMT
 
 
 @dataclass
 class EvalResult:
     doc: str
     criteria: list[CriterionEval] = field(default_factory=list)
+    vendor: VendorContext | None = None
+    vendor_profile: VendorProfile | None = None
+    ho_so_nhan_duoc: list[HoSoNhanDuoc] = field(default_factory=list)
 
     @property
     def summary(self) -> dict[str, int]:
@@ -151,6 +156,9 @@ class EvalResult:
 def result_to_json(r: EvalResult) -> dict[str, Any]:
     return {
         "doc": r.doc,
+        "vendor": asdict(r.vendor) if r.vendor is not None else None,
+        "vendor_profile": asdict(r.vendor_profile) if r.vendor_profile is not None else None,
+        "ho_so_nhan_duoc": [asdict(h) for h in r.ho_so_nhan_duoc],
         "criteria": [asdict(c) for c in r.criteria],
         "summary": r.summary,
     }

@@ -1,10 +1,20 @@
-from experiment.evaluate.route import pages_by_type, pages_text, route_pages
-from experiment.evaluate.schema import PageRecord
+from experiment.evaluate.route import inventory_pages, pages_by_type, pages_text, route_pages
+from experiment.evaluate.schema import HoSoNhanDuoc, PageRecord
 
 
-def _p(trang, loai, text, co_chu_ky=False, co_dau=False):
-    return PageRecord(file="f.pdf", trang=trang, loai_ho_so=loai, text=text,
+def _p(trang, loai, text, co_chu_ky=False, co_dau=False, file="f.pdf"):
+    return PageRecord(file=file, trang=trang, loai_ho_so=loai, text=text,
                       co_chu_ky=co_chu_ky, co_dau=co_dau)
+
+
+def test_inventory_pages_groups_files_and_counts():
+    """Danh mục hồ sơ nhận được: loại chuẩn hoá -> file (khử trùng, giữ thứ tự) -> số trang."""
+    inv = inventory_pages([_p(1, "Đơn_Dự_Thầu", "a", file="don.pdf"),
+                           _p(2, "don_du_thau", "b", file="don.pdf"),
+                           _p(1, "bang_gia", "c", file="bg.pdf")])
+    assert inv == [HoSoNhanDuoc("don_du_thau", ["don.pdf"], 2),
+                   HoSoNhanDuoc("bang_gia", ["bg.pdf"], 1)]
+    assert inventory_pages([]) == []
 
 
 def test_route_selects_matching_doc_type():
