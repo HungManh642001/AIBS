@@ -16,6 +16,7 @@ from experiment.evaluate.vision import VisionFn
 log = logging.getLogger("experiment.evaluate")
 _KET_QUA_HOP_LE = {KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_SOI}
 _EVAL_MAX_TOKENS = 4096
+_CROSS_TYPE_CAP = 3000  # trần text MỖI loại hồ sơ khi đối chiếu chéo (thay [:6000] toàn cục)
 
 
 def _verdict(nd: dict[str, Any], ket_qua: str, bang_chung: str = "",
@@ -27,13 +28,37 @@ def _verdict(nd: dict[str, Any], ket_qua: str, bang_chung: str = "",
     )
 
 
-async def eval_noi_dung(nd: dict[str, Any], pages: list[PageRecord], vision_fn: VisionFn) -> Verdict:
-    """1 nội dung kiểm tra -> verdict (route + đối chiếu THUẦN TEXT; chữ ký/dấu đã có trong text ingest)."""
+def _cross_text(nd: dict[str, Any], matched: list[PageRecord], pages: list[PageRecord],
+                extra_types: list[str]) -> str:
+    """Đối chiếu chéo (doi_chieu_hsdt): khối text theo TỪNG loại hồ sơ, cap per-type."""
+    main = nd.get("hsdt_kiem_tra", "")
+    blocks = [f"[HỒ SƠ: {main}]\n{pages_text(matched)[:_CROSS_TYPE_CAP]}"]
+    seen = {id(p) for p in matched}
+    for t in extra_types:
+        ps = [p for p in route_pages(pages, str(t)) if id(p) not in seen]
+        if ps:
+            seen.update(id(p) for p in ps)
+            blocks.append(f"[HỒ SƠ: {t}]\n{pages_text(ps)[:_CROSS_TYPE_CAP]}")
+    return "\n\n".join(blocks)
+
+
+async def eval_noi_dung(nd: dict[str, Any], pages: list[PageRecord], vision_fn: VisionFn,
+                        *, extra_types: list[str] | None = None) -> Verdict:
+    """1 nội dung kiểm tra -> verdict (route + đối chiếu THUẦN TEXT; chữ ký/dấu đã có trong text ingest).
+
+    extra_types (need doi_chieu_hsdt): các loại hồ sơ khác của tiêu chí để đối chiếu chéo trong HSDT.
+    """
+    if nd.get("can_review") and not (nd.get("thong_tin_bo_sung") or "").strip():
+        # Chuẩn HSMT chưa tra được (decompose cờ can_review) -> không có căn cứ đối chiếu (no-fab).
+        return _verdict(nd, KET_QUA_SOI, ghi_chu="chuẩn HSMT chưa tra được — cần chuyên gia đối chiếu")
     matched = route_pages(pages, nd.get("hsdt_kiem_tra", ""))
     if not matched:
         return _verdict(nd, KET_QUA_THIEU, bang_chung=f"HSDT không có: {nd.get('hsdt_kiem_tra', '')}",
                         ghi_chu="thiếu hồ sơ tương ứng")
-    out = await vision_fn(SYS_EVAL, eval_prompt(nd, pages_text(matched)),
+    cross = bool(nd.get("doi_chieu_hsdt") and extra_types)
+    text = _cross_text(nd, matched, pages, [str(t) for t in extra_types]) if cross \
+        else pages_text(matched)
+    out = await vision_fn(SYS_EVAL, eval_prompt(nd, text, cross=cross),
                           validate=validate_eval_verdict, max_tokens=_EVAL_MAX_TOKENS)
     if out.status == "error":
         return _verdict(nd, KET_QUA_LOI, bang_chung=f"AI lỗi: {out.error}", ghi_chu="cần soi lại")
@@ -61,7 +86,8 @@ async def evaluate_criterion(crit: dict[str, Any], pages: list[PageRecord],
     log.info("  [eval] %s", ten)
     verdicts: list[Verdict] = []
     for nd in crit.get("noi_dung_can_kiem_tra", []):
-        verdicts.append(await eval_noi_dung(nd, pages, vision_fn))
+        extra = crit.get("hsdt_can_kiem_tra", []) if nd.get("doi_chieu_hsdt") else None
+        verdicts.append(await eval_noi_dung(nd, pages, vision_fn, extra_types=extra))
     if registry is not None:
         verdicts.extend(await dispatch_rules(
             registry, crit, by_type if by_type is not None else pages_by_type(pages),

@@ -48,6 +48,52 @@ async def test_criterion_rollup_blocking_fail_marks_loai():
     assert ce.ket_qua == KET_QUA_KHONG and ce.loai is True
 
 
+async def test_eval_can_review_short_circuits_no_llm():
+    """Need decompose cờ can_review (chuẩn HSMT tra không ra) -> 'cần làm rõ' TẤT ĐỊNH, 0 call."""
+    from experiment.evaluate.schema import KET_QUA_SOI
+
+    vision = ScriptedVision({})
+    nd = {"noi_dung_kiem_tra": "Giá trị bảo lãnh", "hsdt_kiem_tra": "bao_dam_du_thau",
+          "yeu_cau": "theo HSMT", "thong_tin_bo_sung": "", "can_review": True}
+    v = await eval_noi_dung(nd, [_page("bao_dam_du_thau", "bảo lãnh 6tr")], vision)
+    assert v.ket_qua == KET_QUA_SOI and "chuẩn HSMT" in v.ghi_chu
+    assert vision.calls == []                       # KHÔNG gọi LLM khi không có chuẩn (no-fab)
+
+    # can_review nhưng chuẩn ĐÃ có (dữ liệu cũ lẫn lộn) -> vẫn đánh giá bình thường
+    vision2 = ScriptedVision({"[EV:Giá trị bảo lãnh]": {"ket_qua": "đạt", "bang_chung": "6tr", "trang": [1]}})
+    nd2 = dict(nd, thong_tin_bo_sung="6.100.000 VNĐ")
+    v2 = await eval_noi_dung(nd2, [_page("bao_dam_du_thau", "bảo lãnh 6tr")], vision2)
+    assert v2.ket_qua == KET_QUA_DAT
+
+
+async def test_eval_doi_chieu_hsdt_cross_document():
+    """Need cờ doi_chieu_hsdt -> gộp trang loại chính + các loại của tiêu chí, prompt đối chiếu chéo."""
+    vision = ScriptedVision({"[EV:Ký đúng phân công]":
+                             {"ket_qua": "đạt", "bang_chung": "A ký, thỏa thuận phân công A", "trang": [1]}})
+    nd = {"noi_dung_kiem_tra": "Ký đúng phân công", "hsdt_kiem_tra": "don_du_thau",
+          "yeu_cau": "người ký khớp phân công trong thỏa thuận liên danh",
+          "thong_tin_bo_sung": "", "doi_chieu_hsdt": True}
+    pages = [_page("don_du_thau", "đơn: A ký thay liên danh"),
+             _page("thoa_thuan_lien_danh", "thỏa thuận: A đại diện ký đơn")]
+    v = await eval_noi_dung(nd, pages, vision, extra_types=["don_du_thau", "thoa_thuan_lien_danh"])
+    assert v.ket_qua == KET_QUA_DAT
+    prompt = vision.calls[-1][0]
+    assert "đơn: A ký thay liên danh" in prompt and "thỏa thuận: A đại diện ký" in prompt
+    assert "đối chiếu chéo" in prompt.lower()
+
+    # thiếu loại CHÍNH vẫn là thiếu hồ sơ (extra không thay thế được)
+    v2 = await eval_noi_dung(nd, [_page("thoa_thuan_lien_danh", "thỏa thuận")], ScriptedVision({}),
+                             extra_types=["don_du_thau", "thoa_thuan_lien_danh"])
+    assert v2.ket_qua == KET_QUA_THIEU
+
+
+def test_sys_eval_teaches_new_rules():
+    """SYS_EVAL: guard chuẩn '(không có)' + quy tắc so mốc ngày (chuẩn bảng neo có ngày cụ thể)."""
+    from experiment.evaluate.prompts import SYS_EVAL
+    assert "(không có)" in SYS_EVAL           # guard: chuẩn thiếu -> không kết luận
+    assert "mốc" in SYS_EVAL and "ngày" in SYS_EVAL
+
+
 async def test_criterion_rule_verdict_joins_rollup():
     """Verdict luật append vào verdicts tiêu chí -> vào roll-up: luật không đạt + tiên quyết -> loại."""
     from experiment.evaluate.rules.registry import RuleRegistry, RuleSkill
