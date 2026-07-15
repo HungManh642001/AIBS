@@ -31,9 +31,15 @@ def _verdict(nd: dict[str, Any], ket_qua: str, bang_chung: str = "",
     )
 
 
+def _types_khac(nd: dict[str, Any], extra_types: list[str] | None) -> list[str]:
+    """Các tài liệu ĐỐI CHIẾU tiêu chí khai thêm, ngoài hồ sơ chính của nội dung này."""
+    main = _norm(nd.get("hsdt_kiem_tra", ""))
+    return [str(t) for t in (extra_types or []) if _norm(str(t)) != main]
+
+
 def _cross_text(nd: dict[str, Any], matched: list[PageRecord], pages: list[PageRecord],
                 extra_types: list[str]) -> str:
-    """Đối chiếu chéo (doi_chieu_hsdt): khối text theo TỪNG loại hồ sơ, cap per-type."""
+    """Đối chiếu chéo: khối text theo TỪNG loại hồ sơ, cap per-type (trùng hồ sơ chính bị dedup)."""
     main = nd.get("hsdt_kiem_tra", "")
     blocks = [f"[HỒ SƠ: {main}]\n{pages_text(matched)[:_CROSS_TYPE_CAP]}"]
     seen = {id(p) for p in matched}
@@ -111,9 +117,13 @@ async def eval_noi_dung(nd: dict[str, Any], pages: list[PageRecord], vision_fn: 
     if not matched:
         return _verdict(nd, KET_QUA_THIEU, bang_chung=f"HSDT không có: {nd.get('hsdt_kiem_tra', '')}",
                         ghi_chu="thiếu hồ sơ tương ứng")
-    cross = bool(nd.get("doi_chieu_hsdt") and extra_types)
-    text = _cross_text(nd, matched, pages, [str(t) for t in extra_types]) if cross \
-        else pages_text(matched)
+    # Tín hiệu cross = tiêu chí KHAI tài liệu ngoài hồ sơ chính (SYS_LIST dạy khai tài liệu đối
+    # chiếu). KHÔNG bám vào cờ doi_chieu_hsdt: cờ đó chỉ bật khi RESOLVE trả thuoc_hsdt, mà RESOLVE
+    # chỉ chạy khi can_tra_cuu=True — trong khi SYS_STRUCT dạy nội dung thuộc hồ sơ nhà thầu thì
+    # can_tra_cuu=False -> cờ không bao giờ bật cho đúng ca cần đối chiếu chéo.
+    khac = _types_khac(nd, extra_types)
+    cross = bool(khac)
+    text = _cross_text(nd, matched, pages, khac) if cross else pages_text(matched)
     out = await vision_fn(SYS_EVAL, eval_prompt(nd, text, cross=cross, vendor_ctx=vendor_ctx,
                                                 profile=profile, yeu_cau_goc=yeu_cau_goc,
                                                 anh_em=anh_em),
@@ -165,7 +175,7 @@ async def evaluate_criterion(crit: dict[str, Any], pages: list[PageRecord],
         if skill is not None:
             verdicts.append(await run_skill(skill, by_type_, vendor_ctx, crit, vision_fn, nd=nd))
             continue
-        extra = crit.get("hsdt_can_kiem_tra", []) if nd.get("doi_chieu_hsdt") else None
+        extra = crit.get("hsdt_can_kiem_tra", [])   # eval tự lọc ra tài liệu ngoài hồ sơ chính
         anh_em = [t for j, t in enumerate(ten_nds) if j != i and t]   # 1 gốc -> N need: phân công rõ
         verdicts.append(await eval_noi_dung(nd, pages, vision_fn, extra_types=extra,
                                             vendor_ctx=vendor_ctx, profile=profile,

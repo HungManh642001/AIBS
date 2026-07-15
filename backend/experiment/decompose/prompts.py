@@ -163,10 +163,16 @@ def struct_prompt(crit: dict[str, Any]) -> str:
         '"yeu_cau":"Thỏa mãn giá trị bảo lãnh theo HSMT","can_lam_ro":"Giá trị bảo lãnh","can_tra_cuu":true},\n'
         '   {"noi_dung_kiem_tra":"Thời gian hiệu lực","hsdt_kiem_tra":"bao_dam_du_thau",'
         '"yeu_cau":"Thỏa mãn thời gian hiệu lực theo HSMT","can_lam_ro":"Thời gian hiệu lực bảo lãnh","can_tra_cuu":true}]\n'
-        "VÍ DỤ 3 — 'Thành viên đứng đầu ký thay mặt phải phù hợp phân công trách nhiệm trong Thỏa thuận "
-        "liên danh' (hsdt=[lien_danh]) — phân công trách nhiệm nằm TRONG hồ sơ nhà thầu, KHÔNG tra HSMT:\n"
-        '  [{"noi_dung_kiem_tra":"Ký đúng phân công trách nhiệm","hsdt_kiem_tra":"lien_danh",'
-        '"yeu_cau":"Người ký phù hợp phân công trách nhiệm trong thỏa thuận liên danh",'
+        "VÍ DỤ 3 — 'Đối với nhà thầu liên danh, đơn dự thầu phải do đại diện hợp pháp của từng thành "
+        "viên ký, hoặc thành viên đứng đầu ký thay mặt liên danh theo phân công trách nhiệm trong "
+        "thỏa thuận liên danh' (hsdt=[don_du_thau, thoa_thuan_lien_danh]) — chuẩn để đối chiếu nằm "
+        "TRONG hồ sơ nhà thầu, KHÔNG tra HSMT; hồ sơ BỊ CHẤM là đơn dự thầu, thỏa thuận liên danh là "
+        "tài liệu ĐỐI CHIẾU:\n"
+        '  [{"noi_dung_kiem_tra":"Người ký đơn là đại diện hợp pháp","hsdt_kiem_tra":"don_du_thau",'
+        '"yeu_cau":"Đơn do đại diện hợp pháp của từng thành viên ký tên, đóng dấu",'
+        '"can_lam_ro":"","can_tra_cuu":false},\n'
+        '   {"noi_dung_kiem_tra":"Ký thay mặt đúng phân công trách nhiệm","hsdt_kiem_tra":"don_du_thau",'
+        '"yeu_cau":"Thành viên đứng đầu ký thay mặt phù hợp phân công trong thỏa thuận liên danh",'
         '"can_lam_ro":"","can_tra_cuu":false}]\n\n'
         + cot_block(_CRIT_SCHEMA)
     )

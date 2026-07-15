@@ -291,6 +291,41 @@ async def test_eval_can_review_short_circuits_no_llm():
     assert v2.ket_qua == KET_QUA_DAT
 
 
+async def test_cross_doc_when_criterion_declares_extra_docs():
+    """Tiêu chí khai thêm tài liệu đối chiếu -> ĐỐI CHIẾU CHÉO, KHÔNG cần cờ doi_chieu_hsdt.
+
+    Ca thật: 'Đối với nhà thầu liên danh, đơn dự thầu phải do ... thành viên đứng đầu ký theo phân
+    công trong thỏa thuận liên danh'. SYS_STRUCT (VÍ DỤ 3) dạy nội dung thuộc hồ sơ nhà thầu ->
+    can_tra_cuu=false -> RESOLVE không chạy -> doi_chieu_hsdt KHÔNG BAO GIỜ bật. Nếu bám vào cờ đó
+    thì model chỉ thấy đơn, không thấy thỏa thuận -> 'cần làm rõ' giả.
+    """
+    crit = {"nhom": "hop_le", "ten": "Đơn ký theo phân công liên danh", "tien_quyet": True,
+            "hsdt_can_kiem_tra": ["don_du_thau", "thoa_thuan_lien_danh"],
+            "noi_dung_can_kiem_tra": [
+                {"noi_dung_kiem_tra": "Ký đúng phân công", "hsdt_kiem_tra": "don_du_thau",
+                 "yeu_cau": "người ký khớp phân công", "can_tra_cuu": False,
+                 "thong_tin_bo_sung": ""}]}      # KHÔNG có doi_chieu_hsdt
+    pages = [_page("don_du_thau", "đơn: Nguyễn Văn A ký"),
+             _page("thoa_thuan_lien_danh", "thỏa thuận: Trần Văn B được phân công ký")]
+    vision = ScriptedVision({"[EV:Ký đúng phân công]": {"ket_qua": "không đạt",
+                                                        "bang_chung": "A ≠ B", "trang": [1]}})
+    ce = await evaluate_criterion(crit, pages, vision)
+    prompt = vision.calls[-1][0]
+    assert "Nguyễn Văn A" in prompt and "Trần Văn B" in prompt   # THẤY CẢ HAI phía
+    assert "đối chiếu chéo" in prompt.lower()
+    assert ce.ket_qua == KET_QUA_KHONG and ce.loai is True
+
+
+async def test_no_cross_when_criterion_declares_single_doc():
+    """Chỉ khai 1 hồ sơ -> KHÔNG cross (giữ prompt gọn, hành vi như cũ)."""
+    crit = {"nhom": "hop_le", "ten": "Bảo đảm dự thầu", "tien_quyet": False,
+            "hsdt_can_kiem_tra": ["bao_dam_du_thau"],
+            "noi_dung_can_kiem_tra": [_nd("Giá trị bảo lãnh", "bao_dam_du_thau")]}
+    vision = ScriptedVision({"[EV:Giá trị bảo lãnh]": {"ket_qua": "đạt", "bang_chung": "6tr"}})
+    await evaluate_criterion(crit, [_page("bao_dam_du_thau", "6.100.000")], vision)
+    assert "đối chiếu chéo" not in vision.calls[-1][0].lower()
+
+
 async def test_eval_doi_chieu_hsdt_cross_document():
     """Need cờ doi_chieu_hsdt -> gộp trang loại chính + các loại của tiêu chí, prompt đối chiếu chéo."""
     vision = ScriptedVision({"[EV:Ký đúng phân công]":
