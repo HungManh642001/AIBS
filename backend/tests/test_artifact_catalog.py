@@ -33,3 +33,22 @@ def test_resolve_code_keeps_valid_and_rejects_unknown():
         assert cat.resolve_code(code) == code
     assert cat.resolve_code("xyz_khong_ton_tai") is None
     assert cat.resolve_code("") is None
+
+
+def test_catalog_has_webform():
+    """webform = kết quả mở thầu (dùng chung cả gói) — decompose cần mã này để khai hsdt_can_kiem_tra."""
+    a = cat.get_artifact("webform")
+    assert a is not None and a["label"]
+    assert cat.resolve_code("webform") == "webform"
+    assert cat.resolve_code("Kết quả mở thầu") == "webform"
+    assert cat.resolve_code("biên bản mở thầu") == "webform"
+
+
+def test_webform_aliases_do_not_swallow_existing_codes():
+    """resolve_code có fallback substring 2 chiều -> alias mới có thể NUỐT mã cũ. Khoá lại."""
+    for code in ["don_du_thau", "bao_dam_du_thau", "thoa_thuan_lien_danh", "tu_cach_phap_ly",
+                 "bao_cao_tai_chinh", "hop_dong_tuong_tu", "ke_khai_nhan_su", "ke_khai_thiet_bi",
+                 "de_xuat_ky_thuat", "catalogue_thong_so", "bang_gia"]:
+        assert cat.resolve_code(code) == code
+    assert cat.resolve_code("bảng giá") == "bang_gia"          # không bị webform nuốt
+    assert cat.resolve_code("thư bảo lãnh") == "bao_dam_du_thau"

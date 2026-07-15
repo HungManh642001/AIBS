@@ -53,6 +53,12 @@ CATALOG: dict[str, dict] = {
         "label": "Bảng giá dự thầu", "nhom": "tai_chinh",
         "mo_ta": "Bảng chào giá chi tiết.", "aliases": ["bảng giá", "bang gia", "biểu giá", "chào giá"],
     },
+    "webform": {
+        "label": "Webform / Kết quả mở thầu", "nhom": "tai_chinh",
+        "mo_ta": "Kết quả mở thầu trên hệ thống — giá dự thầu của MỌI nhà thầu (dùng chung cả gói).",
+        "aliases": ["webform", "web form", "kết quả mở thầu", "biên bản mở thầu",
+                    "ket qua mo thau", "danh sách nhà thầu tham dự"],
+    },
 }
 
 
