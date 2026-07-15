@@ -25,15 +25,20 @@ def test_validate_chu_ky_tolerant():
     assert out["ket_qua"] == "đạt" and out["trang"] == [] and out["do_tin"] == 0.0
 
 
-def test_skill_metadata_and_kich_hoat():
+def test_skill_is_standing_not_attached_to_criterion():
+    """Standing check: luôn chạy 1 lần/nhà thầu, KHÔNG gắn vào tiêu chí nào (chống quy kết sai)."""
+    from experiment.evaluate.rules.registry import PHAM_VI_GOI, RuleRegistry
+
     assert SKILL.id == "chu_ky_khop_dkkd" and SKILL.can_vendor is False
     assert SKILL.ho_so_can == ["don_du_thau", "tu_cach_phap_ly"]
-    crit_don = {"ten": "Đơn dự thầu", "noi_dung_can_kiem_tra": [
-        {"noi_dung_kiem_tra": "Có chữ ký", "hsdt_kiem_tra": "Don_Du_Thau"}]}
-    crit_khac = {"ten": "Bảo đảm", "noi_dung_can_kiem_tra": [
-        {"noi_dung_kiem_tra": "Giá trị", "hsdt_kiem_tra": "bao_dam_du_thau"}]}
-    assert SKILL.kich_hoat(crit_don) is True                # match theo _norm
-    assert SKILL.kich_hoat(crit_khac) is False
+    assert SKILL.pham_vi == PHAM_VI_GOI
+
+    reg = RuleRegistry()
+    reg.register(SKILL)
+    assert [s.id for s in reg.standing()] == ["chu_ky_khop_dkkd"]
+    # dù tiêu chí khai đủ cả 2 hồ sơ, luật standing vẫn KHÔNG gắn vào tiêu chí
+    assert reg.matching({"ten": "Đơn dự thầu",
+                         "hsdt_can_kiem_tra": ["don_du_thau", "tu_cach_phap_ly"]}) == []
 
 
 _BY_TYPE = {
@@ -80,12 +85,10 @@ async def test_handler_missing_doc_thieu_no_llm():
 
 
 async def test_handler_ai_error_becomes_loi_via_dispatch():
-    """AI lỗi -> vision trả error -> verdict 'lỗi' (qua handler, không nuốt)."""
-    from experiment.evaluate.rules.registry import RuleRegistry, dispatch_rules
+    """AI lỗi -> vision trả error -> verdict 'lỗi' (qua dispatch standing, không nuốt)."""
+    from experiment.evaluate.rules.registry import RuleRegistry, dispatch_standing
 
     reg = RuleRegistry()
     reg.register(SKILL)
-    crit = {"ten": "Đơn dự thầu", "noi_dung_can_kiem_tra": [
-        {"noi_dung_kiem_tra": "Có chữ ký", "hsdt_kiem_tra": "don_du_thau"}]}
-    out = await dispatch_rules(reg, crit, _BY_TYPE, None, ScriptedVision({}), set())
+    out = await dispatch_standing(reg, _BY_TYPE, None, ScriptedVision({}))
     assert [v.ket_qua for v in out] == [KET_QUA_LOI]        # kịch bản không khớp = proxy lỗi

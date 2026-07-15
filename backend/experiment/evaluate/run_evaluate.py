@@ -13,7 +13,7 @@ from experiment.evaluate.evaluate import evaluate_criterion
 from experiment.evaluate.ingest import ingest_hsdt
 from experiment.evaluate.report import to_markdown
 from experiment.evaluate.route import inventory_pages, pages_by_type
-from experiment.evaluate.rules.registry import RuleRegistry, default_registry
+from experiment.evaluate.rules.registry import RuleRegistry, default_registry, dispatch_standing
 from experiment.evaluate.schema import EvalResult, VendorContext, result_to_json
 from experiment.evaluate.vendor_profile import canon_hinh_thuc, detect_vendor_profile
 from experiment.evaluate.vision import default_vision_fn
@@ -54,7 +54,6 @@ async def run(decomposition_path: str, hsdt_files: list[tuple[str, str, bytes]],
 
     pages = await ingest_hsdt(hsdt_files, vision_fn)
     by_type = pages_by_type(pages)   # build 1 lần cho mọi luật
-    fired: set[str] = set()          # mỗi luật bắn 1 lần/vendor
 
     profile = await detect_vendor_profile(pages, vision_fn, vendor=vendor)
     log.info("[run] hình thức nhà thầu: %s (căn cứ: %s)", profile.hinh_thuc or "không rõ",
@@ -62,12 +61,14 @@ async def run(decomposition_path: str, hsdt_files: list[tuple[str, str, bytes]],
     if profile.mau_thuan:
         log.warning("[run] ⚠️ MÂU THUẪN hình thức nhà thầu: %s", profile.ghi_chu)
 
+    # Kiểm tra thường trực: 1 lần/nhà thầu, KHÔNG gắn tiêu chí, không vào roll-up.
+    phat_hien = await dispatch_standing(registry, by_type, vendor, vision_fn)
     result = EvalResult(doc=doc, vendor=vendor, vendor_profile=profile,
-                        ho_so_nhan_duoc=inventory_pages(pages))
+                        ho_so_nhan_duoc=inventory_pages(pages), phat_hien_bo_sung=phat_hien)
     for c in criteria:
         result.criteria.append(await evaluate_criterion(
             c, pages, vision_fn, registry=registry, vendor_ctx=vendor, profile=profile,
-            by_type=by_type, fired=fired))
+            by_type=by_type))
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -75,7 +76,7 @@ async def run(decomposition_path: str, hsdt_files: list[tuple[str, str, bytes]],
         json.dumps(result_to_json(result), ensure_ascii=False, indent=2), encoding="utf-8")
     (out / "evaluation.md").write_text(to_markdown(result), encoding="utf-8")
     return {"doc": result.doc, "hinh_thuc": profile.hinh_thuc, "mau_thuan": profile.mau_thuan,
-            **result.summary}
+            "n_phat_hien_bo_sung": len(phat_hien), **result.summary}
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -54,13 +54,29 @@ def test_parse_vendor_with_hinh_thuc():
 
 
 def _decomp_don(tmp_path):
-    decomp = {"doc": "E-HSMT", "groups": [{"group": "hop_le", "muc": "Mục 1", "criteria": [{
-        "nhom": "hop_le", "ten": "Đơn dự thầu", "tien_quyet": True,
-        "noi_dung_can_kiem_tra": [
-            {"noi_dung_kiem_tra": "Có đơn dự thầu", "hsdt_kiem_tra": "don_du_thau",
-             "yeu_cau": "phải có", "thong_tin_bo_sung": ""},
-            {"noi_dung_kiem_tra": "Bảng giá đúng mẫu", "hsdt_kiem_tra": "bang_gia",
-             "yeu_cau": "đúng mẫu 05C.1", "thong_tin_bo_sung": ""}]}]}]}
+    """3 tiêu chí, trong đó HAI tiêu chí cùng dùng bang_gia — tái hiện đúng bug user báo.
+
+    Tiêu chí 2 "Bảng giá đúng mẫu" khai [bang_gia] -> eval chung. Tiêu chí 3 "Giá khớp webform"
+    khai [bang_gia, webform] -> luật. Trước đây luật bắn ở tiêu chí 2 rồi `fired` chặn tiêu chí 3
+    -> tiêu chí 3 ra "cần làm rõ".
+    """
+    decomp = {"doc": "E-HSMT", "groups": [{"group": "hop_le", "muc": "Mục 1", "criteria": [
+        {"nhom": "hop_le", "ten": "Đơn dự thầu", "tien_quyet": True,
+         "hsdt_can_kiem_tra": ["don_du_thau"],
+         "noi_dung_can_kiem_tra": [
+             {"noi_dung_kiem_tra": "Có đơn dự thầu", "hsdt_kiem_tra": "don_du_thau",
+              "yeu_cau": "phải có", "thong_tin_bo_sung": ""}]},
+        {"nhom": "hop_le", "ten": "Bảng giá đúng mẫu", "tien_quyet": False,
+         "hsdt_can_kiem_tra": ["bang_gia"],
+         "noi_dung_can_kiem_tra": [
+             {"noi_dung_kiem_tra": "Bảng giá đúng mẫu", "hsdt_kiem_tra": "bang_gia",
+              "yeu_cau": "đúng mẫu 05C.1", "thong_tin_bo_sung": ""}]},
+        {"nhom": "hop_le", "ten": "Giá khớp webform", "tien_quyet": True,
+         "hsdt_can_kiem_tra": ["bang_gia", "webform"],
+         "noi_dung_can_kiem_tra": [
+             {"noi_dung_kiem_tra": "Giá phải phù hợp với webform", "hsdt_kiem_tra": "bang_gia",
+              "yeu_cau": "giá trong bảng giá phải phù hợp với webform", "thong_tin_bo_sung": "",
+              "nguon": "E-BDL 26.1"}]}]}]}
     dp = tmp_path / "decomposition.json"
     dp.write_text(json.dumps(decomp, ensure_ascii=False), encoding="utf-8")
     return str(dp)
@@ -88,18 +104,33 @@ def _vision_full():
 
 
 async def test_run_e2e_rules_with_vendor(tmp_path):
-    """--vendor + webform: verdict 2 luật xuất hiện trong evaluation.json kèm nguon_doc."""
+    """BUG USER BÁO: 2 tiêu chí cùng bang_gia -> tiêu chí 'giá khớp webform' phải do LUẬT trả lời.
+
+    Trước đây luật bắn ở 'Bảng giá đúng mẫu' rồi `fired` chặn -> tiêu chí này ra 'cần làm rõ'.
+    """
     out = tmp_path / "out"
+    vision = _vision_full()
     metrics = await run(_decomp_don(tmp_path), _files(), str(out), doc="HSDT-A",
-                        vision_fn=_vision_full(),
-                        vendor=VendorContext(ten="Công ty TNHH ABC"))
-    assert metrics["n_dat"] == 1
+                        vision_fn=vision, vendor=VendorContext(ten="Công ty TNHH ABC"))
+    assert metrics["n_tieu_chi"] == 3 and metrics["n_dat"] == 3
+    assert metrics["n_can_lam_ro"] == 0                       # KHÔNG còn SOI giả
+    assert metrics["n_phat_hien_bo_sung"] == 1
+
     data = json.loads((out / "evaluation.json").read_text(encoding="utf-8"))
-    verdicts = data["criteria"][0]["verdicts"]
-    rule_v = {v["noi_dung_kiem_tra"]: v for v in verdicts if v["nguon_doc"]}
-    assert set(rule_v) == {"Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)",
-                           "Bảng giá khớp giá trên webform"}
-    assert rule_v["Bảng giá khớp giá trên webform"]["nguon_doc"] == ["bang_gia", "webform"]
+    tc = {c["ten"]: c for c in data["criteria"]}
+    # tiêu chí 'giá khớp webform' do luật trả lời, verdict mang danh tính NỘI DUNG + chuỗi audit
+    v_gia = tc["Giá khớp webform"]["verdicts"][0]
+    assert v_gia["noi_dung_kiem_tra"] == "Giá phải phù hợp với webform"
+    assert v_gia["ket_qua"] == "đạt" and v_gia["nguon_doc"] == ["bang_gia", "webform"]
+    assert v_gia["nguon_hsmt"] == "E-BDL 26.1"
+    # tiêu chí 'đúng mẫu' vẫn do eval chung chấm — KHÔNG dính verdict luật
+    assert tc["Bảng giá đúng mẫu"]["verdicts"][0]["nguon_doc"] == []
+
+    # chữ ký = standing: nằm ở phat_hien_bo_sung, KHÔNG nằm trong tiêu chí nào
+    assert [v["noi_dung_kiem_tra"] for v in data["phat_hien_bo_sung"]] == \
+        ["Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)"]
+    assert not any(v["noi_dung_kiem_tra"].startswith("Người ký")
+                   for c in data["criteria"] for v in c["verdicts"])
 
 
 def _decomp_lien_danh(tmp_path):
@@ -169,6 +200,7 @@ async def test_run_e2e_rules_without_vendor_soi(tmp_path):
     out = tmp_path / "out"
     await run(_decomp_don(tmp_path), _files(), str(out), doc="HSDT-A", vision_fn=_vision_full())
     data = json.loads((out / "evaluation.json").read_text(encoding="utf-8"))
-    v = next(v for v in data["criteria"][0]["verdicts"]
-             if v["noi_dung_kiem_tra"] == "Bảng giá khớp giá trên webform")
+    tc = {c["ten"]: c for c in data["criteria"]}
+    v = tc["Giá khớp webform"]["verdicts"][0]
     assert v["ket_qua"] == "cần làm rõ" and "nhà thầu" in v["ghi_chu"]
+    assert tc["Bảng giá đúng mẫu"]["ket_qua"] == "đạt"    # tiêu chí khác KHÔNG bị vạ lây

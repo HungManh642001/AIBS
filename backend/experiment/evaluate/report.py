@@ -89,10 +89,28 @@ def _tong_ket(r: EvalResult) -> list[str]:
            [f"| {ten} | {s[k]} |" for ten, k in nhan] + [""]
 
 
-def _can_xu_ly(criteria: list[CriterionEval], files: dict[str, list[str]]) -> list[str]:
+def _phat_hien(r: EvalResult, files: dict[str, list[str]]) -> list[str]:
+    """Kiểm tra thường trực của hệ thống — trung thực về xuất xứ: HSMT KHÔNG yêu cầu cái này.
+
+    Ngoài roll-up nên không tự kéo 'loại'; chuyên gia đọc rồi tự quyết.
+    """
+    out = [f"## 🔎 Phát hiện của hệ thống (ngoài checklist HSMT) ({len(r.phat_hien_bo_sung)})", ""]
+    if not r.phat_hien_bo_sung:
+        return out + ["_Không có._", ""]
+    for v in r.phat_hien_bo_sung:
+        out.append(f"- **{v.noi_dung_kiem_tra}** — *{v.ket_qua}* (độ tin {v.do_tin})")
+        out.append(f"    · bằng chứng [{_nguon_hsdt(v, files)}]: {v.bang_chung or '—'}")
+        if v.ghi_chu:
+            out.append(f"    · ghi chú: {v.ghi_chu}")
+    return out + [""]
+
+
+def _can_xu_ly(criteria: list[CriterionEval], files: dict[str, list[str]],
+               phat_hien: list[Verdict]) -> list[str]:
     can = [c for c in criteria if c.ket_qua in _CAN_XU_LY]
-    out = [f"## ⚠️ CẦN XỬ LÝ ({len(can)})", ""]
-    if not can:
+    pv = [v for v in phat_hien if v.ket_qua in _CAN_XU_LY]
+    out = [f"## ⚠️ CẦN XỬ LÝ ({len(can) + len(pv)})", ""]
+    if not can and not pv:
         return out + ["_Không có tiêu chí nào cần xử lý._", ""]
     for c in sorted(can, key=_rank):
         flag = "⛔ **LOẠI** · " if c.loai else ""
@@ -102,6 +120,9 @@ def _can_xu_ly(criteria: list[CriterionEval], files: dict[str, list[str]]) -> li
             ly_do = v.bang_chung or v.ghi_chu or "—"
             out.append(f"- {flag}{c.ten} · *{v.ket_qua}* — {v.noi_dung_kiem_tra}: {ly_do} "
                        f"[{_nguon_hsdt(v, files)}]")
+    for v in pv:   # nêu rõ xuất xứ: máy phát hiện, HSMT không yêu cầu -> KHÔNG tự loại
+        out.append(f"- 🔎 *(ngoài checklist HSMT)* {v.noi_dung_kiem_tra} · *{v.ket_qua}* — "
+                   f"{v.bang_chung or v.ghi_chu or '—'} [{_nguon_hsdt(v, files)}]")
     return out + [""]
 
 
@@ -133,10 +154,11 @@ def _khong_ap_dung(criteria: list[CriterionEval], files: dict[str, list[str]]) -
 
 
 def to_markdown(r: EvalResult) -> str:
-    """Báo cáo: nhà thầu -> hồ sơ -> tổng kết -> CẦN XỬ LÝ -> chi tiết 2 chiều -> không áp dụng."""
+    """Báo cáo: nhà thầu -> hồ sơ -> tổng kết -> phát hiện hệ thống -> CẦN XỬ LÝ -> chi tiết -> N/A."""
     files = _files_map(r)
     # N/A tách khỏi phần chi tiết: máy đã bỏ qua có chủ đích, đọc ở mục riêng kèm lý do.
     xet = [c for c in r.criteria if c.ket_qua != KET_QUA_KHONG_AP_DUNG]
-    lines = _header(r) + _ho_so(r) + _tong_ket(r) + _can_xu_ly(xet, files) \
+    lines = _header(r) + _ho_so(r) + _tong_ket(r) + _phat_hien(r, files) \
+        + _can_xu_ly(xet, files, r.phat_hien_bo_sung) \
         + _chi_tiet(xet, files) + _khong_ap_dung(r.criteria, files)
     return "\n".join(lines)

@@ -138,6 +138,8 @@ class EvalResult:
     vendor: VendorContext | None = None
     vendor_profile: VendorProfile | None = None
     ho_so_nhan_duoc: list[HoSoNhanDuoc] = field(default_factory=list)
+    # Kiểm tra thường trực của hệ thống (ngoài checklist HSMT) — NGOÀI roll-up, không kéo 'loại'.
+    phat_hien_bo_sung: list[Verdict] = field(default_factory=list)
 
     @property
     def summary(self) -> dict[str, int]:
@@ -159,6 +161,7 @@ def result_to_json(r: EvalResult) -> dict[str, Any]:
         "vendor": asdict(r.vendor) if r.vendor is not None else None,
         "vendor_profile": asdict(r.vendor_profile) if r.vendor_profile is not None else None,
         "ho_so_nhan_duoc": [asdict(h) for h in r.ho_so_nhan_duoc],
+        "phat_hien_bo_sung": [asdict(v) for v in r.phat_hien_bo_sung],
         "criteria": [asdict(c) for c in r.criteria],
         "summary": r.summary,
     }

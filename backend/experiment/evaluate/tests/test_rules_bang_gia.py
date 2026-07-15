@@ -43,13 +43,57 @@ _BY_TYPE = {
 }
 
 
-def test_skill_metadata_and_kich_hoat():
+async def test_handler_verdict_carries_nd_identity():
+    """Luật THAY THẾ kết luận nội dung -> verdict phải mang danh tính nội dung + giữ chuỗi audit."""
+    from experiment.evaluate.rules.bang_gia_khop_webform import handler
+    from experiment.evaluate.schema import VendorContext
+
+    nd = {"noi_dung_kiem_tra": "Giá phải phù hợp webform", "hsdt_kiem_tra": "bang_gia",
+          "yeu_cau": "Giá dự thầu khớp giá công bố trên webform", "thong_tin_bo_sung": "",
+          "nguon": "E-BDL 26.1"}
+    by_type = {"bang_gia": [_p(1, "Tổng giá: 1.200.000.000", "bang_gia")],
+               "webform": [_p(1, "Công ty ABC | 1.200.000.000")]}
+    vision = ScriptedVision({"[RULE:bang_gia_khop_webform]":
+                             {"ket_qua": "đạt", "bang_chung": "1.2 tỷ = 1.2 tỷ", "trang": [1]}})
+    v = await handler(by_type, VendorContext(ten="Công ty ABC"), {}, vision, nd=nd)
+
+    assert v.noi_dung_kiem_tra == "Giá phải phù hợp webform"
+    assert v.yeu_cau == "Giá dự thầu khớp giá công bố trên webform"
+    assert v.nguon_hsmt == "E-BDL 26.1"                        # chuỗi audit không đứt
+    assert v.nguon_doc == ["bang_gia", "webform"]
+    assert "Giá dự thầu khớp giá công bố trên webform" in vision.calls[-1][0]   # prompt hỏi đúng câu
+
+
+async def test_handler_without_nd_falls_back_to_rule_label():
+    from experiment.evaluate.rules.bang_gia_khop_webform import _TEN, handler
+    from experiment.evaluate.schema import VendorContext
+
+    by_type = {"bang_gia": [_p(1, "1.2 tỷ", "bang_gia")],
+               "webform": [_p(1, "Công ty ABC | 1.2 tỷ")]}
+    vision = ScriptedVision({"[RULE:bang_gia_khop_webform]": {"ket_qua": "đạt", "bang_chung": "ok"}})
+    v = await handler(by_type, VendorContext(ten="Công ty ABC"), {}, vision)
+    assert v.noi_dung_kiem_tra == _TEN and v.nguon_hsmt == ""
+
+
+def test_skill_metadata_and_matching():
+    """Chỉ khớp tiêu chí KHAI ĐỦ [bang_gia, webform] — tiêu chí 'đúng mẫu' chỉ khai bang_gia -> không.
+
+    Trước đây predicate là 'có nội dung nào dùng bang_gia' -> khớp MỌI tiêu chí đụng bảng giá ->
+    luật bắn nhầm tiêu chí đầu tiên, còn tiêu chí thật (giá khớp webform) bị bỏ -> 'cần làm rõ'.
+    """
+    from experiment.evaluate.rules.registry import PHAM_VI_TIEU_CHI, RuleRegistry
+
     assert SKILL.id == "bang_gia_khop_webform" and SKILL.can_vendor is True
     assert SKILL.ho_so_can == ["bang_gia", "webform"]
-    crit_gia = {"ten": "Bảng chào giá", "noi_dung_can_kiem_tra": [
-        {"noi_dung_kiem_tra": "Đúng mẫu", "hsdt_kiem_tra": "Bang_Gia"}]}
-    assert SKILL.kich_hoat(crit_gia) is True
-    assert SKILL.kich_hoat({"ten": "Khác", "noi_dung_can_kiem_tra": []}) is False
+    assert SKILL.pham_vi == PHAM_VI_TIEU_CHI
+
+    reg = RuleRegistry()
+    reg.register(SKILL)
+    assert reg.matching({"ten": "Bảng chào giá đúng mẫu", "hsdt_can_kiem_tra": ["bang_gia"]}) == []
+    assert [s.id for s in reg.matching({"ten": "Giá khớp webform",
+                                        "hsdt_can_kiem_tra": ["Bang_Gia", "WebForm"]})] \
+        == ["bang_gia_khop_webform"]
+    assert reg.matching({"ten": "Khác", "hsdt_can_kiem_tra": []}) == []
 
 
 async def test_handler_dat_va_lech():

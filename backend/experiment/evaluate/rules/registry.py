@@ -1,33 +1,45 @@
-"""B1 — hạ tầng luật nghiệp vụ liên-tài-liệu.
+"""Hạ tầng luật nghiệp vụ liên-tài-liệu — kích hoạt TẤT ĐỊNH theo dữ liệu, không predicate viết tay.
 
-Luật = handler Python + metadata khai báo (id/ten/ho_so_can/can_vendor/kich_hoat) — mô hình
-Agent Skills "code-defined trước, khai báo-ready" (spec 2026-07-03). Mỗi luật đọc NHIỀU loại
-hồ sơ (pages_by_type) + ngữ cảnh nhà thầu (nếu can_vendor), trả verdict phụ gắn vào tiêu chí
-khớp kich_hoat. Mỗi luật bắn 1 lần/vendor — ở tiêu chí ĐẦU TIÊN khớp (thứ tự criteria ổn định
-theo thu_tu); caller giữ `fired` xuyên các tiêu chí.
+Luật = handler Python + metadata khai báo (id/ten/ho_so_can/can_vendor/pham_vi). Hai phạm vi:
+
+- `pham_vi="tieu_chi"` — luật PHỤC VỤ một nội dung kiểm tra: khớp tiêu chí khi tiêu chí KHAI ĐỦ bộ
+  hồ sơ luật cần (`set(ho_so_can) ⊆ hsdt_can_kiem_tra`), rồi THAY THẾ kết luận của nội dung route
+  tới `ho_so_can[0]` (hồ sơ chính). Thay thế chứ không bổ sung: eval chung chỉ đọc được hồ sơ chính
+  nên sẽ trả "cần làm rõ", mà roll-up cho 'cần làm rõ' thắng 'đạt' -> verdict luật bị vô hiệu.
+- `pham_vi="goi"` — kiểm tra thường trực (standing): chạy 1 lần/nhà thầu bất kể HSMT có nêu hay
+  không, verdict ra `EvalResult.phat_hien_bo_sung`, NGOÀI roll-up (không tự kéo 'loại' — chuyên gia
+  quyết định).
+
+Khớp theo `ho_so_can` chứ không theo predicate tay: predicate tay ("tiêu chí có nội dung nào dùng
+bang_gia") khớp MỌI tiêu chí đụng bảng giá -> luật bắn nhầm tiêu chí đầu tiên theo thứ tự, quy kết
+sai và bỏ sót tiêu chí thật. Metadata là nguồn sự thật duy nhất.
 """
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
+from experiment.evaluate.route import _norm
 from experiment.evaluate.schema import KET_QUA_LOI, KET_QUA_SOI, PageRecord, VendorContext, Verdict
 
 log = logging.getLogger("experiment.evaluate")
 
-# handler(by_type, vendor_ctx, criterion, vision_fn) -> Verdict
+PHAM_VI_TIEU_CHI = "tieu_chi"
+PHAM_VI_GOI = "goi"
+
+# handler(by_type, vendor_ctx, criterion, vision_fn, *, nd=None) -> Verdict
 RuleHandler = Callable[..., Awaitable[Verdict]]
 
 
 @dataclass(frozen=True)
 class RuleSkill:
-    id: str                                  # vd "chu_ky_khop_dkkd"
-    ten: str                                 # nhãn người đọc
-    ho_so_can: list[str]                     # mã catalog các hồ sơ luật cần (đã _norm-stable)
-    can_vendor: bool                         # cần danh tính nhà thầu?
-    kich_hoat: Callable[[dict[str, Any]], bool]  # predicate trên criterion dict
+    id: str                       # vd "bang_gia_khop_webform"
+    ten: str                      # nhãn người đọc
+    ho_so_can: list[str]          # mã catalog; ho_so_can[0] = hồ sơ CHÍNH (nội dung route tới nó)
+    can_vendor: bool              # cần danh tính nhà thầu?
     handler: RuleHandler
+    pham_vi: str = PHAM_VI_TIEU_CHI
 
 
 class RuleRegistry:
@@ -38,7 +50,13 @@ class RuleRegistry:
         self._skills.append(skill)
 
     def matching(self, criterion: dict[str, Any]) -> list[RuleSkill]:
-        return [s for s in self._skills if s.kich_hoat(criterion)]
+        """Luật phạm vi tiêu chí khớp khi tiêu chí KHAI ĐỦ bộ hồ sơ luật cần (⊆, cho phép khai thừa)."""
+        khai = {_norm(str(x)) for x in criterion.get("hsdt_can_kiem_tra", [])}
+        return [s for s in self._skills
+                if s.pham_vi == PHAM_VI_TIEU_CHI and {_norm(h) for h in s.ho_so_can} <= khai]
+
+    def standing(self) -> list[RuleSkill]:
+        return [s for s in self._skills if s.pham_vi == PHAM_VI_GOI]
 
 
 def default_registry() -> RuleRegistry:
@@ -58,25 +76,23 @@ def _rule_verdict(skill: RuleSkill, ket_qua: str, bang_chung: str = "", ghi_chu:
                    trang=[], do_tin=0.0, ghi_chu=ghi_chu, nguon_doc=list(skill.ho_so_can))
 
 
-async def dispatch_rules(registry: RuleRegistry, criterion: dict[str, Any],
-                         by_type: dict[str, list[PageRecord]],
-                         vendor_ctx: VendorContext | None, vision_fn: Any,
-                         fired: set[str]) -> list[Verdict]:
-    """Chạy các luật khớp criterion chưa bắn; lỗi handler -> verdict 'lỗi' (không nuốt)."""
-    out: list[Verdict] = []
-    for skill in registry.matching(criterion):
-        if skill.id in fired:
-            continue
-        fired.add(skill.id)
-        if skill.can_vendor and vendor_ctx is None:
-            out.append(_rule_verdict(skill, KET_QUA_SOI,
-                                     ghi_chu="thiếu ngữ cảnh nhà thầu (tên/MST) — không đối chiếu được"))
-            continue
-        log.info("    [rule] %s", skill.id)
-        try:
-            out.append(await skill.handler(by_type, vendor_ctx, criterion, vision_fn))
-        except Exception as exc:  # no-silent-mock: lộ lỗi thành verdict 'lỗi'
-            log.warning("    [rule] %s -> lỗi: %s", skill.id, exc)
-            out.append(_rule_verdict(skill, KET_QUA_LOI, bang_chung=f"AI/handler lỗi: {exc}",
-                                     ghi_chu="cần soi lại"))
-    return out
+async def run_skill(skill: RuleSkill, by_type: dict[str, list[PageRecord]],
+                    vendor_ctx: VendorContext | None, criterion: dict[str, Any], vision_fn: Any,
+                    *, nd: dict[str, Any] | None = None) -> Verdict:
+    """Chạy 1 luật -> verdict. Thiếu ngữ cảnh nhà thầu -> SOI (KHÔNG gọi handler); lỗi -> 'lỗi'."""
+    if skill.can_vendor and vendor_ctx is None:
+        return _rule_verdict(skill, KET_QUA_SOI,
+                             ghi_chu="thiếu ngữ cảnh nhà thầu (tên/MST) — không đối chiếu được")
+    log.info("    [rule] %s", skill.id)
+    try:
+        return await skill.handler(by_type, vendor_ctx, criterion, vision_fn, nd=nd)
+    except Exception as exc:  # no-silent-mock: lộ lỗi thành verdict 'lỗi'
+        log.warning("    [rule] %s -> lỗi: %s", skill.id, exc)
+        return _rule_verdict(skill, KET_QUA_LOI, bang_chung=f"AI/handler lỗi: {exc}",
+                             ghi_chu="cần soi lại")
+
+
+async def dispatch_standing(registry: RuleRegistry, by_type: dict[str, list[PageRecord]],
+                            vendor_ctx: VendorContext | None, vision_fn: Any) -> list[Verdict]:
+    """Kiểm tra thường trực — 1 lần/nhà thầu, verdict NGOÀI roll-up tiêu chí."""
+    return [await run_skill(s, by_type, vendor_ctx, {}, vision_fn) for s in registry.standing()]

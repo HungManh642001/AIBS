@@ -1,8 +1,13 @@
-"""B2 — luật: người ký đơn dự thầu KHỚP người đại diện pháp luật trong ĐKKD (tu_cach_phap_ly).
+"""Luật: người ký đơn dự thầu KHỚP người đại diện pháp luật trong ĐKKD (tu_cach_phap_ly).
 
-Luật nghiệp vụ NGẦM (không nằm trong Chương III) — đối chiếu 2 loại hồ sơ. Text-only (chữ ký/
-dấu đã được ingest mô tả trong text). Quy ước: `trang` theo đơn dự thầu; trang ĐKKD ghi trong
-bang_chung. Thiếu 1 trong 2 hồ sơ -> 'thiếu hồ sơ' (không gọi LLM).
+STANDING CHECK (pham_vi="goi"): chạy 1 lần/nhà thầu bất kể HSMT có nêu hay không — HSMT thường
+chỉ ghi "đại diện hợp pháp ký" mà không nhắc ĐKKD, nếu chờ HSMT yêu cầu thì MẤT hẳn kiểm tra này.
+Đổi lại, verdict KHÔNG gắn vào tiêu chí nào (gắn bừa vào tiêu chí đầu tiên có đơn dự thầu là quy
+kết sai + phụ thuộc thứ tự), KHÔNG vào roll-up, KHÔNG tự kéo 'loại' — nó ra
+`EvalResult.phat_hien_bo_sung` và hiện ở mục riêng "ngoài checklist HSMT" để chuyên gia tự quyết.
+
+Text-only (chữ ký/dấu đã được ingest mô tả trong text). Quy ước: `trang` theo đơn dự thầu; trang
+ĐKKD ghi trong bang_chung. Thiếu 1 trong 2 hồ sơ -> 'thiếu hồ sơ' (không gọi LLM).
 """
 from __future__ import annotations
 
@@ -10,8 +15,8 @@ from typing import Any
 
 from services.prompts import cot_block
 
-from experiment.evaluate.route import _norm, pages_text
-from experiment.evaluate.rules.registry import RuleSkill
+from experiment.evaluate.route import pages_text
+from experiment.evaluate.rules.registry import PHAM_VI_GOI, RuleSkill
 from experiment.evaluate.schema import (
     KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU,
     PageRecord, VendorContext, Verdict, _Base,
@@ -64,7 +69,9 @@ def _verdict(ket_qua: str, bang_chung: str = "", trang: list[int] | None = None,
 
 
 async def handler(by_type: dict[str, list[PageRecord]], vendor_ctx: VendorContext | None,
-                  criterion: dict[str, Any], vision_fn: Any) -> Verdict:
+                  criterion: dict[str, Any], vision_fn: Any,
+                  *, nd: dict[str, Any] | None = None) -> Verdict:
+    # standing check: không phục vụ nội dung nào -> bỏ qua nd.
     thieu = [c for c in _HO_SO if not by_type.get(c)]
     if thieu:
         return _verdict(KET_QUA_THIEU, bang_chung=f"HSDT không có: {', '.join(thieu)}",
@@ -86,10 +93,5 @@ async def handler(by_type: dict[str, list[PageRecord]], vendor_ctx: VendorContex
                     do_tin=float(d.get("do_tin", 0.0) or 0.0), ghi_chu=d.get("ghi_chu", ""))
 
 
-def _kich_hoat(criterion: dict[str, Any]) -> bool:
-    return any(_norm(nd.get("hsdt_kiem_tra", "")) == "don_du_thau"
-               for nd in criterion.get("noi_dung_can_kiem_tra", []))
-
-
 SKILL = RuleSkill(id="chu_ky_khop_dkkd", ten=_TEN, ho_so_can=list(_HO_SO), can_vendor=False,
-                  kich_hoat=_kich_hoat, handler=handler)
+                  handler=handler, pham_vi=PHAM_VI_GOI)

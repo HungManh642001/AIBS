@@ -147,6 +147,54 @@ def test_to_markdown_does_not_mutate_criteria_order():
     assert [c.ten for c in r.criteria] == before      # sorted(), KHÔNG .sort()
 
 
+def _pv(ket_qua=KET_QUA_KHONG):
+    return Verdict(noi_dung_kiem_tra="Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)",
+                   hsdt_kiem_tra="don_du_thau", yeu_cau="Người ký phải là đại diện pháp luật",
+                   thong_tin_bo_sung="", ket_qua=ket_qua, bang_chung="ký: A ≠ đại diện: B",
+                   trang=[1], do_tin=0.9, ghi_chu="", nguon_doc=["don_du_thau", "tu_cach_phap_ly"])
+
+
+def test_markdown_shows_standing_findings_section():
+    """Kiểm tra thường trực có mục RIÊNG, ghi rõ ngoài checklist — không giả làm tiêu chí HSMT."""
+    r = _result()
+    r.phat_hien_bo_sung = [_pv()]
+    md = to_markdown(r)
+    assert "ngoài checklist HSMT" in md
+    assert "ký: A ≠ đại diện: B" in md
+    assert md.index("ngoài checklist HSMT") < md.index("CẦN XỬ LÝ")
+
+
+def test_markdown_standing_finding_surfaces_in_can_xu_ly_with_label():
+    r = _result()
+    r.phat_hien_bo_sung = [_pv(KET_QUA_KHONG)]
+    md = to_markdown(r)
+    block = md[md.index("CẦN XỬ LÝ"):md.index("Chi tiết theo tiêu chí")]
+    assert "Người ký đơn dự thầu" in block and "ngoài checklist" in block
+
+
+def test_markdown_standing_dat_not_in_can_xu_ly():
+    r = _result()
+    r.phat_hien_bo_sung = [_pv(KET_QUA_DAT)]
+    md = to_markdown(r)
+    block = md[md.index("CẦN XỬ LÝ"):md.index("Chi tiết theo tiêu chí")]
+    assert "Người ký đơn dự thầu" not in block
+
+
+def test_standing_findings_stay_out_of_rollup():
+    """Phát hiện bổ sung KHÔNG đụng summary/n_loai — chuyên gia tự quyết, máy không tự loại."""
+    r = _result(criteria=[_ce(ten="Đạt tuốt", ket_qua=KET_QUA_DAT, loai=False,
+                              verdicts=[_v(ket_qua=KET_QUA_DAT)])])
+    truoc = dict(r.summary)
+    r.phat_hien_bo_sung = [_pv(KET_QUA_KHONG)]
+    assert r.summary == truoc and r.summary["n_loai"] == 0
+    to_markdown(r)
+
+
+def test_markdown_no_standing_findings_section_empty():
+    md = to_markdown(_result())
+    assert "ngoài checklist HSMT" in md and "_Không có._" in md
+
+
 def test_markdown_minimal_result_no_vendor():
     """EvalResult trần (không vendor/profile/hồ sơ) vẫn render được — không crash."""
     md = to_markdown(EvalResult(doc="HSDT-B"))

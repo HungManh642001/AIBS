@@ -6,7 +6,7 @@ from typing import Any
 
 from experiment.evaluate.prompts import SYS_EVAL, eval_prompt
 from experiment.evaluate.route import _norm, pages_by_type, pages_text, route_pages
-from experiment.evaluate.rules.registry import RuleRegistry, dispatch_rules
+from experiment.evaluate.rules.registry import RuleRegistry, RuleSkill, run_skill
 from experiment.evaluate.schema import (
     HINH_THUC_DOC_LAP,
     KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_KHONG_AP_DUNG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU,
@@ -73,6 +73,20 @@ def _gate_khong_ap_dung(nd: dict[str, Any], profile: VendorProfile | None) -> Ve
                              f"dụng cho nhà thầu liên danh"))
 
 
+def _skill_cho_nd(skills: list[RuleSkill], nd: dict[str, Any]) -> RuleSkill | None:
+    """Luật phục vụ nội dung route tới hồ sơ CHÍNH của nó (ho_so_can[0]).
+
+    Giả định (QUY TẮC NGUYÊN TỬ của decompose): tiêu chí khai đủ bộ hồ sơ của luật chính là tiêu chí
+    về phép đối chiếu đó, nên các nội dung trong nó đều là khía cạnh của phép đối chiếu ấy. Nội dung
+    route tới hồ sơ khác vẫn chạy eval chung.
+    """
+    key = _norm(nd.get("hsdt_kiem_tra", ""))
+    for s in skills:
+        if s.ho_so_can and _norm(s.ho_so_can[0]) == key:
+            return s
+    return None
+
+
 async def eval_noi_dung(nd: dict[str, Any], pages: list[PageRecord], vision_fn: VisionFn,
                         *, extra_types: list[str] | None = None,
                         vendor_ctx: VendorContext | None = None,
@@ -123,31 +137,40 @@ async def evaluate_criterion(crit: dict[str, Any], pages: list[PageRecord],
                              registry: RuleRegistry | None = None,
                              vendor_ctx: VendorContext | None = None,
                              profile: VendorProfile | None = None,
-                             by_type: dict[str, list[PageRecord]] | None = None,
-                             fired: set[str] | None = None) -> CriterionEval:
-    """Đánh giá mọi nội dung của 1 tiêu chí + verdict luật (nếu có registry) + roll-up.
+                             by_type: dict[str, list[PageRecord]] | None = None) -> CriterionEval:
+    """Đánh giá mọi nội dung của 1 tiêu chí + roll-up.
 
-    tien_quyet + không đạt -> loại. Luật bắn 1 lần/vendor ở tiêu chí ĐẦU TIÊN khớp kich_hoat
-    (caller giữ `fired` xuyên các tiêu chí); verdict luật vào chung roll-up.
-    Verdict 'không áp dụng' TRUNG TÍNH: không kéo tiêu chí xuống 'cần làm rõ', không tính là 'đạt';
-    toàn bộ N/A -> tiêu chí N/A (loai=False dù tiên quyết) — nhưng KHÔNG che 'không đạt'.
+    tien_quyet + không đạt -> loại. Verdict 'không áp dụng' TRUNG TÍNH: không kéo tiêu chí xuống
+    'cần làm rõ', không tính là 'đạt'; toàn bộ N/A -> tiêu chí N/A (loai=False dù tiên quyết) —
+    nhưng KHÔNG che 'không đạt'.
+
+    Luật (registry): tiêu chí khai đủ `ho_so_can` của luật -> luật THAY THẾ kết luận của nội dung
+    route tới `ho_so_can[0]` (không gọi eval chung cho nội dung đó). Phải thay thế chứ không bổ
+    sung: eval chung chỉ đọc được hồ sơ chính nên trả 'cần làm rõ', mà 'cần làm rõ' thắng 'đạt'
+    trong roll-up -> verdict luật sẽ bị vô hiệu.
     """
     ten = crit.get("ten", "")
     log.info("  [eval] %s", ten)
     verdicts: list[Verdict] = []
     nds = crit.get("noi_dung_can_kiem_tra", [])
     ten_nds = [str(n.get("noi_dung_kiem_tra", "")) for n in nds]
+    skills = registry.matching(crit) if registry is not None else []
+    by_type_ = by_type if by_type is not None else pages_by_type(pages)
     for i, nd in enumerate(nds):
+        gated = _gate_khong_ap_dung(nd, profile)   # N/A trước luật: khỏi tốn call cho hồ sơ không áp dụng
+        if gated is not None:
+            verdicts.append(gated)
+            continue
+        skill = _skill_cho_nd(skills, nd)
+        if skill is not None:
+            verdicts.append(await run_skill(skill, by_type_, vendor_ctx, crit, vision_fn, nd=nd))
+            continue
         extra = crit.get("hsdt_can_kiem_tra", []) if nd.get("doi_chieu_hsdt") else None
         anh_em = [t for j, t in enumerate(ten_nds) if j != i and t]   # 1 gốc -> N need: phân công rõ
         verdicts.append(await eval_noi_dung(nd, pages, vision_fn, extra_types=extra,
                                             vendor_ctx=vendor_ctx, profile=profile,
                                             yeu_cau_goc=str(crit.get("yeu_cau_goc", "")),
                                             anh_em=anh_em or None))
-    if registry is not None:
-        verdicts.extend(await dispatch_rules(
-            registry, crit, by_type if by_type is not None else pages_by_type(pages),
-            vendor_ctx, vision_fn, fired if fired is not None else set()))
     xet = [v for v in verdicts if v.ket_qua != KET_QUA_KHONG_AP_DUNG]   # N/A trung tính
     kq = {v.ket_qua for v in xet}
     if KET_QUA_KHONG in kq:
