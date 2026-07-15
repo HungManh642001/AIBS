@@ -5,7 +5,7 @@ import logging
 from typing import Any
 
 from experiment.evaluate.prompts import SYS_EVAL, eval_prompt
-from experiment.evaluate.route import _norm, pages_by_type, pages_text, route_pages
+from experiment.evaluate.route import _norm, loc_dung_chung, pages_by_type, pages_text, route_pages
 from experiment.evaluate.rules.registry import RuleRegistry, RuleSkill, run_skill
 from experiment.evaluate.schema import (
     HINH_THUC_DOC_LAP,
@@ -38,13 +38,17 @@ def _types_khac(nd: dict[str, Any], extra_types: list[str] | None) -> list[str]:
 
 
 def _cross_text(nd: dict[str, Any], matched: list[PageRecord], pages: list[PageRecord],
-                extra_types: list[str]) -> str:
-    """Đối chiếu chéo: khối text theo TỪNG loại hồ sơ, cap per-type (trùng hồ sơ chính bị dedup)."""
+                extra_types: list[str], vendor_ctx: VendorContext | None = None) -> str:
+    """Đối chiếu chéo: khối text theo TỪNG loại hồ sơ, cap per-type (trùng hồ sơ chính bị dedup).
+
+    Tài liệu dùng chung được lọc về đúng nhà thầu đang chấm TRƯỚC khi vào prompt (loc_dung_chung).
+    """
     main = nd.get("hsdt_kiem_tra", "")
     blocks = [f"[HỒ SƠ: {main}]\n{pages_text(matched)[:_CROSS_TYPE_CAP]}"]
     seen = {id(p) for p in matched}
     for t in extra_types:
         ps = [p for p in route_pages(pages, str(t)) if id(p) not in seen]
+        ps = loc_dung_chung(ps, str(t), vendor_ctx)
         if ps:
             seen.update(id(p) for p in ps)
             blocks.append(f"[HỒ SƠ: {t}]\n{pages_text(ps)[:_CROSS_TYPE_CAP]}")
@@ -65,30 +69,45 @@ def _can_cu_doc_lap(profile: VendorProfile) -> str:
     return f"nhà thầu dự thầu theo hình thức độc lập ({can_cu})"
 
 
-def _gate_khong_ap_dung(nd: dict[str, Any], profile: VendorProfile | None) -> Verdict | None:
-    """Nhà thầu ĐỘC LẬP + hồ sơ chỉ dành cho liên danh -> N/A tất định, 0 call AI.
+def _gate_khong_ap_dung(nd: dict[str, Any], profile: VendorProfile | None,
+                        crit: dict[str, Any] | None = None) -> Verdict | None:
+    """Nhà thầu ĐỘC LẬP + tiêu chí dính hồ sơ chỉ-liên-danh -> N/A tất định, 0 call AI.
 
+    Xét CẢ hsdt_kiem_tra của nội dung LẪN hsdt_can_kiem_tra của tiêu chí: yêu cầu kiểu 'Đối với nhà
+    thầu liên danh, đơn phải ký theo phân công trong thỏa thuận' có hsdt_kiem_tra='don_du_thau'
+    nhưng khai thỏa thuận liên danh làm tài liệu đối chiếu — không xét cấp tiêu chí thì phải nhờ AI
+    tự nhận ra, tốn call và không chắc chắn.
+
+    Dựa trên QUY TẮC NGUYÊN TỬ: tiêu chí khai thoa_thuan_lien_danh là tiêu chí về nhánh liên danh.
+    Báo cáo in nguyên văn yêu cầu gốc bị bỏ qua để chuyên gia bắt lỗi nếu decompose gộp nhầm.
     profile=None hoặc hình thức không rõ -> None (không gate) = hành vi cũ, fail-safe.
     """
     if profile is None or profile.hinh_thuc != HINH_THUC_DOC_LAP:
         return None
-    if _norm(nd.get("hsdt_kiem_tra", "")) not in _HO_SO_CHI_LIEN_DANH:
+    dinh = {_norm(nd.get("hsdt_kiem_tra", ""))}
+    dinh |= {_norm(str(x)) for x in (crit or {}).get("hsdt_can_kiem_tra", [])}
+    if not (dinh & _HO_SO_CHI_LIEN_DANH):
         return None
+    goc = str((crit or {}).get("yeu_cau_goc", "")).strip()
+    trich = f'; yêu cầu gốc bị bỏ qua: "{goc}"' if goc else ""
     return _verdict(nd, KET_QUA_KHONG_AP_DUNG, do_tin=profile.do_tin,
-                    ghi_chu=(f"{_can_cu_doc_lap(profile)} — hồ sơ 'thỏa thuận liên danh' chỉ áp "
-                             f"dụng cho nhà thầu liên danh"))
+                    ghi_chu=(f"{_can_cu_doc_lap(profile)} — nội dung này gắn hồ sơ 'thỏa thuận "
+                             f"liên danh', chỉ áp dụng cho nhà thầu liên danh{trich}"))
 
 
 def _skill_cho_nd(skills: list[RuleSkill], nd: dict[str, Any]) -> RuleSkill | None:
-    """Luật phục vụ nội dung route tới hồ sơ CHÍNH của nó (ho_so_can[0]).
+    """Luật phục vụ nội dung route tới BẤT KỲ hồ sơ nào trong bộ ho_so_can của nó.
+
+    Khớp theo THÀNH VIÊN (không chỉ ho_so_can[0]): luật đọc cả bộ hồ sơ nên trả lời được dù STRUCT
+    chọn hsdt_kiem_tra là hồ sơ chính hay tài liệu đối chiếu. Quan trọng với tài liệu DÙNG CHUNG —
+    nếu để rơi xuống eval chung thì prompt sẽ nuốt trọn webform của MỌI nhà thầu.
 
     Giả định (QUY TẮC NGUYÊN TỬ của decompose): tiêu chí khai đủ bộ hồ sơ của luật chính là tiêu chí
-    về phép đối chiếu đó, nên các nội dung trong nó đều là khía cạnh của phép đối chiếu ấy. Nội dung
-    route tới hồ sơ khác vẫn chạy eval chung.
+    về phép đối chiếu đó. Nội dung route tới hồ sơ ngoài bộ vẫn chạy eval chung.
     """
     key = _norm(nd.get("hsdt_kiem_tra", ""))
     for s in skills:
-        if s.ho_so_can and _norm(s.ho_so_can[0]) == key:
+        if key and key in {_norm(h) for h in s.ho_so_can}:
             return s
     return None
 
@@ -113,17 +132,25 @@ async def eval_noi_dung(nd: dict[str, Any], pages: list[PageRecord], vision_fn: 
     if nd.get("can_review") and not (nd.get("thong_tin_bo_sung") or "").strip():
         # Chuẩn HSMT chưa tra được (decompose cờ can_review) -> không có căn cứ đối chiếu (no-fab).
         return _verdict(nd, KET_QUA_SOI, ghi_chu="chuẩn HSMT chưa tra được — cần chuyên gia đối chiếu")
-    matched = route_pages(pages, nd.get("hsdt_kiem_tra", ""))
+    main = nd.get("hsdt_kiem_tra", "")
+    matched = route_pages(pages, main)
     if not matched:
-        return _verdict(nd, KET_QUA_THIEU, bang_chung=f"HSDT không có: {nd.get('hsdt_kiem_tra', '')}",
+        return _verdict(nd, KET_QUA_THIEU, bang_chung=f"HSDT không có: {main}",
                         ghi_chu="thiếu hồ sơ tương ứng")
+    loc = loc_dung_chung(matched, main, vendor_ctx)   # chống lộ dữ liệu nhà thầu khác vào prompt
+    if not loc:
+        return _verdict(nd, KET_QUA_SOI, ghi_chu=(
+            f"'{main}' là tài liệu dùng chung cả gói — "
+            + (f"không dò được dòng nhà thầu '{vendor_ctx.ten}'" if vendor_ctx is not None
+               else "thiếu ngữ cảnh nhà thầu (tên/MST) để lọc đúng dòng")))
+    matched = loc
     # Tín hiệu cross = tiêu chí KHAI tài liệu ngoài hồ sơ chính (SYS_LIST dạy khai tài liệu đối
     # chiếu). KHÔNG bám vào cờ doi_chieu_hsdt: cờ đó chỉ bật khi RESOLVE trả thuoc_hsdt, mà RESOLVE
     # chỉ chạy khi can_tra_cuu=True — trong khi SYS_STRUCT dạy nội dung thuộc hồ sơ nhà thầu thì
     # can_tra_cuu=False -> cờ không bao giờ bật cho đúng ca cần đối chiếu chéo.
     khac = _types_khac(nd, extra_types)
     cross = bool(khac)
-    text = _cross_text(nd, matched, pages, khac) if cross else pages_text(matched)
+    text = _cross_text(nd, matched, pages, khac, vendor_ctx) if cross else pages_text(matched)
     out = await vision_fn(SYS_EVAL, eval_prompt(nd, text, cross=cross, vendor_ctx=vendor_ctx,
                                                 profile=profile, yeu_cau_goc=yeu_cau_goc,
                                                 anh_em=anh_em),
@@ -167,7 +194,7 @@ async def evaluate_criterion(crit: dict[str, Any], pages: list[PageRecord],
     skills = registry.matching(crit) if registry is not None else []
     by_type_ = by_type if by_type is not None else pages_by_type(pages)
     for i, nd in enumerate(nds):
-        gated = _gate_khong_ap_dung(nd, profile)   # N/A trước luật: khỏi tốn call cho hồ sơ không áp dụng
+        gated = _gate_khong_ap_dung(nd, profile, crit)   # N/A trước luật: khỏi tốn call
         if gated is not None:
             verdicts.append(gated)
             continue

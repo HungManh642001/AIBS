@@ -58,6 +58,7 @@ CATALOG: dict[str, dict] = {
         "mo_ta": "Kết quả mở thầu trên hệ thống — giá dự thầu của MỌI nhà thầu (dùng chung cả gói).",
         "aliases": ["webform", "web form", "kết quả mở thầu", "biên bản mở thầu",
                     "ket qua mo thau", "danh sách nhà thầu tham dự"],
+        "dung_chung": True,
     },
 }
 
@@ -70,6 +71,15 @@ def get_artifact(code: str) -> dict | None:
 def all_codes() -> list[str]:
     """Trả danh sách tất cả mã artifact."""
     return list(CATALOG.keys())
+
+
+def la_dung_chung(code: str) -> bool:
+    """Tài liệu DÙNG CHUNG cả gói (chứa dữ liệu MỌI nhà thầu, vd webform)?
+
+    Bước chấm PHẢI lọc về đúng nhà thầu đang chấm trước khi đưa vào prompt — nếu không, AI đọc
+    nhầm dòng nhà thầu khác, và tài liệu dài còn làm trần ký tự cắt mất dòng cần đọc.
+    """
+    return bool((CATALOG.get(code) or {}).get("dung_chung", False))
 
 
 def _norm_code(s: str) -> str:

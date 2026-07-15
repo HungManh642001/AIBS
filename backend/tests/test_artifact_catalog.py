@@ -44,6 +44,14 @@ def test_catalog_has_webform():
     assert cat.resolve_code("biên bản mở thầu") == "webform"
 
 
+def test_webform_is_marked_shared_across_vendors():
+    """webform chứa dữ liệu MỌI nhà thầu -> phải đánh dấu để evaluate lọc trước khi đưa vào prompt."""
+    assert cat.la_dung_chung("webform") is True
+    for code in ["don_du_thau", "bang_gia", "tu_cach_phap_ly", "bao_dam_du_thau"]:
+        assert cat.la_dung_chung(code) is False      # hồ sơ riêng của nhà thầu
+    assert cat.la_dung_chung("khong_ton_tai") is False
+
+
 def test_webform_aliases_do_not_swallow_existing_codes():
     """resolve_code có fallback substring 2 chiều -> alias mới có thể NUỐT mã cũ. Khoá lại."""
     for code in ["don_du_thau", "bao_dam_du_thau", "thoa_thuan_lien_danh", "tu_cach_phap_ly",

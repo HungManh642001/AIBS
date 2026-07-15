@@ -291,6 +291,85 @@ async def test_eval_can_review_short_circuits_no_llm():
     assert v2.ket_qua == KET_QUA_DAT
 
 
+def _wf(text="1|Cty ABC|1.2 tỷ\n2|Cty DEF|1.15 tỷ"):
+    return PageRecord(file="webform.pdf", trang=1, loai_ho_so="webform", text=text)
+
+
+async def test_shared_doc_without_vendor_ctx_is_soi_no_call():
+    """Tài liệu DÙNG CHUNG mà không có ngữ cảnh nhà thầu -> thà thiếu căn cứ còn hơn chấm nhầm dòng."""
+    from experiment.evaluate.schema import KET_QUA_SOI
+
+    v = ScriptedVision({"[EV:Giá webform]": {"ket_qua": "đạt", "bang_chung": "x"}})
+    got = await eval_noi_dung(_nd("Giá webform", "webform"), [_wf()], v)
+    assert got.ket_qua == KET_QUA_SOI and v.calls == []
+    assert "dùng chung" in got.ghi_chu and "thiếu ngữ cảnh" in got.ghi_chu
+
+
+async def test_shared_doc_page_without_vendor_is_dropped():
+    """Trang webform KHÔNG chứa nhà thầu đang chấm -> loại khỏi prompt (0 call, cần làm rõ)."""
+    from experiment.evaluate.schema import KET_QUA_SOI, VendorContext
+
+    v = ScriptedVision({"[EV:Giá webform]": {"ket_qua": "đạt", "bang_chung": "x"}})
+    got = await eval_noi_dung(_nd("Giá webform", "webform"), [_wf("1|Cty DEF|1.15 tỷ")], v,
+                              vendor_ctx=VendorContext(ten="Cty ABC"))
+    assert got.ket_qua == KET_QUA_SOI and v.calls == []
+    assert "không dò được dòng nhà thầu" in got.ghi_chu
+
+
+async def test_skill_serves_need_routed_to_reference_doc():
+    """STRUCT chọn nhầm hsdt_kiem_tra=webform -> luật VẪN phục vụ (khớp theo thành viên ho_so_can).
+
+    Nếu rơi xuống eval chung, prompt sẽ nuốt webform của MỌI nhà thầu mà không có ngữ cảnh luật.
+    """
+    from experiment.evaluate.schema import VendorContext
+
+    crit = {"nhom": "hop_le", "ten": "Giá khớp webform", "tien_quyet": True,
+            "hsdt_can_kiem_tra": ["bang_gia", "webform"],
+            "noi_dung_can_kiem_tra": [_nd("Giá công bố webform", "webform")]}
+    v = ScriptedVision({})     # KHÔNG kịch bản [EV:...] -> eval chung sẽ nổ thành 'lỗi'
+    ce = await evaluate_criterion(crit, [_wf()], v, registry=_reg_gia(KET_QUA_DAT),
+                                  vendor_ctx=VendorContext(ten="Cty ABC"),
+                                  by_type={"webform": [_wf()]})
+    assert ce.ket_qua == KET_QUA_DAT
+    assert not any("[EV:Giá công bố webform]" in hay for hay, _ in v.calls)
+
+
+async def test_gate_uses_criterion_level_docs():
+    """Tiêu chí KHAI thoa_thuan_lien_danh làm tài liệu đối chiếu -> độc lập vẫn N/A tất định, 0 call."""
+    from experiment.evaluate.schema import HINH_THUC_DOC_LAP, KET_QUA_KHONG_AP_DUNG
+
+    crit = {"nhom": "hop_le", "ten": "Đơn ký theo phân công liên danh", "tien_quyet": True,
+            "yeu_cau_goc": "Đối với nhà thầu liên danh, đơn phải ký theo phân công",
+            "hsdt_can_kiem_tra": ["don_du_thau", "thoa_thuan_lien_danh"],
+            "noi_dung_can_kiem_tra": [_nd("Ký đúng phân công", "don_du_thau")]}
+    v = ScriptedVision({})
+    ce = await evaluate_criterion(crit, [_page("don_du_thau", "đơn")], v,
+                                  profile=_profile(HINH_THUC_DOC_LAP, do_tin=1.0))
+    assert ce.ket_qua == KET_QUA_KHONG_AP_DUNG and ce.loai is False and v.calls == []
+    # báo cáo phải in nguyên văn yêu cầu gốc bị bỏ qua -> chuyên gia bắt được nếu decompose gộp nhầm
+    assert "Đối với nhà thầu liên danh" in ce.verdicts[0].ghi_chu
+
+
+async def test_gate_criterion_level_off_for_lien_danh_vendor():
+    from experiment.evaluate.schema import HINH_THUC_LIEN_DANH
+
+    crit = {"nhom": "hop_le", "ten": "Đơn ký theo phân công", "tien_quyet": True,
+            "hsdt_can_kiem_tra": ["don_du_thau", "thoa_thuan_lien_danh"],
+            "noi_dung_can_kiem_tra": [_nd("Ký đúng phân công", "don_du_thau")]}
+    v = ScriptedVision({"[EV:Ký đúng phân công]": {"ket_qua": "đạt", "bang_chung": "ok"}})
+    ce = await evaluate_criterion(crit, [_page("don_du_thau", "đơn")], v,
+                                  profile=_profile(HINH_THUC_LIEN_DANH))
+    assert ce.ket_qua == KET_QUA_DAT and len(v.calls) == 1     # liên danh -> chấm đủ
+
+
+def test_sys_rule_bang_gia_warns_multi_vendor_table():
+    """Lọc chỉ ở mức TRANG -> prompt PHẢI cấm lấy dòng nhà thầu khác."""
+    from experiment.evaluate.rules.bang_gia_khop_webform import SYS_RULE_BANG_GIA
+
+    assert "NHIỀU nhà thầu" in SYS_RULE_BANG_GIA
+    assert "KHÔNG lấy giá của nhà thầu khác" in SYS_RULE_BANG_GIA.replace("TUYỆT ĐỐI ", "")
+
+
 async def test_cross_doc_when_criterion_declares_extra_docs():
     """Tiêu chí khai thêm tài liệu đối chiếu -> ĐỐI CHIẾU CHÉO, KHÔNG cần cờ doi_chieu_hsdt.
 

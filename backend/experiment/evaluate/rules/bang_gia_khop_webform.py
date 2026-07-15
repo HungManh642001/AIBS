@@ -1,9 +1,11 @@
 """Luật: bảng giá của nhà thầu KHỚP giá trên webform (tài liệu dùng chung cả gói).
 
-Webform chứa giá MỌI nhà thầu -> dò dòng đúng nhà thầu đang chấm TẤT ĐỊNH theo tên/MST/alias
-(find_vendor_pages) rồi mới đối chiếu bằng LLM trên CHỈ các trang đã lọc (chống nhiễu + tràn
-trần text). Đây là giá trị mà đường đối chiếu chéo generic KHÔNG có. Không dò được dòng ->
-'cần làm rõ' (no-fab, không gọi LLM).
+Webform chứa giá MỌI nhà thầu -> `find_vendor_pages` lọc về các TRANG có chứa nhà thầu đang chấm
+rồi mới gọi LLM. GIỚI HẠN THẬT (đừng nói quá): lọc ở mức TRANG, không phải mức DÒNG — kết quả mở
+thầu thật thường là bảng 1-2 trang chứa toàn bộ nhà thầu, khi đó phép lọc gần như không lọc gì và
+việc chọn ĐÚNG DÒNG do LLM đảm nhiệm (SYS_RULE_BANG_GIA cảnh báo rõ + cấm lấy dòng nhà thầu khác).
+KHÔNG lọc theo dòng vì OCR hay tách tên và giá thành 2 dòng -> lọc dòng sẽ âm thầm vứt mất giá.
+Không dò được trang nào -> 'cần làm rõ' (no-fab, không gọi LLM).
 
 Phạm vi tiêu chí: luật PHỤC VỤ nội dung route tới `bang_gia` trong tiêu chí khai đủ
 [bang_gia, webform] -> verdict THAY THẾ kết luận của nội dung đó và mang danh tính của nó
@@ -15,7 +17,7 @@ from typing import Any
 
 from services.prompts import cot_block
 
-from experiment.evaluate.route import _norm, pages_text
+from experiment.evaluate.route import find_vendor_pages, pages_text
 from experiment.evaluate.rules.registry import RuleSkill
 from experiment.evaluate.schema import (
     KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU,
@@ -32,31 +34,23 @@ SYS_RULE_BANG_GIA = (
     "Bạn là chuyên gia chấm thầu. Đối chiếu GIÁ trong BẢNG CHÀO GIÁ của nhà thầu với GIÁ của "
     "CHÍNH nhà thầu đó trên WEBFORM (kết quả mở thầu). ket_qua: 'đạt' nếu giá khớp; 'không đạt' "
     "nếu lệch (nêu rõ 2 con số); 'cần làm rõ' nếu không đọc được giá một trong hai phía — "
-    "TUYỆT ĐỐI KHÔNG bịa số. bang_chung: trích giá CẢ HAI phía kèm trang từng tài liệu. Chỉ trả JSON."
+    "TUYỆT ĐỐI KHÔNG bịa số. bang_chung: trích giá CẢ HAI phía kèm trang từng tài liệu.\n"
+    "CẢNH BÁO: WEBFORM là bảng liệt kê NHIỀU nhà thầu. CHỈ đọc dòng của nhà thầu đang chấm (khớp "
+    "tên/MST nêu ở đầu prompt). KHÔNG tìm thấy dòng của đúng nhà thầu đó -> trả 'cần làm rõ' và nói "
+    "rõ là không thấy; TUYỆT ĐỐI KHÔNG lấy giá của nhà thầu khác hay dòng 'gần giống'. Chỉ trả JSON."
 )
 
 
-def find_vendor_pages(webform_pages: list[PageRecord], ctx: VendorContext) -> list[PageRecord]:
-    """Trang webform chứa nhà thầu đang chấm — match _norm substring theo tên/MST/aliases."""
-    keys = [k for k in (_norm(ctx.ten), (ctx.ma_so_thue or "").strip(),
-                        *(_norm(a) for a in ctx.aliases)) if k]
-    out: list[PageRecord] = []
-    for p in webform_pages:
-        hay = _norm(p.text)
-        if any(k in hay for k in keys):
-            out.append(p)
-    return out
-
-
 def bang_gia_prompt(bang_gia_text: str, webform_text: str, ctx: VendorContext,
-                    nd: dict[str, Any] | None = None) -> str:
+                    nd: dict[str, Any] | None = None, yeu_cau_goc: str = "") -> str:
     mst = f" (MST {ctx.ma_so_thue})" if ctx.ma_so_thue else ""
     yeu_cau = (nd or {}).get("yeu_cau", "")
-    hoi = f"YÊU CẦU (nội dung đang chấm): {yeu_cau}\n" if yeu_cau else ""
+    goc = f"YÊU CẦU GỐC (nguyên văn HSMT): {yeu_cau_goc}\n" if yeu_cau_goc else ""
+    hoi = f"YÊU CẦU (diễn giải — tham khảo): {yeu_cau}\n" if yeu_cau else ""
     return (
         "[RULE:bang_gia_khop_webform]\n"
         f"NHÀ THẦU ĐANG CHẤM: {ctx.ten}{mst}\n"
-        f"{hoi}\n"
+        f"{goc}{hoi}\n"
         f"BẢNG CHÀO GIÁ của nhà thầu (bóc từ ảnh):\n{bang_gia_text[:_DOC_CAP]}\n\n"
         f"WEBFORM — các trang chứa nhà thầu này (đã lọc):\n{webform_text[:_DOC_CAP]}\n\n"
         + cot_block('{"ket_qua":"đạt|không đạt|cần làm rõ","bang_chung":"<giá 2 phía + trang>",'
@@ -92,7 +86,8 @@ async def handler(by_type: dict[str, list[PageRecord]], vendor_ctx: VendorContex
                         ghi_chu=f"không dò được dòng nhà thầu '{vendor_ctx.ten}' trong webform")
     out = await vision_fn(SYS_RULE_BANG_GIA,
                           bang_gia_prompt(pages_text(by_type["bang_gia"]),
-                                          pages_text(vendor_pages), vendor_ctx, nd),
+                                          pages_text(vendor_pages), vendor_ctx, nd,
+                                          str(criterion.get("yeu_cau_goc", ""))),
                           validate=validate_eval_verdict, max_tokens=_MAX_TOKENS)
     if out.status == "error":
         return _verdict(KET_QUA_LOI, bang_chung=f"AI lỗi: {out.error}", ghi_chu="cần soi lại", nd=nd)
