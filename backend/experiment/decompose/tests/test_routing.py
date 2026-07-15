@@ -51,6 +51,46 @@ def test_struct_prompt_teaches_hsdt_side_rule():
     assert '"can_tra_cuu":false' in p.replace(" ", "")      # ví dụ negative: KHÔNG tra cứu
 
 
+def test_sys_list_allows_cross_check_docs_in_hsdt_can_kiem_tra():
+    """SYS_LIST phải cho phép khai THÊM tài liệu đối chiếu, nếu không luật liên-tài-liệu chết.
+
+    Luật bang_gia_khop_webform khớp khi tiêu chí khai ĐỦ [bang_gia, webform]. Quy tắc nguyên tử
+    cũ ("mỗi tiêu chí chỉ ... MỘT loại hồ sơ") ra lệnh model chỉ khai 1 mã -> luật không bao giờ
+    bắn. Nguyên tử ràng buộc MỘT NỘI DUNG / MỘT HỒ SƠ CHÍNH, không cấm liệt kê tài liệu đối chiếu.
+    """
+    from experiment.decompose.prompts import SYS_LIST, list_prompt
+
+    low = SYS_LIST.lower()
+    assert "hồ sơ chính" in low and "đối chiếu" in low
+    assert "một nội dung" in low                     # nguyên tử vẫn còn (ràng buộc nội dung)
+    assert "webform" in list_prompt("nội dung nhóm")  # danh mục chào mã webform cho model
+
+
+def test_sys_critique_atomic_rule_matches_sys_list():
+    """Bước critique cũng sinh tiêu chí -> quy tắc nguyên tử phải NHẤT QUÁN với SYS_LIST.
+
+    'mỗi tiêu chí = 1 loại hồ sơ + 1 nội dung' sẽ khiến tiêu chí do critique bổ sung chỉ khai 1 mã
+    -> luật liên-tài-liệu không bắn cho đúng những tiêu chí bị sót.
+    """
+    from experiment.decompose.prompts import SYS_CRITIQUE
+
+    low = SYS_CRITIQUE.lower()
+    assert "hồ sơ chính" in low
+    assert "1 loại hồ sơ + 1 nội dung" not in low     # câu cũ mâu thuẫn SYS_LIST
+
+
+def test_sys_struct_picks_vendor_doc_not_reference_doc():
+    """hsdt_kiem_tra phải là hồ sơ CỦA NHÀ THẦU bị chấm, không phải tài liệu đối chiếu.
+
+    _skill_cho_nd khớp theo ho_so_can[0] == bang_gia; nếu model chọn webform thì luật không phục vụ.
+    """
+    from experiment.decompose.prompts import SYS_STRUCT
+
+    low = SYS_STRUCT.lower()
+    assert "bị chấm" in low or "của nhà thầu" in low
+    assert "không phải tài liệu đối chiếu" in low
+
+
 def test_sys_struct_forbids_inflating_yeu_cau():
     """SYS_STRUCT cấm yeu_cau đẻ điều kiện ngoài yeu_cau_goc — STRUCT không hề thấy HSMT.
 
