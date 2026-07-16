@@ -18,7 +18,9 @@ class Base(DeclarativeBase):
 
 def init_db() -> None:
     import models  # noqa: F401  (đăng ký mapping)
-    Base.metadata.create_all(bind=engine)
+    from migrations import ensure_columns
+    Base.metadata.create_all(bind=engine)   # tạo bảng mới
+    ensure_columns(engine)                  # vá cột mới vào bảng cũ (không mất dữ liệu)
 
 
 def get_db() -> Generator[Session, None, None]:
