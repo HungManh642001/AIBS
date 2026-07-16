@@ -9,14 +9,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from experiment.evaluate.evaluate import evaluate_criterion
-from experiment.evaluate.ingest import ingest_hsdt
+from experiment.evaluate.pipeline import evaluate_hsdt
 from experiment.evaluate.report import to_markdown
-from experiment.evaluate.route import inventory_pages, pages_by_type
-from experiment.evaluate.rules.registry import RuleRegistry, default_registry, dispatch_standing
-from experiment.evaluate.schema import EvalResult, VendorContext, result_to_json
-from experiment.evaluate.vendor_profile import canon_hinh_thuc, detect_vendor_profile
-from experiment.evaluate.vision import default_vision_fn
+from experiment.evaluate.rules.registry import RuleRegistry, default_registry
+from experiment.evaluate.schema import VendorContext, result_to_json
+from experiment.evaluate.vendor_profile import canon_hinh_thuc
 
 log = logging.getLogger("experiment.evaluate")
 
@@ -46,37 +43,22 @@ async def run(decomposition_path: str, hsdt_files: list[tuple[str, str, bytes]],
               registry: RuleRegistry | None = None) -> dict[str, Any]:
     # hsdt_files: (tên_file, loai_ho_so [mã catalog đã biết], data pdf); webform = file thường
     # với loai_ho_so="webform". vendor: danh tính nhà thầu cho luật can_vendor.
-    vision_fn = vision_fn or default_vision_fn
-    registry = registry if registry is not None else default_registry()
     decomp = json.loads(Path(decomposition_path).read_text(encoding="utf-8"))
     criteria = _legality_criteria(decomp)
     log.info("[run] %d tiêu chí hợp lệ, %d file HSDT", len(criteria), len(hsdt_files))
 
-    pages = await ingest_hsdt(hsdt_files, vision_fn)
-    by_type = pages_by_type(pages)   # build 1 lần cho mọi luật
-
-    profile = await detect_vendor_profile(pages, vision_fn, vendor=vendor)
-    log.info("[run] hình thức nhà thầu: %s (căn cứ: %s)", profile.hinh_thuc or "không rõ",
-             profile.nguon)
-    if profile.mau_thuan:
-        log.warning("[run] ⚠️ MÂU THUẪN hình thức nhà thầu: %s", profile.ghi_chu)
-
-    # Kiểm tra thường trực: 1 lần/nhà thầu, KHÔNG gắn tiêu chí, không vào roll-up.
-    phat_hien = await dispatch_standing(registry, by_type, vendor, vision_fn)
-    result = EvalResult(doc=doc, vendor=vendor, vendor_profile=profile,
-                        ho_so_nhan_duoc=inventory_pages(pages), phat_hien_bo_sung=phat_hien)
-    for c in criteria:
-        result.criteria.append(await evaluate_criterion(
-            c, pages, vision_fn, registry=registry, vendor_ctx=vendor, profile=profile,
-            by_type=by_type))
+    result = await evaluate_hsdt(criteria, hsdt_files, doc=doc, vision_fn=vision_fn,
+                                 vendor=vendor, registry=registry)
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     (out / "evaluation.json").write_text(
         json.dumps(result_to_json(result), ensure_ascii=False, indent=2), encoding="utf-8")
     (out / "evaluation.md").write_text(to_markdown(result), encoding="utf-8")
-    return {"doc": result.doc, "hinh_thuc": profile.hinh_thuc, "mau_thuan": profile.mau_thuan,
-            "n_phat_hien_bo_sung": len(phat_hien), **result.summary}
+    prof = result.vendor_profile
+    return {"doc": result.doc, "hinh_thuc": prof.hinh_thuc if prof else "",
+            "mau_thuan": prof.mau_thuan if prof else False,
+            "n_phat_hien_bo_sung": len(result.phat_hien_bo_sung), **result.summary}
 
 
 def main(argv: list[str] | None = None) -> int:
