@@ -37,19 +37,17 @@ def _rebuild_evals(
                 models.HsdtCriterionEval.vendor_id == v.id,
             ).order_by(models.HsdtCriterionEval.thu_tu)
         ).all()
-        legality = []
-        for e in rows:
-            do_tins = [vd.do_tin for vd in e.verdicts]
-            trang = sorted({t for vd in e.verdicts for t in (vd.trang or [])})
-            legality.append({
-                "criteria_ten": e.ten,
-                "result": e.ket_qua,
-                "score": round(sum(do_tins) / len(do_tins), 2) if do_tins else 0.0,
-                "evidence": "; ".join(vd.bang_chung for vd in e.verdicts if vd.bang_chung)[:500],
-                "page_ref": trang,
-                "note": "; ".join(vd.ghi_chu for vd in e.verdicts if vd.ghi_chu),
-                "ai_model": "vision",
-            })
+        # LỌC BỎ nhóm phát hiện bổ sung (ngoài checklist HSMT) khỏi danh sách tiêu chí hợp lệ.
+        tieu_chi = [e for e in rows if e.nhom != "phat_hien_bo_sung"]
+        legality = [_criteria_row(e) for e in tieu_chi]
+        # Phát hiện bổ sung render theo TỪNG verdict (tên nội dung thật, không phải tên eval synthetic).
+        phat_hien = [{
+            "criteria_ten": vd.noi_dung_kiem_tra, "result": vd.ket_qua, "score": vd.do_tin,
+            "evidence": vd.bang_chung, "page_ref": vd.trang or [], "note": vd.ghi_chu}
+            for e in rows if e.nhom == "phat_hien_bo_sung" for vd in e.verdicts]
+        ve = db.scalar(select(models.HsdtVendorEval).where(
+            models.HsdtVendorEval.package_id == pkg.id, models.HsdtVendorEval.vendor_id == v.id))
+
         fin = financials.get(str(v.id), {})
         price = Decimal(str(fin.get("evaluated_price", 0)))
         so_loi = int(fin.get("so_loi", 0))
@@ -57,6 +55,10 @@ def _rebuild_evals(
             "legality": legality,
             "capacity": [],
             "technical": [],
+            "phat_hien_bo_sung": phat_hien,
+            "hinh_thuc": ve.hinh_thuc if ve else "",
+            "hinh_thuc_nguon": ve.nguon if ve else "",
+            "mau_thuan": ve.mau_thuan if ve else False,
             "financial": {
                 "corrected_rows": [],
                 "errors": [{}] * so_loi,
@@ -64,10 +66,25 @@ def _rebuild_evals(
                 "evaluated_price": price,
             },
             "technical_score": 0.0,
-            "passed_legality": bool(rows) and all(e.ket_qua != "không đạt" for e in rows),
+            "passed_legality": bool(tieu_chi) and all(e.ket_qua != "không đạt" for e in tieu_chi),
         }
 
     return vendor_names, evals
+
+
+def _criteria_row(e: models.HsdtCriterionEval) -> dict:
+    do_tins = [vd.do_tin for vd in e.verdicts]
+    trang = sorted({t for vd in e.verdicts for t in (vd.trang or [])})
+    nguon = sorted({vd.nguon_hsmt for vd in e.verdicts if vd.nguon_hsmt})
+    evidence = "; ".join(vd.bang_chung for vd in e.verdicts if vd.bang_chung)[:500]
+    if nguon:
+        evidence = f"[HSMT {', '.join(nguon)}] {evidence}"    # điều khoản nguồn — audit chiều HSMT
+    return {
+        "criteria_ten": e.ten, "result": e.ket_qua,
+        "score": round(sum(do_tins) / len(do_tins), 2) if do_tins else 0.0,
+        "evidence": evidence, "page_ref": trang,
+        "note": "; ".join(vd.ghi_chu for vd in e.verdicts if vd.ghi_chu), "ai_model": "vision",
+    }
 
 
 @router.post("/packages/{package_id}/reports")

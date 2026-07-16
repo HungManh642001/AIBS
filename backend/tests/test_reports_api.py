@@ -55,6 +55,39 @@ def test_generate_and_download_word(client, db_session):
     assert "NhaThauA" in text and "Đơn dự thầu hợp lệ" in text
 
 
+def test_word_shows_hinh_thuc_nguon_and_phat_hien(client, db_session):
+    """Báo cáo phản ánh cấu trúc mới: hình thức nhà thầu, điều khoản nguồn, phát hiện ngoài checklist."""
+    import models
+    pid, vid = _package(client)
+    # tiêu chí hợp lệ có điều khoản nguồn
+    ev = models.HsdtCriterionEval(package_id=pid, vendor_id=vid, thu_tu=0, nhom="hop_le",
+                                  ten="Bảo đảm dự thầu", tien_quyet=True, ket_qua="đạt", loai=False,
+                                  yeu_cau_goc="Nộp bảo đảm 6.100.000")
+    ev.verdicts.append(models.HsdtVerdict(
+        thu_tu=0, noi_dung_kiem_tra="Giá trị", hsdt_kiem_tra="bao_dam_du_thau", ket_qua="đạt",
+        bang_chung="6.1tr", trang=[1], do_tin=0.9, nguon_hsmt="E-BDL 18.1"))
+    # phát hiện bổ sung (nhóm synthetic) — KHÔNG được coi là tiêu chí hợp lệ
+    ph = models.HsdtCriterionEval(package_id=pid, vendor_id=vid, thu_tu=0,
+                                  nhom="phat_hien_bo_sung", ten="Phát hiện của hệ thống",
+                                  tien_quyet=False, ket_qua="đạt", loai=False)
+    ph.verdicts.append(models.HsdtVerdict(
+        thu_tu=0, noi_dung_kiem_tra="Người ký khớp ĐKKD", hsdt_kiem_tra="don_du_thau",
+        ket_qua="đạt", bang_chung="khớp", trang=[1], do_tin=0.9))
+    db_session.add_all([ev, ph, models.HsdtVendorEval(
+        package_id=pid, vendor_id=vid, hinh_thuc="độc lập", nguon="khai báo",
+        bang_chung="dự thầu độc lập", do_tin=0.9)])
+    db_session.commit()
+
+    gen = client.post(f"/api/v1/packages/{pid}/reports?loai=word").json()["data"]
+    dl = client.get(f"/api/v1/reports/{gen['report_id']}/download")
+    doc = Document(io.BytesIO(dl.content))
+    text = "\n".join(p.text for p in doc.paragraphs) + "\n" + "\n".join(
+        c.text for t in doc.tables for r in t.rows for c in r.cells)
+    assert "độc lập" in text                       # hình thức nhà thầu
+    assert "E-BDL 18.1" in text                     # điều khoản nguồn HSMT
+    assert "ngoài checklist" in text and "Người ký khớp ĐKKD" in text   # phát hiện tách riêng
+
+
 def test_generate_and_download_excel(client, db_session):
     pid, vid = _package(client)
     _seed_verdict(db_session, pid, vid)

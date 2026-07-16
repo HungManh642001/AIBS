@@ -31,6 +31,11 @@ def build_summary_docx(
 
     for vid, ev in evals.items():
         doc.add_heading(f"Nhà thầu: {vendor_names.get(vid, vid)}", level=1)
+        if ev.get("hinh_thuc"):
+            canh_bao = " ⚠️ MÂU THUẪN khai báo/hồ sơ" if ev.get("mau_thuan") else ""
+            doc.add_paragraph(
+                f"Hình thức dự thầu: {ev['hinh_thuc']} "
+                f"(căn cứ: {ev.get('hinh_thuc_nguon') or '—'}){canh_bao}")
         for group, label in [("legality", "Hợp lệ"), ("capacity", "Năng lực"),
                              ("technical", "Kỹ thuật")]:
             results = ev.get(group, [])
@@ -43,6 +48,13 @@ def build_summary_docx(
                     f"(điểm {item['score']}) | Dẫn chứng: {item['evidence']} "
                     f"[trang {item['page_ref']}]"
                 )
+        phat_hien = ev.get("phat_hien_bo_sung", [])
+        if phat_hien:
+            doc.add_heading("Phát hiện của hệ thống (ngoài checklist HSMT)", level=2)
+            for item in phat_hien:
+                doc.add_paragraph(
+                    f"- {item['criteria_ten']}: {item['result']} | "
+                    f"Dẫn chứng: {item['evidence']} [trang {item['page_ref']}]")
         fin = ev["financial"]
         doc.add_heading("Tài chính", level=2)
         doc.add_paragraph(f"Giá đánh giá: {fin['evaluated_price']:,}")
