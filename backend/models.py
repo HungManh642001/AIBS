@@ -27,6 +27,7 @@ class ProcurementPackage(Base):
     documents: Mapped[list[TenderDocument]] = relationship(back_populates="package", cascade="all, delete-orphan")
     rubric_criteria: Mapped[list[RubricCriterion]] = relationship(cascade="all, delete-orphan")
     hsdt_evals: Mapped[list[HsdtCriterionEval]] = relationship(cascade="all, delete-orphan")
+    hsdt_vendor_evals: Mapped[list[HsdtVendorEval]] = relationship(cascade="all, delete-orphan")
 
 
 class Vendor(Base):
@@ -35,6 +36,7 @@ class Vendor(Base):
     package_id: Mapped[int] = mapped_column(ForeignKey("procurement_package.id"))
     ten: Mapped[str] = mapped_column(String(512))
     ma_so_thue: Mapped[str] = mapped_column(String(32), default="")
+    hinh_thuc: Mapped[str] = mapped_column(String(32), default="")  # KHAI BÁO: doc_lap|lien_danh|""
     package: Mapped[ProcurementPackage] = relationship(back_populates="vendors")
 
 
@@ -120,6 +122,7 @@ class HsdtCriterionEval(Base):
     tien_quyet: Mapped[bool] = mapped_column(default=False)
     ket_qua: Mapped[str] = mapped_column(String(16), default="cần làm rõ")
     loai: Mapped[bool] = mapped_column(default=False)
+    yeu_cau_goc: Mapped[str] = mapped_column(Text, default="")  # nguyên văn HSMT — audit chiều HSMT
     verdicts: Mapped[list[HsdtVerdict]] = relationship(
         back_populates="eval", cascade="all, delete-orphan", order_by="HsdtVerdict.thu_tu")
 
@@ -140,4 +143,22 @@ class HsdtVerdict(Base):
     do_tin: Mapped[float] = mapped_column(Float, default=0.0)
     ghi_chu: Mapped[str] = mapped_column(Text, default="")
     overridden: Mapped[bool] = mapped_column(default=False)
+    nguon_hsmt: Mapped[str] = mapped_column(Text, default="")       # mã điều khoản HSMT của chuẩn
+    nguon_doc: Mapped[list[str]] = mapped_column(JSON, default=list)  # hồ sơ luật đã đối chiếu
     eval: Mapped[HsdtCriterionEval] = relationship(back_populates="verdicts")
+
+
+class HsdtVendorEval(Base):
+    """Hồ sơ đánh giá cấp NHÀ THẦU (1 dòng/gói×nhà thầu) — hình thức dự thầu đã dò + danh mục hồ sơ."""
+    __tablename__ = "hsdt_vendor_eval"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    package_id: Mapped[int] = mapped_column(ForeignKey("procurement_package.id"))
+    vendor_id: Mapped[int] = mapped_column(ForeignKey("vendor.id"))
+    hinh_thuc: Mapped[str] = mapped_column(String(32), default="")  # đã DÒ: độc lập|liên danh|""
+    nguon: Mapped[str] = mapped_column(String(64), default="")      # căn cứ xác định hình thức
+    bang_chung: Mapped[str] = mapped_column(Text, default="")
+    trang: Mapped[list[int]] = mapped_column(JSON, default=list)
+    do_tin: Mapped[float] = mapped_column(Float, default=0.0)
+    mau_thuan: Mapped[bool] = mapped_column(default=False)          # khai báo ≠ hồ sơ (cảnh báo)
+    ghi_chu: Mapped[str] = mapped_column(Text, default="")
+    ho_so_nhan_duoc: Mapped[list[dict]] = mapped_column(JSON, default=list)
