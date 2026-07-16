@@ -53,6 +53,35 @@ def test_add_vendor_empty_name_400(client):
     assert r.status_code == 400
 
 
+def test_patch_vendor_updates_hinh_thuc_and_mst(client):
+    pid = client.post("/api/v1/packages", json={
+        "ma_so": "G-PV", "ten": "g", "vendors": ["Công ty A"]}).json()["data"]
+    vid = pid["vendors"][0]["id"]
+    pid = pid["id"]
+    r = client.patch(f"/api/v1/packages/{pid}/vendors/{vid}",
+                     json={"hinh_thuc": "lien_danh", "ma_so_thue": "0312"})
+    assert r.status_code == 200
+    v = next(x for x in r.json()["data"]["vendors"] if x["id"] == vid)
+    assert v["hinh_thuc"] == "lien_danh" and v["ma_so_thue"] == "0312"
+
+
+def test_patch_vendor_partial_keeps_other_fields(client):
+    """PATCH chỉ field gửi lên; field không gửi giữ nguyên (vd đổi hình thức không xóa MST)."""
+    p = client.post("/api/v1/packages", json={"ma_so": "G-PV2", "ten": "g"}).json()["data"]
+    vid = client.post(f"/api/v1/packages/{p['id']}/vendors",
+                      json={"ten": "B", "ma_so_thue": "999"}).json()["data"]["vendors"][0]["id"]
+    client.patch(f"/api/v1/packages/{p['id']}/vendors/{vid}", json={"hinh_thuc": "doc_lap"})
+    r = client.get(f"/api/v1/packages/{p['id']}")
+    v = next(x for x in r.json()["data"]["vendors"] if x["id"] == vid)
+    assert v["hinh_thuc"] == "doc_lap" and v["ma_so_thue"] == "999"
+
+
+def test_patch_vendor_404(client):
+    pid = client.post("/api/v1/packages", json={"ma_so": "G-PV3", "ten": "g"}).json()["data"]["id"]
+    r = client.patch(f"/api/v1/packages/{pid}/vendors/99999", json={"hinh_thuc": "doc_lap"})
+    assert r.status_code == 404
+
+
 def test_delete_package_removes_hsdt_verdicts(client):
     """Xóa gói phải dọn HsdtCriterionEval + HsdtVerdict (FK package_id, ngoài cascade)."""
     import database as _db

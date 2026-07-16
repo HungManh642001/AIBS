@@ -10,7 +10,7 @@ import models
 import storage
 from database import get_db
 from responses import ok, fail
-from schemas import PackageCreate, PackageOut, VendorCreate, VendorOut
+from schemas import PackageCreate, PackageOut, VendorCreate, VendorOut, VendorUpdate
 
 router = APIRouter(prefix="/api/v1/packages", tags=["packages"])
 
@@ -76,6 +76,26 @@ async def add_vendor(package_id: int, payload: VendorCreate, db: Session = Depen
     db.commit()
     db.refresh(pkg)
     return ok(_to_out(pkg))
+
+
+@router.patch("/{package_id}/vendors/{vendor_id}")
+async def update_vendor(package_id: int, vendor_id: int, payload: VendorUpdate,
+                        db: Session = Depends(get_db)):
+    """Sửa nhà thầu (tên/MST/hình thức dự thầu) — PATCH bán phần; trả gói đã cập nhật."""
+    vendor = db.get(models.Vendor, vendor_id)
+    if not vendor or vendor.package_id != package_id:
+        return fail("Không tìm thấy nhà thầu", 404)
+    if payload.ten is not None:
+        if not payload.ten.strip():
+            return fail("Tên nhà thầu không được rỗng", 400)
+        vendor.ten = payload.ten.strip()
+    if payload.ma_so_thue is not None:
+        vendor.ma_so_thue = payload.ma_so_thue.strip()
+    if payload.hinh_thuc is not None:
+        vendor.hinh_thuc = payload.hinh_thuc.strip()
+    db.commit()
+    db.refresh(vendor.package)
+    return ok(_to_out(vendor.package))
 
 
 @router.delete("/{package_id}")

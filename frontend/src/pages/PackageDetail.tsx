@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Card, Input, Select, Table, Tag, Upload, message } from "antd";
+import { Button, Card, Input, Select, Table, Upload, message } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, unwrap } from "../api/client";
@@ -56,6 +56,13 @@ export default function PackageDetail() {
       setPkg(unwrap<Package>(r));
       setNewVendor(""); setNewMst(""); setNewHinhThuc("");
       message.success("Đã thêm nhà thầu");
+    } catch (e: any) { message.error(e.message); }
+  };
+
+  const setVendorHinhThuc = async (vid: number, hinh_thuc: string) => {
+    try {
+      const r = await api.patch(`/packages/${id}/vendors/${vid}`, { hinh_thuc });
+      setPkg(unwrap<Package>(r));
     } catch (e: any) { message.error(e.message); }
   };
 
@@ -117,12 +124,26 @@ export default function PackageDetail() {
         </div>
         {pkg.vendors.length === 0
           ? <span style={{ color: "var(--ink-muted)" }}>Chưa có nhà thầu nào.</span>
-          : pkg.vendors.map((v) => (
-              <Tag key={v.id} style={{ marginBottom: 4 }}>
-                {v.ten}{v.ma_so_thue ? ` · MST ${v.ma_so_thue}` : ""}
-                {v.hinh_thuc ? ` · ${v.hinh_thuc === "lien_danh" ? "liên danh" : "độc lập"}` : ""}
-              </Tag>
-            ))}
+          : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {pkg.vendors.map((v) => (
+                <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 600 }}>{v.ten}</span>
+                  {v.ma_so_thue && (
+                    <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>MST {v.ma_so_thue}</span>
+                  )}
+                  <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>Hình thức:</span>
+                  <Select size="small" style={{ minWidth: 170 }} allowClear
+                    placeholder="tự dò khi chấm" value={v.hinh_thuc || undefined}
+                    onChange={(val) => setVendorHinhThuc(v.id, val ?? "")}
+                    options={[
+                      { value: "doc_lap", label: "Độc lập" },
+                      { value: "lien_danh", label: "Liên danh" },
+                    ]} />
+                </div>
+              ))}
+            </div>
+          )}
       </Card>
       <Card title="Tài liệu">
         <Table rowKey="id" dataSource={docs} pagination={false} columns={[

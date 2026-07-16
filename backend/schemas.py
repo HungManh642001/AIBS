@@ -25,6 +25,13 @@ class VendorCreate(BaseModel):
     hinh_thuc: str = ""
 
 
+class VendorUpdate(BaseModel):
+    """PATCH bán phần — chỉ field gửi lên (None = giữ nguyên)."""
+    ten: str | None = None
+    ma_so_thue: str | None = None
+    hinh_thuc: str | None = None
+
+
 class PackageOut(BaseModel):
     id: int
     ma_so: str
