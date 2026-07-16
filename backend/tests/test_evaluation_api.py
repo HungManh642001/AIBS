@@ -2,22 +2,39 @@
 
 Không gọi /rubric thật (decompose cần proxy) hay vision thật; seed tiêu chí qua PUT /rubric.
 """
-from experiment.evaluate.schema import CriterionEval, EvalResult, Verdict
+from experiment.evaluate.schema import (
+    CriterionEval, EvalResult, HoSoNhanDuoc, VendorContext, VendorProfile, Verdict,
+)
 
 
-def _fake_eval(ket_qua: str = "đạt"):
-    """evaluate_vendor giả: verdict theo `ket_qua` cho mọi nội dung, roll-up + loại như thật."""
-    async def fake(criteria, hsdt_files, doc="HSDT", vision_fn=None):
-        r = EvalResult(doc=doc)
+def _fake_eval(ket_qua: str = "đạt", *, phat_hien: bool = False):
+    """evaluate_vendor giả: verdict theo `ket_qua` cho mọi nội dung, roll-up + loại như thật.
+
+    Nhận **kwargs (router giờ truyền vendor_ctx=) + trả EvalResult ĐỦ field (vendor_profile,
+    ho_so_nhan_duoc, phat_hien_bo_sung) — chứng minh router lưu đủ chuỗi audit + hình thức.
+    """
+    async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
+                   registry=None):
+        r = EvalResult(doc=doc, vendor=vendor_ctx,
+                       vendor_profile=VendorProfile(hinh_thuc="độc lập", nguon="khai báo",
+                                                    bang_chung="dự thầu độc lập", do_tin=0.9),
+                       ho_so_nhan_duoc=[HoSoNhanDuoc("don_du_thau", ["don.pdf"], 1)])
         for c in criteria:
             verds = [Verdict(
                 noi_dung_kiem_tra=nd["noi_dung_kiem_tra"], hsdt_kiem_tra=nd["hsdt_kiem_tra"],
                 yeu_cau=nd["yeu_cau"], thong_tin_bo_sung=nd["thong_tin_bo_sung"],
-                ket_qua=ket_qua, bang_chung="bằng chứng", trang=[1], do_tin=0.9, ghi_chu="")
+                ket_qua=ket_qua, bang_chung="bằng chứng", trang=[1], do_tin=0.9, ghi_chu="",
+                nguon_hsmt=nd.get("nguon", ""), nguon_doc=[])
                 for nd in c["noi_dung_can_kiem_tra"]]
             loai = ket_qua == "không đạt" and c["tien_quyet"]
-            r.criteria.append(CriterionEval(nhom=c["nhom"], ten=c["ten"], tien_quyet=c["tien_quyet"],
-                                            ket_qua=ket_qua, loai=loai, verdicts=verds))
+            r.criteria.append(CriterionEval(
+                nhom=c["nhom"], ten=c["ten"], tien_quyet=c["tien_quyet"], ket_qua=ket_qua,
+                loai=loai, verdicts=verds, yeu_cau_goc=c.get("yeu_cau_goc", "")))
+        if phat_hien:
+            r.phat_hien_bo_sung = [Verdict(
+                noi_dung_kiem_tra="Người ký khớp ĐKKD", hsdt_kiem_tra="don_du_thau", yeu_cau="",
+                thong_tin_bo_sung="", ket_qua="đạt", bang_chung="khớp", trang=[1], do_tin=0.9,
+                ghi_chu="", nguon_doc=["don_du_thau", "tu_cach_phap_ly"])]
         return r
     return fake
 
@@ -26,13 +43,40 @@ def _seed(client, tien_quyet: bool = True) -> int:
     pid = client.post("/api/v1/packages",
                       json={"ma_so": "G-EV", "ten": "g", "vendors": ["A"]}).json()["data"]["id"]
     client.put(f"/api/v1/packages/{pid}/rubric", json={"criteria": [{
-        "nhom": "hop_le", "ten": "Đơn dự thầu", "yeu_cau_goc": "",
+        "nhom": "hop_le", "ten": "Đơn dự thầu", "yeu_cau_goc": "Có đơn dự thầu hợp lệ",
         "hsdt_can_kiem_tra": ["don_du_thau"], "tien_quyet": tien_quyet,
         "noi_dung_can_kiem_tra": [{
             "noi_dung_kiem_tra": "Chữ ký & con dấu", "hsdt_kiem_tra": "don_du_thau",
             "yeu_cau": "có chữ ký", "can_lam_ro": "", "can_tra_cuu": False,
-            "thong_tin_bo_sung": "", "nguon": "", "can_review": False}]}]})
+            "thong_tin_bo_sung": "", "nguon": "E-CDNT 1.1", "can_review": False}]}]})
     return pid
+
+
+def test_evaluate_persists_audit_and_profile(client, monkeypatch):
+    """Wiring: điều khoản nguồn + yêu cầu gốc + hình thức nhà thầu + phát hiện bổ sung được lưu & trả."""
+    monkeypatch.setattr("routers.evaluation.evaluate_vendor", _fake_eval("đạt", phat_hien=True))
+    pid = _seed(client)
+    client.post(f"/api/v1/packages/{pid}/evaluate")
+    res = client.get(f"/api/v1/packages/{pid}/results").json()["data"]
+    v = res["vendors"][0]
+
+    crit = v["criteria"][0]
+    assert crit["yeu_cau_goc"] == "Có đơn dự thầu hợp lệ"
+    assert crit["verdicts"][0]["nguon_hsmt"] == "E-CDNT 1.1"
+    assert v["vendor_profile"]["hinh_thuc"] == "độc lập"
+    # phát hiện bổ sung TÁCH riêng, KHÔNG lẫn vào tiêu chí thường
+    assert [p["noi_dung_kiem_tra"] for p in v["phat_hien_bo_sung"]] == ["Người ký khớp ĐKKD"]
+    assert all(c["nhom"] != "phat_hien_bo_sung" for c in v["criteria"])
+    assert v["summary"]["n_tieu_chi"] == 1                    # phát hiện KHÔNG vào summary
+
+
+def test_summary_counts_khong_ap_dung(client, monkeypatch):
+    monkeypatch.setattr("routers.evaluation.evaluate_vendor", _fake_eval("không áp dụng"))
+    pid = _seed(client, tien_quyet=True)
+    client.post(f"/api/v1/packages/{pid}/evaluate")
+    res = client.get(f"/api/v1/packages/{pid}/results").json()["data"]
+    s = res["vendors"][0]["summary"]
+    assert s["n_khong_ap_dung"] == 1 and s["n_can_lam_ro"] == 0 and s["n_loai"] == 0
 
 
 def test_evaluate_persists_and_reads(client, monkeypatch):
