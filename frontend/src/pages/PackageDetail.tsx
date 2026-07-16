@@ -17,7 +17,11 @@ export default function PackageDetail() {
   const [evaluating, setEvaluating] = useState(false);
   const [artifactType, setArtifactType] = useState<string | undefined>();
   const [newVendor, setNewVendor] = useState("");
+  const [newMst, setNewMst] = useState("");
+  const [newHinhThuc, setNewHinhThuc] = useState<string>("");
   const artifactTypes = useArtifactTypes();
+  const vendorName = (vid: number | null | undefined) =>
+    vid ? pkg?.vendors.find((v) => v.id === vid)?.ten ?? String(vid) : "Dùng chung cả gói";
 
   const load = () => {
     api.get(`/packages/${id}`).then((r) => setPkg(unwrap<Package>(r)));
@@ -28,6 +32,7 @@ export default function PackageDetail() {
   const upload = async (file: File) => {
     const fd = new FormData();
     fd.append("file", file); fd.append("loai", loai);
+    // vendorId falsy (0) = "Dùng chung cả gói" -> KHÔNG gán vendor -> vendor_id NULL (áp mọi nhà thầu).
     if (loai === "HSDT" && vendorId) fd.append("vendor_id", String(vendorId));
     if (loai === "HSDT" && artifactType) fd.append("artifact_type", artifactType);
     try {
@@ -46,9 +51,10 @@ export default function PackageDetail() {
   const addVendor = async () => {
     if (!newVendor.trim()) { message.warning("Nhập tên nhà thầu"); return; }
     try {
-      const r = await api.post(`/packages/${id}/vendors`, { ten: newVendor.trim() });
+      const r = await api.post(`/packages/${id}/vendors`, {
+        ten: newVendor.trim(), ma_so_thue: newMst.trim(), hinh_thuc: newHinhThuc });
       setPkg(unwrap<Package>(r));
-      setNewVendor("");
+      setNewVendor(""); setNewMst(""); setNewHinhThuc("");
       message.success("Đã thêm nhà thầu");
     } catch (e: any) { message.error(e.message); }
   };
@@ -74,7 +80,10 @@ export default function PackageDetail() {
           {loai === "HSDT" && (
             <Select placeholder="Chọn nhà thầu" value={vendorId} onChange={setVendorId}
               className="min-w-48"
-              options={pkg.vendors.map((v) => ({ value: v.id, label: v.ten }))} />
+              options={[
+                { value: 0, label: "— Dùng chung cả gói (webform…) —" },
+                ...pkg.vendors.map((v) => ({ value: v.id, label: v.ten })),
+              ]} />
           )}
           {loai === "HSDT" && (
             <Select placeholder="Loại hồ sơ" value={artifactType} onChange={setArtifactType}
@@ -93,19 +102,34 @@ export default function PackageDetail() {
         </div>
       </Card>
       <Card title="Nhà thầu">
-        <div className="flex gap-2 items-center" style={{ marginBottom: 12 }}>
-          <Input placeholder="Tên nhà thầu" value={newVendor} style={{ maxWidth: 320 }}
+        <div className="flex gap-2 items-center" style={{ marginBottom: 12, flexWrap: "wrap" }}>
+          <Input placeholder="Tên nhà thầu" value={newVendor} style={{ maxWidth: 280 }}
             onChange={(e) => setNewVendor(e.target.value)} onPressEnter={addVendor} />
+          <Input placeholder="Mã số thuế" value={newMst} style={{ maxWidth: 160 }}
+            onChange={(e) => setNewMst(e.target.value)} onPressEnter={addVendor} />
+          <Select placeholder="Hình thức dự thầu" value={newHinhThuc || undefined}
+            onChange={(val) => setNewHinhThuc(val ?? "")} style={{ minWidth: 190 }} allowClear
+            options={[
+              { value: "doc_lap", label: "Độc lập" },
+              { value: "lien_danh", label: "Liên danh" },
+            ]} />
           <Button icon={<PlusOutlined />} onClick={addVendor}>Thêm nhà thầu</Button>
         </div>
         {pkg.vendors.length === 0
           ? <span style={{ color: "var(--ink-muted)" }}>Chưa có nhà thầu nào.</span>
-          : pkg.vendors.map((v) => <Tag key={v.id} style={{ marginBottom: 4 }}>{v.ten}</Tag>)}
+          : pkg.vendors.map((v) => (
+              <Tag key={v.id} style={{ marginBottom: 4 }}>
+                {v.ten}{v.ma_so_thue ? ` · MST ${v.ma_so_thue}` : ""}
+                {v.hinh_thuc ? ` · ${v.hinh_thuc === "lien_danh" ? "liên danh" : "độc lập"}` : ""}
+              </Tag>
+            ))}
       </Card>
       <Card title="Tài liệu">
         <Table rowKey="id" dataSource={docs} pagination={false} columns={[
           { title: "Loại", dataIndex: "loai" },
           { title: "Loại hồ sơ", dataIndex: "artifact_type" },
+          { title: "Nhà thầu", render: (_: unknown, d: any) =>
+              d.loai === "HSDT" ? vendorName(d.vendor_id) : "—" },
           { title: "Định dạng", dataIndex: "file_kind" },
         ]} />
       </Card>

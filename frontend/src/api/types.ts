@@ -1,4 +1,7 @@
-export interface Vendor { id: number; ten: string; ma_so_thue?: string; }
+export interface Vendor {
+  id: number; ten: string; ma_so_thue?: string;
+  hinh_thuc?: string;   // khai báo: doc_lap | lien_danh | "" (để trống -> tự dò khi chấm)
+}
 export interface Package {
   id: number; ma_so: string; ten: string; loai: string;
   gia_tri_uoc_tinh: number; trang_thai: string; nguoi_phu_trach: string;
@@ -21,16 +24,29 @@ export interface Verdict {
   id: number; noi_dung_kiem_tra: string; hsdt_kiem_tra: string; yeu_cau: string;
   thong_tin_bo_sung: string; ket_qua: string; bang_chung: string; trang: number[];
   do_tin: number; ghi_chu: string; overridden: boolean;
+  nguon_hsmt?: string;      // điều khoản nguồn HSMT của chuẩn (E-BDL/E-CDNT) — audit chiều HSMT
+  nguon_doc?: string[];     // các hồ sơ luật đã đối chiếu (vd [bang_gia, webform])
 }
 export interface CriterionEval {
   eval_id: number; ten: string; nhom: string; tien_quyet: boolean;
   ket_qua: string; loai: boolean; verdicts: Verdict[];
+  yeu_cau_goc?: string;     // nguyên văn HSMT (cấp tiêu chí)
 }
 export interface EvalSummary {
-  n_tieu_chi: number; n_dat: number; n_khong_dat: number; n_can_lam_ro: number; n_loai: number;
+  n_tieu_chi: number; n_dat: number; n_khong_dat: number; n_can_lam_ro: number;
+  n_loai: number; n_khong_ap_dung?: number;
 }
+export interface VendorProfile {
+  hinh_thuc: string; nguon: string; bang_chung: string; trang: number[];
+  do_tin: number; mau_thuan: boolean; ghi_chu: string;
+}
+export interface HoSoNhanDuoc { loai_ho_so: string; files: string[]; n_trang: number; }
 export interface VendorEval {
   vendor_id: number; ten: string; summary: EvalSummary; criteria: CriterionEval[];
+  ma_so_thue?: string; hinh_thuc?: string;
+  vendor_profile?: VendorProfile | null;
+  ho_so_nhan_duoc?: HoSoNhanDuoc[];
+  phat_hien_bo_sung?: Verdict[];   // kiểm tra thường trực (ngoài checklist HSMT)
 }
 export interface EvalResultsPayload { vendors: VendorEval[]; }
 // Danh mục loại hồ sơ giờ lấy động từ backend — dùng hook useArtifactTypes() (api/artifacts.ts).

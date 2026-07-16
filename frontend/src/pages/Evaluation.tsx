@@ -9,12 +9,14 @@ const KQ_OPTS = [
   { value: "đạt", label: "Đạt" },
   { value: "không đạt", label: "Không đạt" },
   { value: "cần làm rõ", label: "Cần làm rõ" },
+  { value: "không áp dụng", label: "Không áp dụng" },
 ];
 
 function pillClass(kq: string): string {
   if (kq === "đạt") return "PASS";
   if (kq === "không đạt") return "FAIL";
   if (kq === "lỗi") return "ERROR";
+  if (kq === "không áp dụng") return "default"; // trung tính (xám) — khác cam "cần làm rõ"
   return "PARTIAL"; // cần làm rõ | thiếu hồ sơ
 }
 
@@ -23,8 +25,26 @@ function ResultPill({ kq }: { kq: string }) {
   return <span className={`verdict-result-pill ${pillClass(kq)}`}>{label}</span>;
 }
 
-function VerdictTable({ verdicts, onOverride }: {
+// Bản đồ loại hồ sơ -> file, để hiện bằng chứng dạng "don_du_thau (don.pdf) tr.3" (truy vết được).
+function filesOf(v: VendorEval): Record<string, string[]> {
+  const m: Record<string, string[]> = {};
+  (v.ho_so_nhan_duoc ?? []).forEach((h) => { m[h.loai_ho_so] = h.files; });
+  return m;
+}
+
+function nguonHsdt(vd: Verdict, files: Record<string, string[]>): string {
+  const loais = vd.nguon_doc && vd.nguon_doc.length > 0 ? vd.nguon_doc : [vd.hsdt_kiem_tra];
+  const parts = loais.filter(Boolean).map((t) => {
+    const fs = files[t];
+    return fs && fs.length ? `${t} (${fs.join(", ")})` : t;
+  });
+  const tr = vd.trang?.length ? `tr.${vd.trang.join(",")}` : "tr.(không nêu)";
+  return `${parts.join("; ")} ${tr}`;
+}
+
+function VerdictTable({ verdicts, files, onOverride }: {
   verdicts: Verdict[];
+  files: Record<string, string[]>;
   onOverride: (id: number, payload: Record<string, unknown>) => void;
 }) {
   return (
@@ -33,10 +53,10 @@ function VerdictTable({ verdicts, onOverride }: {
       dataSource={verdicts}
       pagination={false}
       size="small"
-      scroll={{ x: 1100 }}
+      scroll={{ x: 1240 }}
       columns={[
         {
-          title: "Nội dung kiểm tra", width: 240,
+          title: "Nội dung kiểm tra", width: 220,
           render: (_, v) => (
             <div>
               <div style={{ fontWeight: 600 }}>{v.noi_dung_kiem_tra}</div>
@@ -44,14 +64,25 @@ function VerdictTable({ verdicts, onOverride }: {
             </div>
           ),
         },
-        { title: "Chuẩn HSMT", dataIndex: "thong_tin_bo_sung", width: 200,
-          render: (t) => t || <span style={{ color: "var(--ink-muted)" }}>—</span> },
+        {
+          title: "Chuẩn HSMT", width: 210,
+          render: (_, v) => (
+            <div>
+              <div>{v.thong_tin_bo_sung || <span style={{ color: "var(--ink-muted)" }}>—</span>}</div>
+              {v.nguon_hsmt && (
+                <div className="mono" style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+                  điều khoản: {v.nguon_hsmt}
+                </div>
+              )}
+            </div>
+          ),
+        },
         {
           title: "Kết quả", width: 190,
           render: (_, v) => (
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <Select
-                size="small" style={{ width: 130 }} value={v.ket_qua} options={KQ_OPTS}
+                size="small" style={{ width: 140 }} value={v.ket_qua} options={KQ_OPTS}
                 onChange={(kq) => onOverride(v.id, { ket_qua: kq })}
               />
               {v.overridden && <Tag color="blue">đã sửa</Tag>}
@@ -59,19 +90,17 @@ function VerdictTable({ verdicts, onOverride }: {
           ),
         },
         {
-          title: "Bằng chứng (HSDT)", width: 260,
+          title: "Bằng chứng (HSDT)", width: 280,
           render: (_, v) => (
             <div>
               <div>{v.bang_chung || <span style={{ color: "var(--ink-muted)" }}>—</span>}</div>
-              {v.trang?.length > 0 && (
-                <div className="mono" style={{ fontSize: 12, color: "var(--ink-muted)" }}>
-                  [trang {v.trang.join(", ")}]
-                </div>
-              )}
+              <div className="mono" style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+                {nguonHsdt(v, files)}
+              </div>
             </div>
           ),
         },
-        { title: "Độ tin", dataIndex: "do_tin", width: 70,
+        { title: "Độ tin", dataIndex: "do_tin", width: 66,
           render: (d: number) => <span className="mono">{d.toFixed(2)}</span> },
         {
           title: "Ghi chú", width: 200,
@@ -97,7 +126,32 @@ function SummaryChips({ v }: { v: VendorEval }) {
       <Tag color="green">{s.n_dat} đạt</Tag>
       <Tag color="red">{s.n_khong_dat} không đạt</Tag>
       <Tag color="orange">{s.n_can_lam_ro} cần làm rõ</Tag>
+      {(s.n_khong_ap_dung ?? 0) > 0 && <Tag>{s.n_khong_ap_dung} không áp dụng</Tag>}
       {s.n_loai > 0 && <Tag color="volcano">⛔ {s.n_loai} tiêu chí loại</Tag>}
+    </div>
+  );
+}
+
+// Hình thức dự thầu + căn cứ (dò từ HSDT/khai báo) + cảnh báo mâu thuẫn.
+function HinhThucBanner({ v }: { v: VendorEval }) {
+  const p = v.vendor_profile;
+  if (!p) return null;
+  return (
+    <div style={{ marginTop: 4 }}>
+      <span style={{ fontSize: 13, color: "var(--ink-muted)" }}>
+        Hình thức dự thầu:{" "}
+        <b style={{ color: "var(--ink)" }}>{p.hinh_thuc || "không rõ"}</b>
+        {" "}— căn cứ: {p.nguon}{p.do_tin > 0 && ` (độ tin ${p.do_tin.toFixed(2)})`}
+      </span>
+      {p.bang_chung && (
+        <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>“{p.bang_chung}”</div>
+      )}
+      {p.mau_thuan && (
+        <div style={{ marginTop: 6, padding: "8px 12px", borderRadius: 6,
+                      background: "var(--partial-bg)", color: "var(--partial)", fontSize: 13 }}>
+          ⚠️ MÂU THUẪN hình thức: {p.ghi_chu} — mọi nội dung liên danh VẪN được chấm đầy đủ; cần xác minh.
+        </div>
+      )}
     </div>
   );
 }
@@ -107,10 +161,12 @@ function VendorSection({ v, onOverride }: {
   onOverride: (id: number, payload: Record<string, unknown>) => void;
 }) {
   const biLoai = v.criteria.some((c) => c.loai);
+  const files = filesOf(v);
+  const phatHien = v.phat_hien_bo_sung ?? [];
   return (
     <div style={{ background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 8,
                   overflow: "hidden", marginBottom: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "16px 20px",
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 16, padding: "16px 20px",
                     borderBottom: "1px solid var(--line)", background: "var(--surface)" }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em",
@@ -120,6 +176,7 @@ function VendorSection({ v, onOverride }: {
           <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)" }}>
             {v.ten} {biLoai && <Tag color="volcano" style={{ marginLeft: 8 }}>Bị loại (tiên quyết)</Tag>}
           </div>
+          <HinhThucBanner v={v} />
         </div>
         <SummaryChips v={v} />
       </div>
@@ -141,9 +198,27 @@ function VendorSection({ v, onOverride }: {
                   {c.loai && <Tag color="volcano">⛔ LOẠI</Tag>}
                 </div>
               ),
-              children: <VerdictTable verdicts={c.verdicts} onOverride={onOverride} />,
+              children: (
+                <>
+                  {c.yeu_cau_goc && (
+                    <div style={{ marginBottom: 8, fontSize: 13, color: "var(--ink-muted)" }}>
+                      <b>Yêu cầu gốc (HSMT):</b> {c.yeu_cau_goc}
+                    </div>
+                  )}
+                  <VerdictTable verdicts={c.verdicts} files={files} onOverride={onOverride} />
+                </>
+              ),
             }))}
           />
+        )}
+
+        {phatHien.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}>
+              🔎 Phát hiện của hệ thống (ngoài checklist HSMT)
+            </div>
+            <VerdictTable verdicts={phatHien} files={files} onOverride={onOverride} />
+          </div>
         )}
       </div>
     </div>
@@ -178,8 +253,9 @@ export default function Evaluation() {
 
   if (!data) return null;
 
+  const isErr = (s: Verdict) => s.ket_qua === "lỗi" && !s.overridden;
   const hasError = data.vendors.some((v) =>
-    v.criteria.some((c) => c.verdicts.some((s) => s.ket_qua === "lỗi" && !s.overridden)));
+    v.criteria.some((c) => c.verdicts.some(isErr)) || (v.phat_hien_bo_sung ?? []).some(isErr));
 
   return (
     <div>
