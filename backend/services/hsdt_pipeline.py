@@ -1,31 +1,31 @@
-"""Orchestration đánh giá HSDT cho 1 nhà thầu — tái dùng experiment/evaluate (read-only).
+"""Orchestration đánh giá HSDT cho 1 nhà thầu — seam production, gọi lõi experiment dùng chung.
 
-Chuỗi: HSDT (pdf scan) -> ingest vision (bóc text + cờ chữ ký/dấu, MỘT lần/trang) -> đánh giá
-từng tiêu chí (route nội dung -> trang, đối chiếu chuẩn HSMT) -> roll-up (tien_quyet + không đạt ->
-loại). no-silent-mock: proxy lỗi thì verdict "lỗi" (trong evaluate.py), KHÔNG bịa.
+Toàn bộ logic ở `experiment/evaluate/pipeline.py::evaluate_hsdt` (dùng chung với CLI run_evaluate)
+-> production KHÔNG đi nhánh khác CLI. Chuỗi: HSDT (pdf scan) -> ingest vision -> dò hình thức nhà
+thầu -> kiểm tra thường trực -> đánh giá từng tiêu chí (gate N/A, luật liên-tài-liệu, đối chiếu
+chéo) -> roll-up. no-silent-mock: proxy lỗi thì verdict "lỗi", KHÔNG bịa.
 """
 from __future__ import annotations
 
 import logging
 from typing import Any
 
-from experiment.evaluate.evaluate import evaluate_criterion
-from experiment.evaluate.ingest import ingest_hsdt
-from experiment.evaluate.schema import EvalResult
-from experiment.evaluate.vision import default_vision_fn
+from experiment.evaluate.pipeline import evaluate_hsdt
+from experiment.evaluate.rules.registry import RuleRegistry
+from experiment.evaluate.schema import EvalResult, VendorContext
 
 log = logging.getLogger("abes.evaluate")
 
 
 async def evaluate_vendor(criteria: list[dict[str, Any]], hsdt_files: list[tuple[str, str, bytes]],
-                          doc: str = "HSDT", vision_fn: Any | None = None) -> EvalResult:
-    """HSDT (pdf scan) + tiêu chí -> EvalResult (verdict mỗi nội dung + roll-up). no-silent-mock."""
-    vision_fn = vision_fn or default_vision_fn
+                          *, doc: str = "HSDT", vision_fn: Any | None = None,
+                          vendor_ctx: VendorContext | None = None,
+                          registry: RuleRegistry | None = None) -> EvalResult:
+    """HSDT + tiêu chí -> EvalResult đầy đủ (hình thức + hồ sơ + phát hiện + verdict). no-silent-mock.
+
+    vendor_ctx: danh tính nhà thầu (gate hình thức độc lập/liên danh, lọc tài liệu dùng chung,
+    luật can_vendor). registry=None -> default_registry() trong lõi.
+    """
     log.info("[eval] %s: %d tiêu chí, %d file HSDT", doc, len(criteria), len(hsdt_files))
-    pages = await ingest_hsdt(hsdt_files, vision_fn)
-    log.info("[eval] %s: ingest xong %d trang", doc, len(pages))
-    result = EvalResult(doc=doc)
-    for c in criteria:
-        result.criteria.append(await evaluate_criterion(c, pages, vision_fn))
-    log.info("[eval] %s: %s", doc, result.summary)
-    return result
+    return await evaluate_hsdt(criteria, hsdt_files, doc=doc, vision_fn=vision_fn,
+                               vendor=vendor_ctx, registry=registry)

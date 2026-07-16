@@ -33,3 +33,26 @@ async def test_evaluate_vendor_dat(monkeypatch):
     assert c.ket_qua == "đạt" and c.loai is False
     assert c.verdicts[0].bang_chung and c.verdicts[0].trang == [1]
     assert result.summary["n_dat"] == 1
+
+
+async def test_evaluate_vendor_runs_gate_in_production():
+    """Prod giờ chạy gate hình thức: độc lập + tiêu chí TTLĐ -> 'không áp dụng' (khác hành vi cũ).
+
+    Trước đây evaluate_vendor gọi evaluate_criterion không profile -> tiêu chí này ra 'thiếu hồ sơ'
+    -> 'cần làm rõ'. Nay lõi dùng chung dò hình thức + gate.
+    """
+    from experiment.evaluate.schema import KET_QUA_KHONG_AP_DUNG, VendorContext
+
+    vision = ScriptedVision({SYS_INGEST: {"text": "Đơn dự thầu"}})
+    criteria = [{
+        "nhom": "hop_le", "ten": "Thỏa thuận liên danh", "tien_quyet": True,
+        "hsdt_can_kiem_tra": ["thoa_thuan_lien_danh"],
+        "noi_dung_can_kiem_tra": [
+            {"noi_dung_kiem_tra": "Có thỏa thuận liên danh", "hsdt_kiem_tra": "thoa_thuan_lien_danh",
+             "yeu_cau": "phải có", "thong_tin_bo_sung": ""}]}]
+    files = [("don.pdf", "don_du_thau", _pdf("Đơn dự thầu"))]
+
+    result = await evaluate_vendor(criteria, files, doc="Cty A", vision_fn=vision,
+                                   vendor_ctx=VendorContext(ten="Cty A", hinh_thuc="doc_lap"))
+    assert result.criteria[0].ket_qua == KET_QUA_KHONG_AP_DUNG
+    assert result.vendor_profile is not None and result.vendor_profile.hinh_thuc == "độc lập"
