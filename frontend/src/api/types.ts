@@ -1,5 +1,5 @@
 export interface Vendor {
-  id: number; ten: string; ma_so_thue?: string;
+  id: number; ten: string; ten_viet_tat?: string;   // tên đầy đủ + tên viết tắt (khớp webform)
   hinh_thuc?: string;   // khai báo: doc_lap | lien_danh | "" (để trống -> tự dò khi chấm)
 }
 export interface Package {
@@ -43,7 +43,7 @@ export interface VendorProfile {
 export interface HoSoNhanDuoc { loai_ho_so: string; files: string[]; n_trang: number; }
 export interface VendorEval {
   vendor_id: number; ten: string; summary: EvalSummary; criteria: CriterionEval[];
-  ma_so_thue?: string; hinh_thuc?: string;
+  ten_viet_tat?: string; hinh_thuc?: string;
   vendor_profile?: VendorProfile | null;
   ho_so_nhan_duoc?: HoSoNhanDuoc[];
   phat_hien_bo_sung?: Verdict[];   // kiểm tra thường trực (ngoài checklist HSMT)

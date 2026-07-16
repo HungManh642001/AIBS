@@ -34,8 +34,8 @@ class Vendor(Base):
     __tablename__ = "vendor"
     id: Mapped[int] = mapped_column(primary_key=True)
     package_id: Mapped[int] = mapped_column(ForeignKey("procurement_package.id"))
-    ten: Mapped[str] = mapped_column(String(512))
-    ma_so_thue: Mapped[str] = mapped_column(String(32), default="")
+    ten: Mapped[str] = mapped_column(String(512))                   # tên đầy đủ
+    ten_viet_tat: Mapped[str] = mapped_column(String(255), default="")  # khớp webform ghi tên tắt
     hinh_thuc: Mapped[str] = mapped_column(String(32), default="")  # KHAI BÁO: doc_lap|lien_danh|""
     package: Mapped[ProcurementPackage] = relationship(back_populates="vendors")
 

@@ -75,7 +75,7 @@ def test_hsdt_criterion_eval_with_verdicts_cascade(db):
 def test_new_audit_columns_and_vendor_eval(db):
     """Cột audit mới (hình thức, điều khoản nguồn, yêu cầu gốc) + bảng hồ sơ đánh giá nhà thầu."""
     pkg = models.ProcurementPackage(ma_so="G-004", ten="g")
-    pkg.vendors.append(models.Vendor(ten="Cty A", ma_so_thue="0312", hinh_thuc="doc_lap"))
+    pkg.vendors.append(models.Vendor(ten="Cty A", ten_viet_tat="CtyA", hinh_thuc="doc_lap"))
     db.add(pkg)
     db.commit()
     vid = pkg.vendors[0].id

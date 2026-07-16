@@ -15,20 +15,20 @@ class PackageCreate(BaseModel):
 class VendorOut(BaseModel):
     id: int
     ten: str
-    ma_so_thue: str = ""
+    ten_viet_tat: str = ""
     hinh_thuc: str = ""      # khai báo: doc_lap|lien_danh|"" (để trống -> tự dò khi chấm)
 
 
 class VendorCreate(BaseModel):
     ten: str
-    ma_so_thue: str = ""
+    ten_viet_tat: str = ""
     hinh_thuc: str = ""
 
 
 class VendorUpdate(BaseModel):
     """PATCH bán phần — chỉ field gửi lên (None = giữ nguyên)."""
     ten: str | None = None
-    ma_so_thue: str | None = None
+    ten_viet_tat: str | None = None
     hinh_thuc: str | None = None
 
 

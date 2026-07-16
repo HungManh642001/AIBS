@@ -70,6 +70,30 @@ def test_evaluate_persists_audit_and_profile(client, monkeypatch):
     assert v["summary"]["n_tieu_chi"] == 1                    # phát hiện KHÔNG vào summary
 
 
+def test_evaluate_builds_vendor_context_with_abbreviation(client, monkeypatch):
+    """Tên viết tắt của nhà thầu -> alias trong VendorContext (khớp webform tên đầy đủ HOẶC tắt)."""
+    seen = {}
+
+    async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
+                   registry=None):
+        seen["ctx"] = vendor_ctx
+        from experiment.evaluate.schema import EvalResult
+        return EvalResult(doc=doc, vendor=vendor_ctx)
+
+    monkeypatch.setattr("routers.evaluation.evaluate_vendor", fake)
+    p = client.post("/api/v1/packages", json={"ma_so": "G-AB", "ten": "g"}).json()["data"]
+    client.post(f"/api/v1/packages/{p['id']}/vendors",
+                json={"ten": "Công ty TNHH Xây dựng ABC", "ten_viet_tat": "ABC"})
+    client.put(f"/api/v1/packages/{p['id']}/rubric", json={"criteria": [{
+        "nhom": "hop_le", "ten": "X", "yeu_cau_goc": "", "hsdt_can_kiem_tra": ["don_du_thau"],
+        "tien_quyet": False, "noi_dung_can_kiem_tra": []}]})
+    client.post(f"/api/v1/packages/{p['id']}/evaluate")
+
+    ctx = seen["ctx"]
+    assert ctx.ten == "Công ty TNHH Xây dựng ABC"
+    assert "ABC" in ctx.aliases       # tên viết tắt -> alias để find_vendor_pages khớp webform
+
+
 def test_summary_counts_khong_ap_dung(client, monkeypatch):
     monkeypatch.setattr("routers.evaluation.evaluate_vendor", _fake_eval("không áp dụng"))
     pid = _seed(client, tien_quyet=True)

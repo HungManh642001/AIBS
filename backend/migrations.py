@@ -11,7 +11,8 @@ from sqlalchemy import Engine
 # {bảng: {cột: mệnh đề kiểu + default cho ADD COLUMN}}. Default hằng đơn giản (SQLite ADD COLUMN
 # không nhận default động).
 _COLUMNS: dict[str, dict[str, str]] = {
-    "vendor": {"hinh_thuc": "VARCHAR(32) DEFAULT ''"},
+    "vendor": {"hinh_thuc": "VARCHAR(32) DEFAULT ''",
+               "ten_viet_tat": "VARCHAR(255) DEFAULT ''"},
     "hsdt_criterion_eval": {"yeu_cau_goc": "TEXT DEFAULT ''"},
     "hsdt_verdict": {"nguon_hsmt": "TEXT DEFAULT ''", "nguon_doc": "JSON DEFAULT '[]'"},
 }

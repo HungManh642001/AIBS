@@ -17,7 +17,7 @@ export default function PackageDetail() {
   const [evaluating, setEvaluating] = useState(false);
   const [artifactType, setArtifactType] = useState<string | undefined>();
   const [newVendor, setNewVendor] = useState("");
-  const [newMst, setNewMst] = useState("");
+  const [newVietTat, setNewVietTat] = useState("");
   const [newHinhThuc, setNewHinhThuc] = useState<string>("");
   const artifactTypes = useArtifactTypes();
   const vendorName = (vid: number | null | undefined) =>
@@ -52,9 +52,9 @@ export default function PackageDetail() {
     if (!newVendor.trim()) { message.warning("Nhập tên nhà thầu"); return; }
     try {
       const r = await api.post(`/packages/${id}/vendors`, {
-        ten: newVendor.trim(), ma_so_thue: newMst.trim(), hinh_thuc: newHinhThuc });
+        ten: newVendor.trim(), ten_viet_tat: newVietTat.trim(), hinh_thuc: newHinhThuc });
       setPkg(unwrap<Package>(r));
-      setNewVendor(""); setNewMst(""); setNewHinhThuc("");
+      setNewVendor(""); setNewVietTat(""); setNewHinhThuc("");
       message.success("Đã thêm nhà thầu");
     } catch (e: any) { message.error(e.message); }
   };
@@ -112,8 +112,8 @@ export default function PackageDetail() {
         <div className="flex gap-2 items-center" style={{ marginBottom: 12, flexWrap: "wrap" }}>
           <Input placeholder="Tên nhà thầu" value={newVendor} style={{ maxWidth: 280 }}
             onChange={(e) => setNewVendor(e.target.value)} onPressEnter={addVendor} />
-          <Input placeholder="Mã số thuế" value={newMst} style={{ maxWidth: 160 }}
-            onChange={(e) => setNewMst(e.target.value)} onPressEnter={addVendor} />
+          <Input placeholder="Tên viết tắt" value={newVietTat} style={{ maxWidth: 200 }}
+            onChange={(e) => setNewVietTat(e.target.value)} onPressEnter={addVendor} />
           <Select placeholder="Hình thức dự thầu" value={newHinhThuc || undefined}
             onChange={(val) => setNewHinhThuc(val ?? "")} style={{ minWidth: 190 }} allowClear
             options={[
@@ -129,8 +129,8 @@ export default function PackageDetail() {
               {pkg.vendors.map((v) => (
                 <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <span style={{ fontWeight: 600 }}>{v.ten}</span>
-                  {v.ma_so_thue && (
-                    <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>MST {v.ma_so_thue}</span>
+                  {v.ten_viet_tat && (
+                    <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>({v.ten_viet_tat})</span>
                   )}
                   <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>Hình thức:</span>
                   <Select size="small" style={{ minWidth: 170 }} allowClear

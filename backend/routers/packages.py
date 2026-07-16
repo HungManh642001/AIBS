@@ -20,7 +20,7 @@ def _to_out(p: models.ProcurementPackage) -> dict:
         id=p.id, ma_so=p.ma_so, ten=p.ten, loai=p.loai,
         gia_tri_uoc_tinh=p.gia_tri_uoc_tinh, trang_thai=p.trang_thai,
         nguoi_phu_trach=p.nguoi_phu_trach,
-        vendors=[VendorOut(id=v.id, ten=v.ten, ma_so_thue=v.ma_so_thue, hinh_thuc=v.hinh_thuc)
+        vendors=[VendorOut(id=v.id, ten=v.ten, ten_viet_tat=v.ten_viet_tat, hinh_thuc=v.hinh_thuc)
                  for v in p.vendors],
         so_tai_lieu=len(p.documents), so_tieu_chi=len(p.rubric_criteria),
     ).model_dump()
@@ -72,7 +72,7 @@ async def add_vendor(package_id: int, payload: VendorCreate, db: Session = Depen
     if not payload.ten.strip():
         return fail("Tên nhà thầu không được rỗng", 400)
     db.add(models.Vendor(package_id=package_id, ten=payload.ten.strip(),
-                         ma_so_thue=payload.ma_so_thue.strip(), hinh_thuc=payload.hinh_thuc.strip()))
+                         ten_viet_tat=payload.ten_viet_tat.strip(), hinh_thuc=payload.hinh_thuc.strip()))
     db.commit()
     db.refresh(pkg)
     return ok(_to_out(pkg))
@@ -81,7 +81,7 @@ async def add_vendor(package_id: int, payload: VendorCreate, db: Session = Depen
 @router.patch("/{package_id}/vendors/{vendor_id}")
 async def update_vendor(package_id: int, vendor_id: int, payload: VendorUpdate,
                         db: Session = Depends(get_db)):
-    """Sửa nhà thầu (tên/MST/hình thức dự thầu) — PATCH bán phần; trả gói đã cập nhật."""
+    """Sửa nhà thầu (tên/tên viết tắt/hình thức dự thầu) — PATCH bán phần; trả gói đã cập nhật."""
     vendor = db.get(models.Vendor, vendor_id)
     if not vendor or vendor.package_id != package_id:
         return fail("Không tìm thấy nhà thầu", 404)
@@ -89,8 +89,8 @@ async def update_vendor(package_id: int, vendor_id: int, payload: VendorUpdate,
         if not payload.ten.strip():
             return fail("Tên nhà thầu không được rỗng", 400)
         vendor.ten = payload.ten.strip()
-    if payload.ma_so_thue is not None:
-        vendor.ma_so_thue = payload.ma_so_thue.strip()
+    if payload.ten_viet_tat is not None:
+        vendor.ten_viet_tat = payload.ten_viet_tat.strip()
     if payload.hinh_thuc is not None:
         vendor.hinh_thuc = payload.hinh_thuc.strip()
     db.commit()

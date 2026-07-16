@@ -110,8 +110,9 @@ async def evaluate(package_id: int, db: Session = Depends(get_db)):
     for vendor in pkg.vendors:
         files = _hsdt_files(pkg, vendor.id)
         log.info("[eval] gói %s nhà thầu %s: %d file HSDT", package_id, vendor.ten, len(files))
-        ctx = VendorContext(ten=vendor.ten, ma_so_thue=vendor.ma_so_thue or "",
-                            hinh_thuc=vendor.hinh_thuc or "")
+        # Tên viết tắt -> alias: webform có lúc ghi tên đầy đủ, có lúc tên tắt -> khớp cả hai.
+        aliases = [vendor.ten_viet_tat.strip()] if (vendor.ten_viet_tat or "").strip() else []
+        ctx = VendorContext(ten=vendor.ten, aliases=aliases, hinh_thuc=vendor.hinh_thuc or "")
         try:
             result = await evaluate_vendor(crits, files, doc=vendor.ten, vendor_ctx=ctx)
         except Exception as exc:  # no-silent-mock: proxy vision lỗi -> báo rõ, KHÔNG bịa
@@ -187,7 +188,7 @@ async def results(package_id: int, db: Session = Depends(get_db)):
             models.HsdtVendorEval.package_id == package_id,
             models.HsdtVendorEval.vendor_id == v.id))
         vendors_out.append({
-            "vendor_id": v.id, "ten": v.ten, "ma_so_thue": v.ma_so_thue, "hinh_thuc": v.hinh_thuc,
+            "vendor_id": v.id, "ten": v.ten, "ten_viet_tat": v.ten_viet_tat, "hinh_thuc": v.hinh_thuc,
             "summary": _summary(evals), "criteria": crit_out,
             "phat_hien_bo_sung": phat_hien, "vendor_profile": _profile_out(ve),
             "ho_so_nhan_duoc": ve.ho_so_nhan_duoc if ve else []})
