@@ -16,11 +16,13 @@ class VendorOut(BaseModel):
     id: int
     ten: str
     ma_so_thue: str = ""
+    hinh_thuc: str = ""      # khai báo: doc_lap|lien_danh|"" (để trống -> tự dò khi chấm)
 
 
 class VendorCreate(BaseModel):
     ten: str
     ma_so_thue: str = ""
+    hinh_thuc: str = ""
 
 
 class PackageOut(BaseModel):

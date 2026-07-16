@@ -20,7 +20,8 @@ def _to_out(p: models.ProcurementPackage) -> dict:
         id=p.id, ma_so=p.ma_so, ten=p.ten, loai=p.loai,
         gia_tri_uoc_tinh=p.gia_tri_uoc_tinh, trang_thai=p.trang_thai,
         nguoi_phu_trach=p.nguoi_phu_trach,
-        vendors=[VendorOut(id=v.id, ten=v.ten, ma_so_thue=v.ma_so_thue) for v in p.vendors],
+        vendors=[VendorOut(id=v.id, ten=v.ten, ma_so_thue=v.ma_so_thue, hinh_thuc=v.hinh_thuc)
+                 for v in p.vendors],
         so_tai_lieu=len(p.documents), so_tieu_chi=len(p.rubric_criteria),
     ).model_dump()
 
@@ -71,7 +72,7 @@ async def add_vendor(package_id: int, payload: VendorCreate, db: Session = Depen
     if not payload.ten.strip():
         return fail("Tên nhà thầu không được rỗng", 400)
     db.add(models.Vendor(package_id=package_id, ten=payload.ten.strip(),
-                         ma_so_thue=payload.ma_so_thue.strip()))
+                         ma_so_thue=payload.ma_so_thue.strip(), hinh_thuc=payload.hinh_thuc.strip()))
     db.commit()
     db.refresh(pkg)
     return ok(_to_out(pkg))
