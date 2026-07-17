@@ -32,12 +32,38 @@ _FAKE_DECOMP = {
 }
 
 
-def _mock_pipeline(monkeypatch, decomp=_FAKE_DECOMP):
+def _mock_pipeline(monkeypatch, decomp=_FAKE_DECOMP, captured=None):
     import routers.rubric as rr
 
-    async def _fake(pdf_path, workdir):
+    async def _fake(pdf_path, workdir, scan_sources=None):
+        if captured is not None:
+            captured["scan_sources"] = scan_sources
         return decomp
     monkeypatch.setattr(rr, "build_decomposition", _fake)
+
+
+def test_extract_passes_tbmt_as_scan_source(client, monkeypatch):
+    """TBMT đã upload -> router gom thành scan_source (source_doc, đường dẫn) truyền vào pipeline."""
+    cap: dict = {}
+    _mock_pipeline(monkeypatch, captured=cap)
+    pid = _pkg_with_hsmt(client)
+    client.post(f"/api/v1/packages/{pid}/documents",
+                files={"file": ("tbmt.pdf", _pdf("Thời điểm đóng thầu 09:00 14/07/2026"), "application/pdf")},
+                data={"loai": "TBMT"})
+    client.post(f"/api/v1/packages/{pid}/rubric")
+
+    scan = cap["scan_sources"]
+    assert len(scan) == 1
+    source_doc, path = scan[0]
+    assert "mời thầu" in source_doc.lower() and path.endswith(".pdf")
+
+
+def test_extract_no_tbmt_empty_scan_sources(client, monkeypatch):
+    cap: dict = {}
+    _mock_pipeline(monkeypatch, captured=cap)
+    pid = _pkg_with_hsmt(client)
+    client.post(f"/api/v1/packages/{pid}/rubric")
+    assert cap["scan_sources"] == []
 
 
 def test_extract_edit_confirm_rubric(client, monkeypatch):
@@ -71,7 +97,7 @@ def test_extract_without_hsmt_returns_400(client):
 def test_extract_pipeline_error_returns_502(client, monkeypatch):
     import routers.rubric as rr
 
-    async def _boom(pdf_path, workdir):
+    async def _boom(pdf_path, workdir, scan_sources=None):
         raise RuntimeError("proxy down")
     monkeypatch.setattr(rr, "build_decomposition", _boom)
     pid = _pkg_with_hsmt(client)

@@ -38,7 +38,12 @@ async def upload_document(
         return fail("Không tìm thấy gói thầu", 404)
     content = await file.read()
     file_kind = _detect_kind(file.filename, content)
-    subdir = "hsmt" if loai == "HSMT" else f"hsdt/{vendor_id or 0}"
+    if loai == "HSMT":
+        subdir = "hsmt"
+    elif loai == "TBMT":                       # tài liệu gói (scan), không thuộc nhà thầu
+        subdir = "tbmt"
+    else:
+        subdir = f"hsdt/{vendor_id or 0}"
     rel = storage.save_upload(package_id, file.filename, content, subdir)
 
     doc = models.TenderDocument(

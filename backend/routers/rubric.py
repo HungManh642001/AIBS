@@ -84,9 +84,13 @@ async def extract(package_id: int, db: Session = Depends(get_db)):
         return fail("Chưa upload HSMT", 400)
     pdf_path = str(storage.abs_path(hsmt.file_path))
     workdir = str(storage.abs_path(f"{package_id}/rubric_work"))
-    log.info("[rubric] gói %s: bắt đầu bóc tiêu chí từ HSMT=%s", package_id, hsmt.file_path)
+    # Nguồn scan gói thầu (TBMT...) -> đường đa nguồn: bảng neo thấy mốc đóng/mở thầu từ TBMT.
+    scan_sources = [("Thông báo mời thầu", str(storage.abs_path(d.file_path)))
+                    for d in pkg.documents if d.loai == "TBMT"]
+    log.info("[rubric] gói %s: bóc tiêu chí từ HSMT=%s (%d nguồn scan)",
+             package_id, hsmt.file_path, len(scan_sources))
     try:
-        decomp = await build_decomposition(pdf_path, workdir)
+        decomp = await build_decomposition(pdf_path, workdir, scan_sources=scan_sources)
     except Exception as exc:  # no-silent-mock: pipeline lỗi (proxy tắt...) -> báo rõ
         log.warning("[rubric] gói %s: pipeline lỗi: %s", package_id, exc)
         return fail(f"Bóc tách tiêu chí thất bại: {exc}", 502)

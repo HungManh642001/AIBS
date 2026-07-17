@@ -82,8 +82,15 @@ export default function PackageDetail() {
       <Card title={`${pkg.ma_so} — ${pkg.ten}`} extra={<StatusTag status={pkg.trang_thai} />}>
         <span className="page-eyebrow">Tải tài liệu</span>
         <div className="flex gap-3 items-center" style={{ marginTop: 8, flexWrap: "wrap" }}>
-          <Select value={loai} onChange={setLoai} options={[
-            { value: "HSMT", label: "HSMT" }, { value: "HSDT", label: "HSDT" }]} />
+          <Select value={loai} onChange={setLoai} style={{ minWidth: 220 }} options={[
+            { value: "HSMT", label: "HSMT" },
+            { value: "TBMT", label: "TBMT (thông báo mời thầu)" },
+            { value: "HSDT", label: "HSDT" }]} />
+          {loai === "TBMT" && (
+            <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+              Tài liệu gói (scan) — chứa mốc đóng/mở thầu cho bảng neo khi bóc tiêu chí.
+            </span>
+          )}
           {loai === "HSDT" && (
             <Select placeholder="Chọn nhà thầu" value={vendorId} onChange={setVendorId}
               className="min-w-48"
