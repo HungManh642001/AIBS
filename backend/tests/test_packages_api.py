@@ -82,6 +82,40 @@ def test_patch_vendor_404(client):
     assert r.status_code == 404
 
 
+def test_delete_vendor_cascades(client):
+    """Xóa nhà thầu -> dọn tài liệu + kết quả đánh giá của nó; nhà thầu khác còn nguyên."""
+    import fitz
+    import database as _db, models
+    p = client.post("/api/v1/packages",
+                    json={"ma_so": "G-DV", "ten": "g", "vendors": ["A", "B"]}).json()["data"]
+    pid, va, vb = p["id"], p["vendors"][0]["id"], p["vendors"][1]["id"]
+    d = fitz.open(); d.new_page().insert_text((72, 72), "đơn")
+    client.post(f"/api/v1/packages/{pid}/documents",
+                files={"file": ("don.pdf", d.tobytes(), "application/pdf")},
+                data={"loai": "HSDT", "vendor_id": str(va), "artifact_type": "don_du_thau"})
+    # seed 1 kết quả đánh giá cho nhà thầu A
+    sess = _db.SessionLocal()
+    sess.add(models.HsdtCriterionEval(package_id=pid, vendor_id=va, thu_tu=0, nhom="hop_le",
+                                      ten="X", ket_qua="đạt", loai=False))
+    sess.add(models.HsdtVendorEval(package_id=pid, vendor_id=va, hinh_thuc="độc lập"))
+    sess.commit(); sess.close()
+
+    r = client.delete(f"/api/v1/packages/{pid}/vendors/{va}")
+    assert r.status_code == 200
+    vendors = r.json()["data"]["vendors"]
+    assert [v["id"] for v in vendors] == [vb]                          # A biến mất, B còn
+    assert client.get(f"/api/v1/packages/{pid}/documents").json()["data"] == []   # tài liệu A dọn sạch
+    sess = _db.SessionLocal()
+    assert sess.query(models.HsdtCriterionEval).filter_by(vendor_id=va).count() == 0
+    assert sess.query(models.HsdtVendorEval).filter_by(vendor_id=va).count() == 0
+    sess.close()
+
+
+def test_delete_vendor_404(client):
+    pid = client.post("/api/v1/packages", json={"ma_so": "G-DV4", "ten": "g"}).json()["data"]["id"]
+    assert client.delete(f"/api/v1/packages/{pid}/vendors/99999").status_code == 404
+
+
 def test_delete_package_removes_hsdt_verdicts(client):
     """Xóa gói phải dọn HsdtCriterionEval + HsdtVerdict (FK package_id, ngoài cascade)."""
     import database as _db

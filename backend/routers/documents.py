@@ -1,6 +1,8 @@
 """Router upload & xử lý tài liệu (OCR/parse đồng bộ cho demo)."""
 from __future__ import annotations
 import json
+from pathlib import Path
+from typing import Any
 from fastapi import APIRouter, Depends, UploadFile, File, Form
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -83,6 +85,37 @@ async def list_documents(package_id: int, db: Session = Depends(get_db)):
     return ok([_doc_out(d) for d in docs])
 
 
+@router.patch("/{package_id}/documents/{doc_id}")
+async def update_document_type(package_id: int, doc_id: int, payload: dict[str, Any],
+                               db: Session = Depends(get_db)):
+    """Đổi LOẠI HỒ SƠ (artifact_type) của tài liệu đã tải — tính lại cảnh báo từ text đã OCR."""
+    doc = db.get(models.TenderDocument, doc_id)
+    if not doc or doc.package_id != package_id:
+        return fail("Không tìm thấy tài liệu", 404)
+    artifact_type = (payload.get("artifact_type") or "").strip()
+    doc.artifact_type = artifact_type
+    if artifact_type:
+        pages = json.loads(doc.extracted_text or "[]")
+        doc.artifact_validation = await validate_artifact(pages, artifact_type)
+    else:
+        doc.artifact_validation = None
+    db.commit()
+    db.refresh(doc)
+    return ok(_doc_out(doc))
+
+
+@router.delete("/{package_id}/documents/{doc_id}")
+async def delete_document(package_id: int, doc_id: int, db: Session = Depends(get_db)):
+    """Xóa 1 tài liệu (bản ghi + file)."""
+    doc = db.get(models.TenderDocument, doc_id)
+    if not doc or doc.package_id != package_id:
+        return fail("Không tìm thấy tài liệu", 404)
+    storage.remove(doc.file_path)
+    db.delete(doc)
+    db.commit()
+    return ok({"deleted": True})
+
+
 def _doc_out(d: models.TenderDocument) -> dict:
     """Chuyển đổi TenderDocument sang dict response."""
     return {
@@ -90,6 +123,7 @@ def _doc_out(d: models.TenderDocument) -> dict:
         "loai": d.loai,
         "vendor_id": d.vendor_id,
         "file_path": d.file_path,
+        "file_name": Path(d.file_path).name,
         "file_kind": d.file_kind,
         "trang_thai_ocr": d.trang_thai_ocr,
         "artifact_type": d.artifact_type,

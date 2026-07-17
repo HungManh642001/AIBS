@@ -98,6 +98,29 @@ async def update_vendor(package_id: int, vendor_id: int, payload: VendorUpdate,
     return ok(_to_out(vendor.package))
 
 
+@router.delete("/{package_id}/vendors/{vendor_id}")
+async def delete_vendor(package_id: int, vendor_id: int, db: Session = Depends(get_db)):
+    """Xóa 1 nhà thầu + dọn tài liệu (bản ghi + file) và kết quả đánh giá của nó (FK không cascade)."""
+    vendor = db.get(models.Vendor, vendor_id)
+    if not vendor or vendor.package_id != package_id:
+        return fail("Không tìm thấy nhà thầu", 404)
+    for d in db.scalars(select(models.TenderDocument).where(
+            models.TenderDocument.vendor_id == vendor_id)).all():
+        storage.remove(d.file_path)
+        db.delete(d)
+    for e in db.scalars(select(models.HsdtCriterionEval).where(
+            models.HsdtCriterionEval.vendor_id == vendor_id)).all():
+        db.delete(e)   # cascade verdicts
+    for ve in db.scalars(select(models.HsdtVendorEval).where(
+            models.HsdtVendorEval.vendor_id == vendor_id)).all():
+        db.delete(ve)
+    pkg = vendor.package
+    db.delete(vendor)
+    db.commit()
+    db.refresh(pkg)
+    return ok(_to_out(pkg))
+
+
 @router.delete("/{package_id}")
 async def delete_package(package_id: int, db: Session = Depends(get_db)):
     """Xóa gói thầu + toàn bộ dữ liệu phụ thuộc + file đã upload."""

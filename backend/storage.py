@@ -26,3 +26,8 @@ def abs_path(rel: str) -> Path:
 
 def read_bytes(rel: str) -> bytes:
     return (STORAGE_DIR / rel.replace("\\", "/")).read_bytes()
+
+
+def remove(rel: str) -> None:
+    """Xóa file (bỏ qua nếu không tồn tại) — dùng khi xóa tài liệu/nhà thầu."""
+    abs_path(rel).unlink(missing_ok=True)
