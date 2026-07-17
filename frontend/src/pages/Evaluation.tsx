@@ -275,7 +275,7 @@ export default function Evaluation() {
   const vendors = data.vendors;
   const active = vendors.some((v) => String(v.vendor_id) === sp.get("vendor"))
     ? sp.get("vendor")!
-    : vendors.length > 0 ? String(vendors[0].vendor_id) : "";
+    : "tong_hop";   // mặc định mở bảng tổng hợp so sánh nhà thầu
 
   return (
     <div>
@@ -303,17 +303,49 @@ export default function Evaluation() {
         </div>
       ) : (
         <Tabs activeKey={active} onChange={(k) => setSp({ vendor: k }, { replace: true })}
-          items={vendors.map((v: VendorEval) => ({
-            key: String(v.vendor_id),
-            label: (
-              <span>
-                {v.criteria.some((c) => c.loai) && <Badge color="red" style={{ marginRight: 6 }} />}
-                {v.ten}
-              </span>
-            ),
-            children: <VendorSection v={v} onOverride={onOverride} />,
-          }))} />
+          items={[
+            { key: "tong_hop", label: "Tổng hợp",
+              children: <SummaryTable vendors={vendors} onOpen={(vid) => setSp({ vendor: String(vid) }, { replace: true })} /> },
+            ...vendors.map((v: VendorEval) => ({
+              key: String(v.vendor_id),
+              label: (
+                <span>
+                  {v.criteria.some((c) => c.loai) && <Badge color="red" style={{ marginRight: 6 }} />}
+                  {v.ten}
+                </span>
+              ),
+              children: <VendorSection v={v} onOverride={onOverride} />,
+            })),
+          ]} />
       )}
     </div>
+  );
+}
+
+// ── Bảng tổng hợp so sánh nhà thầu (ra quyết định nhanh) ───────────────────────────────
+function SummaryTable({ vendors, onOpen }: { vendors: VendorEval[]; onOpen: (vid: number) => void }) {
+  return (
+    <Table<VendorEval> rowKey="vendor_id" dataSource={vendors} pagination={false} size="small"
+      onRow={(v) => ({ onClick: () => onOpen(v.vendor_id), style: { cursor: "pointer" } })}
+      columns={[
+        { title: "Nhà thầu", render: (_, v) => <span style={{ fontWeight: 600 }}>{v.ten}</span> },
+        { title: "Hình thức", width: 120,
+          render: (_, v) => <span style={{ color: "var(--ink-muted)" }}>{v.hinh_thuc || v.vendor_profile?.hinh_thuc || "—"}</span> },
+        { title: "Kết quả", width: 130, render: (_, v) =>
+            v.criteria.some((c) => c.loai)
+              ? <Tag color="volcano">⛔ BỊ LOẠI</Tag>
+              : v.criteria.length === 0
+                ? <Tag>chưa chấm</Tag>
+                : <Tag color="green">HỢP LỆ</Tag> },
+        { title: "Đạt", width: 60, align: "center", render: (_, v) => v.summary.n_dat },
+        { title: "Không đạt", width: 90, align: "center",
+          render: (_, v) => v.summary.n_khong_dat > 0
+            ? <span style={{ color: "var(--fail)", fontWeight: 600 }}>{v.summary.n_khong_dat}</span> : 0 },
+        { title: "Cần làm rõ", width: 90, align: "center",
+          render: (_, v) => v.summary.n_can_lam_ro > 0
+            ? <span style={{ color: "var(--partial)", fontWeight: 600 }}>{v.summary.n_can_lam_ro}</span> : 0 },
+        { title: "N/A", width: 60, align: "center", render: (_, v) => v.summary.n_khong_ap_dung ?? 0 },
+        { title: "", width: 90, render: (_, v) => <a onClick={() => onOpen(v.vendor_id)}>Chi tiết →</a> },
+      ]} />
   );
 }
