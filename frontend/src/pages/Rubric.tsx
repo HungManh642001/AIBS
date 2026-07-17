@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button, Card, Checkbox, Input, Select, Table, Tag, message } from "antd";
+import { ArrowLeftOutlined } from "@ant-design/icons";
 
 const { TextArea } = Input;
 const AUTO = { minRows: 1, maxRows: 6 } as const;
@@ -49,6 +50,10 @@ export default function Rubric() {
 
   return (
     <div>
+      <Button type="text" size="small" icon={<ArrowLeftOutlined />}
+        onClick={() => nav(`/packages/${id}`)} style={{ marginBottom: 8, paddingLeft: 0 }}>
+        Quay lại gói thầu
+      </Button>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20 }}>
         <div>
           <span className="page-eyebrow">Barem chấm thầu</span>

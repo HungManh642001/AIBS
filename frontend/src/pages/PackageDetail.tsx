@@ -208,6 +208,8 @@ export default function PackageDetail() {
         </Popconfirm>
         <Button size="small" type="primary" loading={evaluating === v.id} disabled={evaluating !== null}
           onClick={() => evalVendor(v.id)}>Chạy đánh giá</Button>
+        <Button size="small" onClick={() => nav(`/packages/${id}/evaluation?vendor=${v.id}`)}>
+          Xem kết quả</Button>
       </div>
       <DocTable docs={vendorDocs(v.id)} artifactTypes={artifactTypes}
         onChangeType={changeDocType} onDelete={deleteDoc} />

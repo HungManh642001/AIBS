@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { Button, Collapse, Input, Select, Table, Tag, Tooltip, message } from "antd";
-import { DownloadOutlined } from "@ant-design/icons";
-import { useParams } from "react-router-dom";
+import { Badge, Button, Collapse, Input, Select, Table, Tabs, Tag, Tooltip, message } from "antd";
+import { ArrowLeftOutlined, DownloadOutlined } from "@ant-design/icons";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import type { CriterionEval, EvalResultsPayload, Verdict, VendorEval } from "../api/types";
 
@@ -227,6 +227,8 @@ function VendorSection({ v, onOverride }: {
 
 export default function Evaluation() {
   const { id } = useParams();
+  const nav = useNavigate();
+  const [sp, setSp] = useSearchParams();
   const [data, setData] = useState<EvalResultsPayload | null>(null);
 
   const load = () =>
@@ -257,30 +259,47 @@ export default function Evaluation() {
   const hasError = data.vendors.some((v) =>
     v.criteria.some((c) => c.verdicts.some(isErr)) || (v.phat_hien_bo_sung ?? []).some(isErr));
 
+  const vendors = data.vendors;
+  const active = vendors.some((v) => String(v.vendor_id) === sp.get("vendor"))
+    ? sp.get("vendor")!
+    : vendors.length > 0 ? String(vendors[0].vendor_id) : "";
+
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20 }}>
+      <Button type="text" size="small" icon={<ArrowLeftOutlined />}
+        onClick={() => nav(`/packages/${id}`)} style={{ marginBottom: 8, paddingLeft: 0 }}>
+        Quay lại gói thầu
+      </Button>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 }}>
         <div>
           <span className="page-eyebrow">Kết quả đánh giá</span>
           <h1 className="page-title" style={{ marginBottom: 0 }}>Phán quyết có dẫn chứng</h1>
         </div>
         <Tooltip title={hasError ? "Còn verdict AI lỗi — hãy xử lý trước khi xuất" : ""}>
           <span style={{ display: "inline-flex", gap: 8 }}>
-            <Button icon={<DownloadOutlined />} disabled={hasError} onClick={() => genReport("word")}>Xuất Word</Button>
-            <Button icon={<DownloadOutlined />} disabled={hasError} onClick={() => genReport("excel")}>Xuất Excel</Button>
+            <Button icon={<DownloadOutlined />} disabled={hasError} onClick={() => genReport("word")}>Xuất Word (cả gói)</Button>
+            <Button icon={<DownloadOutlined />} disabled={hasError} onClick={() => genReport("excel")}>Xuất Excel (cả gói)</Button>
           </span>
         </Tooltip>
       </div>
 
-      {data.vendors.length === 0 ? (
+      {vendors.length === 0 ? (
         <div style={{ textAlign: "center", padding: "60px 0", background: "var(--paper)",
                       border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink-muted)", fontSize: 14 }}>
           Chưa có kết quả. Hãy chạy đánh giá trước.
         </div>
       ) : (
-        data.vendors.map((v: VendorEval) => (
-          <VendorSection key={v.vendor_id} v={v} onOverride={onOverride} />
-        ))
+        <Tabs activeKey={active} onChange={(k) => setSp({ vendor: k }, { replace: true })}
+          items={vendors.map((v: VendorEval) => ({
+            key: String(v.vendor_id),
+            label: (
+              <span>
+                {v.criteria.some((c) => c.loai) && <Badge color="red" style={{ marginRight: 6 }} />}
+                {v.ten}
+              </span>
+            ),
+            children: <VendorSection v={v} onOverride={onOverride} />,
+          }))} />
       )}
     </div>
   );
