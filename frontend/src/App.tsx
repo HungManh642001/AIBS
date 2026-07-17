@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Layout, Menu, Tooltip } from "antd";
+import { Breadcrumb, Layout, Menu, Tooltip } from "antd";
 import { BarChartOutlined, FolderOpenOutlined } from "@ant-design/icons";
 import { Link, Route, Routes, useLocation } from "react-router-dom";
-import { api } from "./api/client";
+import { api, unwrap } from "./api/client";
 import Dashboard from "./pages/Dashboard";
 import Packages from "./pages/Packages";
 import PackageDetail from "./pages/PackageDetail";
@@ -43,6 +43,7 @@ function AiBadge({ health }: { health: HealthData | null }) {
 export default function App() {
   const location = useLocation();
   const [health, setHealth] = useState<HealthData | null>(null);
+  const [pkgName, setPkgName] = useState<string>("");
 
   useEffect(() => {
     api.get("/health").then((r) => {
@@ -50,7 +51,23 @@ export default function App() {
     }).catch(() => {});
   }, []);
 
+  const pkgId = location.pathname.match(/^\/packages\/(\d+)/)?.[1];
+  useEffect(() => {
+    if (!pkgId) { setPkgName(""); return; }
+    api.get(`/packages/${pkgId}`)
+      .then((r) => setPkgName(unwrap<{ ma_so: string; ten: string }>(r).ma_so))
+      .catch(() => setPkgName(""));
+  }, [pkgId]);
+
   const selectedKey = location.pathname.startsWith("/packages") ? "pkg" : "home";
+
+  const crumbs = [{ title: <Link to="/">Tổng quan</Link> }];
+  if (location.pathname.startsWith("/packages"))
+    crumbs.push({ title: <Link to="/packages">Gói thầu</Link> });
+  if (pkgId)
+    crumbs.push({ title: <Link to={`/packages/${pkgId}`}>{pkgName || `#${pkgId}`}</Link> });
+  if (location.pathname.endsWith("/evaluation")) crumbs.push({ title: <span>Kết quả</span> });
+  if (location.pathname.endsWith("/rubric")) crumbs.push({ title: <span>Tiêu chí</span> });
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
@@ -82,9 +99,7 @@ export default function App() {
 
       <Layout style={{ marginLeft: 220 }}>
         <Layout.Header className="abes-header">
-          <span style={{ fontSize: 13, color: "var(--ink-muted)", fontWeight: 500 }}>
-            {location.pathname === "/" ? "Tổng quan" : "Gói thầu"}
-          </span>
+          <Breadcrumb items={crumbs} />
           <span style={{ fontSize: 11, color: "var(--ink-muted)", fontFamily: "var(--font-mono)" }}>
             ABES Demo
           </span>

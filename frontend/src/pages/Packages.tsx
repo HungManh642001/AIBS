@@ -1,26 +1,33 @@
 import { useEffect, useState } from "react";
-import { Button, Form, Input, InputNumber, Modal, Popconfirm, Table, message } from "antd";
-import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
-import { Link } from "react-router-dom";
+import { Button, Form, Input, InputNumber, Modal, Popconfirm, Table, Tag, message } from "antd";
+import { PlusOutlined, DeleteOutlined, CloseOutlined } from "@ant-design/icons";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import type { Package } from "../api/types";
 import StatusTag from "../components/StatusTag";
 import Loader from "../components/Loader";
+
+const STATUS_LABEL: Record<string, string> = {
+  khoi_tao: "Khởi tạo", dang_xu_ly: "Đang xử lý", cho_review: "Chờ review", hoan_thanh: "Hoàn thành",
+};
 
 export default function Packages() {
   const [data, setData] = useState<Package[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [sp, setSp] = useSearchParams();
   const [form] = Form.useForm();
+  const filter = sp.get("trang_thai") || "";
 
   const load = () => {
     setLoading(true); setErr(null);
-    api.get("/packages").then((r) => setData(unwrap<Package[]>(r)))
+    api.get("/packages", { params: filter ? { trang_thai: filter } : {} })
+      .then((r) => setData(unwrap<Package[]>(r)))
       .catch((e) => setErr(e.message)).finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [filter]);
 
   const del = async (id: number) => {
     try {
@@ -57,6 +64,14 @@ export default function Packages() {
           Tạo gói thầu
         </Button>
       </div>
+
+      {filter && (
+        <div style={{ marginBottom: 12 }}>
+          <Tag closable closeIcon={<CloseOutlined />} onClose={() => setSp({})}>
+            Lọc: {STATUS_LABEL[filter] ?? filter}
+          </Tag>
+        </div>
+      )}
 
       <Loader loading={loading} error={err} onRetry={load}>
       <div style={{ background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>
