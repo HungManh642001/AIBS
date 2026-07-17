@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import {
-  Button, Card, Empty, Input, Modal, Popconfirm, Select, Steps, Table, Tabs, Tag, Tooltip, Upload, message,
+  Badge, Button, Card, Empty, Input, Modal, Popconfirm, Select, Steps, Table, Tabs, Tag, Tooltip, Upload, message,
 } from "antd";
-import { DeleteOutlined, EditOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
+import { CheckCircleOutlined, DeleteOutlined, EditOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, unwrap } from "../api/client";
-import type { Package, TenderDoc, Vendor } from "../api/types";
+import type { EvalResultsPayload, Package, TenderDoc, Vendor } from "../api/types";
 import { useArtifactTypes } from "../api/artifacts";
 import StatusTag from "../components/StatusTag";
 import Loader from "../components/Loader";
@@ -115,6 +115,7 @@ export default function PackageDetail() {
   const [modal, setModal] = useState<Vendor | "new" | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [evaluatedVids, setEvaluatedVids] = useState<Set<number>>(new Set());
   const artifactTypes = useArtifactTypes() as ArtOpt[];
 
   const load = () => {
@@ -122,6 +123,9 @@ export default function PackageDetail() {
     api.get(`/packages/${id}`).then((r) => setPkg(unwrap<Package>(r)))
       .catch((e) => setErr(e.message)).finally(() => setLoading(false));
     api.get(`/packages/${id}/documents`).then((r) => setDocs(unwrap<TenderDoc[]>(r))).catch(() => {});
+    api.get(`/packages/${id}/results`).then((r) => setEvaluatedVids(new Set(
+      unwrap<EvalResultsPayload>(r).vendors.filter((v) => v.criteria.length > 0).map((v) => v.vendor_id))))
+      .catch(() => {});
   };
   useEffect(load, [id]);
 
@@ -239,9 +243,25 @@ export default function PackageDetail() {
     </div>
   );
 
+  const vendorLabel = (v: Vendor) => {
+    const n = vendorDocs(v.id).length;
+    return (
+      <span>
+        {evaluatedVids.has(v.id) && (
+          <Tooltip title="Đã chấm"><CheckCircleOutlined style={{ color: "var(--pass)", marginRight: 6 }} /></Tooltip>
+        )}
+        {v.ten}
+        <Tooltip title={n === 0 ? "Chưa có hồ sơ" : `${n} hồ sơ`}>
+          <Badge count={n} showZero size="small" color={n === 0 ? "#d9d9d9" : "#0F6E62"}
+            style={{ marginLeft: 8 }} />
+        </Tooltip>
+      </span>
+    );
+  };
+
   const items = [
     { key: "chung", label: "Tài liệu chung", children: chungTab },
-    ...pkg.vendors.map((v) => ({ key: String(v.id), label: v.ten, children: vendorTab(v) })),
+    ...pkg.vendors.map((v) => ({ key: String(v.id), label: vendorLabel(v), children: vendorTab(v) })),
   ];
 
   return (
