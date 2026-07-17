@@ -94,6 +94,62 @@ def test_evaluate_builds_vendor_context_with_abbreviation(client, monkeypatch):
     assert "ABC" in ctx.aliases       # tên viết tắt -> alias để find_vendor_pages khớp webform
 
 
+def _seed_two_vendors(client) -> tuple[int, int, int]:
+    pid = client.post("/api/v1/packages",
+                      json={"ma_so": "G-2V", "ten": "g", "vendors": ["A", "B"]}).json()["data"]
+    pkg_id = pid["id"]
+    va, vb = pid["vendors"][0]["id"], pid["vendors"][1]["id"]
+    client.put(f"/api/v1/packages/{pkg_id}/rubric", json={"criteria": [{
+        "nhom": "hop_le", "ten": "Đơn dự thầu", "yeu_cau_goc": "", "hsdt_can_kiem_tra": ["don_du_thau"],
+        "tien_quyet": True, "noi_dung_can_kiem_tra": [{
+            "noi_dung_kiem_tra": "Chữ ký", "hsdt_kiem_tra": "don_du_thau", "yeu_cau": "có",
+            "can_lam_ro": "", "can_tra_cuu": False, "thong_tin_bo_sung": "", "nguon": "",
+            "can_review": False}]}]})
+    return pkg_id, va, vb
+
+
+def test_evaluate_single_vendor_only(client, monkeypatch):
+    """Chạy đánh giá 1 nhà thầu -> chỉ nhà thầu đó có kết quả, nhà thầu khác chưa chạm."""
+    monkeypatch.setattr("routers.evaluation.evaluate_vendor", _fake_eval("đạt"))
+    pid, va, vb = _seed_two_vendors(client)
+
+    r = client.post(f"/api/v1/packages/{pid}/vendors/{va}/evaluate")
+    assert r.status_code == 200 and r.json()["data"]["vendor"]["vendor_id"] == va
+
+    res = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"]
+    a = next(v for v in res if v["vendor_id"] == va)
+    b = next(v for v in res if v["vendor_id"] == vb)
+    assert a["summary"]["n_tieu_chi"] == 1 and a["criteria"]
+    assert b["summary"]["n_tieu_chi"] == 0 and b["criteria"] == []   # B chưa đánh giá
+
+
+def test_evaluate_single_vendor_preserves_others(client, monkeypatch):
+    """Đánh giá lại B không xóa kết quả A."""
+    monkeypatch.setattr("routers.evaluation.evaluate_vendor", _fake_eval("đạt"))
+    pid, va, vb = _seed_two_vendors(client)
+    client.post(f"/api/v1/packages/{pid}/vendors/{va}/evaluate")
+    client.post(f"/api/v1/packages/{pid}/vendors/{vb}/evaluate")
+    res = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"]
+    assert all(next(v for v in res if v["vendor_id"] == x)["criteria"] for x in (va, vb))
+
+
+def test_evaluate_single_vendor_reeval_replaces(client, monkeypatch):
+    """Chạy lại 1 nhà thầu -> thay kết quả cũ, KHÔNG nhân đôi."""
+    monkeypatch.setattr("routers.evaluation.evaluate_vendor", _fake_eval("đạt"))
+    pid, va, _ = _seed_two_vendors(client)
+    client.post(f"/api/v1/packages/{pid}/vendors/{va}/evaluate")
+    client.post(f"/api/v1/packages/{pid}/vendors/{va}/evaluate")
+    res = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"]
+    a = next(v for v in res if v["vendor_id"] == va)
+    assert a["summary"]["n_tieu_chi"] == 1      # không nhân đôi
+
+
+def test_evaluate_single_vendor_404(client):
+    pid = client.post("/api/v1/packages", json={"ma_so": "G-1V4", "ten": "g"}).json()["data"]["id"]
+    r = client.post(f"/api/v1/packages/{pid}/vendors/99999/evaluate")
+    assert r.status_code == 404
+
+
 def test_summary_counts_khong_ap_dung(client, monkeypatch):
     monkeypatch.setattr("routers.evaluation.evaluate_vendor", _fake_eval("không áp dụng"))
     pid = _seed(client, tien_quyet=True)

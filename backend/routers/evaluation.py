@@ -87,62 +87,86 @@ def _summary(evals: list[models.HsdtCriterionEval]) -> dict[str, int]:
     }
 
 
+async def _eval_and_save_vendor(db: Session, pkg: models.ProcurementPackage,
+                                vendor: models.Vendor, crits: list[dict[str, Any]]) -> dict[str, Any]:
+    """Đánh giá 1 nhà thầu: dọn kết quả cũ CỦA RIÊNG nhà thầu đó -> chấm -> lưu. Lỗi pipeline -> raise."""
+    for e in db.scalars(select(models.HsdtCriterionEval).where(
+            models.HsdtCriterionEval.package_id == pkg.id,
+            models.HsdtCriterionEval.vendor_id == vendor.id)).all():
+        db.delete(e)
+    for ve in db.scalars(select(models.HsdtVendorEval).where(
+            models.HsdtVendorEval.package_id == pkg.id,
+            models.HsdtVendorEval.vendor_id == vendor.id)).all():
+        db.delete(ve)
+    db.flush()
+
+    files = _hsdt_files(pkg, vendor.id)
+    log.info("[eval] gói %s nhà thầu %s: %d file HSDT", pkg.id, vendor.ten, len(files))
+    # Tên viết tắt -> alias: webform có lúc ghi tên đầy đủ, có lúc tên tắt -> khớp cả hai.
+    aliases = [vendor.ten_viet_tat.strip()] if (vendor.ten_viet_tat or "").strip() else []
+    ctx = VendorContext(ten=vendor.ten, aliases=aliases, hinh_thuc=vendor.hinh_thuc or "")
+    result = await evaluate_vendor(crits, files, doc=vendor.ten, vendor_ctx=ctx)
+
+    prof = result.vendor_profile
+    if prof is not None:
+        db.add(models.HsdtVendorEval(
+            package_id=pkg.id, vendor_id=vendor.id, hinh_thuc=prof.hinh_thuc, nguon=prof.nguon,
+            bang_chung=prof.bang_chung, trang=prof.trang, do_tin=prof.do_tin,
+            mau_thuan=prof.mau_thuan, ghi_chu=prof.ghi_chu,
+            ho_so_nhan_duoc=[_hsnd(h) for h in result.ho_so_nhan_duoc]))
+
+    for i, c in enumerate(result.criteria):
+        _save_eval(db, pkg.id, vendor.id, i, c.nhom, c.ten, c.tien_quyet, c.ket_qua,
+                   c.loai, c.yeu_cau_goc, c.verdicts)
+    if result.phat_hien_bo_sung:   # kiểm tra thường trực -> nhóm synthetic (ngoài roll-up/summary)
+        _save_eval(db, pkg.id, vendor.id, 0, _NHOM_PHAT_HIEN,
+                   "Phát hiện của hệ thống (ngoài checklist HSMT)", False,
+                   _rollup({v.ket_qua for v in result.phat_hien_bo_sung}), False, "",
+                   result.phat_hien_bo_sung)
+
+    return {"vendor_id": vendor.id, "ten": vendor.ten, "summary": result.summary,
+            "hinh_thuc": prof.hinh_thuc if prof else "", "mau_thuan": prof.mau_thuan if prof else False,
+            "n_phat_hien_bo_sung": len(result.phat_hien_bo_sung)}
+
+
+@router.post("/packages/{package_id}/vendors/{vendor_id}/evaluate")
+async def evaluate_one(package_id: int, vendor_id: int, db: Session = Depends(get_db)):
+    """Chạy đánh giá HSDT cho RIÊNG 1 nhà thầu; giữ nguyên kết quả các nhà thầu khác."""
+    pkg = db.get(models.ProcurementPackage, package_id)
+    if not pkg:
+        return fail("Không tìm thấy gói thầu", 404)
+    vendor = db.get(models.Vendor, vendor_id)
+    if not vendor or vendor.package_id != package_id:
+        return fail("Không tìm thấy nhà thầu", 404)
+    crits = _criteria_dicts(db, package_id)
+    if not crits:
+        return fail("Chưa có tiêu chí đánh giá — hãy bóc & chốt tiêu chí trước", 400)
+    try:
+        vendor_out = await _eval_and_save_vendor(db, pkg, vendor, crits)
+    except Exception as exc:  # no-silent-mock: proxy vision lỗi -> báo rõ, KHÔNG bịa
+        log.warning("[eval] gói %s nhà thầu %s: pipeline lỗi: %s", package_id, vendor.ten, exc)
+        return fail(f"Đánh giá thất bại: {exc}", 502)
+    pkg.trang_thai = "cho_review"
+    db.commit()
+    return ok({"vendor": vendor_out})
+
+
 @router.post("/packages/{package_id}/evaluate")
 async def evaluate(package_id: int, db: Session = Depends(get_db)):
-    """Chạy pipeline vision đánh giá HSDT từng nhà thầu theo tiêu chí đã chốt; lưu verdict."""
+    """Chạy đánh giá HSDT cho TẤT CẢ nhà thầu (tiện lợi chạy hàng loạt)."""
     pkg = db.get(models.ProcurementPackage, package_id)
     if not pkg:
         return fail("Không tìm thấy gói thầu", 404)
     crits = _criteria_dicts(db, package_id)
     if not crits:
         return fail("Chưa có tiêu chí đánh giá — hãy bóc & chốt tiêu chí trước", 400)
-
-    # Dọn kết quả cũ của gói (cascade verdicts + hồ sơ đánh giá nhà thầu).
-    for e in db.scalars(select(models.HsdtCriterionEval).where(
-            models.HsdtCriterionEval.package_id == package_id)).all():
-        db.delete(e)
-    for ve in db.scalars(select(models.HsdtVendorEval).where(
-            models.HsdtVendorEval.package_id == package_id)).all():
-        db.delete(ve)
-    db.flush()
-
     vendors_out: list[dict[str, Any]] = []
     for vendor in pkg.vendors:
-        files = _hsdt_files(pkg, vendor.id)
-        log.info("[eval] gói %s nhà thầu %s: %d file HSDT", package_id, vendor.ten, len(files))
-        # Tên viết tắt -> alias: webform có lúc ghi tên đầy đủ, có lúc tên tắt -> khớp cả hai.
-        aliases = [vendor.ten_viet_tat.strip()] if (vendor.ten_viet_tat or "").strip() else []
-        ctx = VendorContext(ten=vendor.ten, aliases=aliases, hinh_thuc=vendor.hinh_thuc or "")
         try:
-            result = await evaluate_vendor(crits, files, doc=vendor.ten, vendor_ctx=ctx)
-        except Exception as exc:  # no-silent-mock: proxy vision lỗi -> báo rõ, KHÔNG bịa
+            vendors_out.append(await _eval_and_save_vendor(db, pkg, vendor, crits))
+        except Exception as exc:  # no-silent-mock
             log.warning("[eval] gói %s nhà thầu %s: pipeline lỗi: %s", package_id, vendor.ten, exc)
             return fail(f"Đánh giá thất bại: {exc}", 502)
-
-        # Hồ sơ đánh giá cấp nhà thầu: hình thức đã dò + danh mục hồ sơ.
-        prof = result.vendor_profile
-        if prof is not None:
-            db.add(models.HsdtVendorEval(
-                package_id=package_id, vendor_id=vendor.id, hinh_thuc=prof.hinh_thuc,
-                nguon=prof.nguon, bang_chung=prof.bang_chung, trang=prof.trang, do_tin=prof.do_tin,
-                mau_thuan=prof.mau_thuan, ghi_chu=prof.ghi_chu,
-                ho_so_nhan_duoc=[_hsnd(h) for h in result.ho_so_nhan_duoc]))
-
-        for i, c in enumerate(result.criteria):
-            _save_eval(db, package_id, vendor.id, i, c.nhom, c.ten, c.tien_quyet, c.ket_qua,
-                       c.loai, c.yeu_cau_goc, c.verdicts)
-        # Kiểm tra thường trực -> nhóm synthetic (ngoài roll-up/summary).
-        if result.phat_hien_bo_sung:
-            _save_eval(db, package_id, vendor.id, 0, _NHOM_PHAT_HIEN,
-                       "Phát hiện của hệ thống (ngoài checklist HSMT)", False,
-                       _rollup({v.ket_qua for v in result.phat_hien_bo_sung}), False, "",
-                       result.phat_hien_bo_sung)
-
-        vendors_out.append({
-            "vendor_id": vendor.id, "ten": vendor.ten, "summary": result.summary,
-            "hinh_thuc": prof.hinh_thuc if prof else "", "mau_thuan": prof.mau_thuan if prof else False,
-            "n_phat_hien_bo_sung": len(result.phat_hien_bo_sung)})
-
     pkg.trang_thai = "cho_review"
     db.commit()
     return ok({"vendors": vendors_out})

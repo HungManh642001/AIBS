@@ -14,7 +14,7 @@ export default function PackageDetail() {
   const [docs, setDocs] = useState<any[]>([]);
   const [loai, setLoai] = useState("HSMT");
   const [vendorId, setVendorId] = useState<number | undefined>();
-  const [evaluating, setEvaluating] = useState(false);
+  const [evaluating, setEvaluating] = useState<number | null>(null);  // vendor_id đang chấm
   const [artifactType, setArtifactType] = useState<string | undefined>();
   const [newVendor, setNewVendor] = useState("");
   const [newVietTat, setNewVietTat] = useState("");
@@ -66,14 +66,13 @@ export default function PackageDetail() {
     } catch (e: any) { message.error(e.message); }
   };
 
-  const runEvaluate = async () => {
-    setEvaluating(true);
+  const evalVendor = async (vid: number) => {
+    setEvaluating(vid);
     try {
-      await api.post(`/packages/${id}/evaluate`);
-      message.success("Đánh giá hoàn tất");
-      nav(`/packages/${id}/evaluation`);
+      await api.post(`/packages/${id}/vendors/${vid}/evaluate`);
+      message.success("Đánh giá nhà thầu hoàn tất");
     } catch (e: any) { message.error(e.message); }
-    finally { setEvaluating(false); }
+    finally { setEvaluating(null); }
   };
 
   if (!pkg) return null;
@@ -111,8 +110,11 @@ export default function PackageDetail() {
       <Card title="Hành động">
         <div className="flex gap-3 items-center">
           <Button onClick={() => nav(`/packages/${id}/rubric`)}>Tiêu chí đánh giá</Button>
-          <Button type="primary" loading={evaluating} onClick={runEvaluate}>
-            Chạy đánh giá AI</Button>
+          <Button type="primary" onClick={() => nav(`/packages/${id}/evaluation`)}>
+            Xem kết quả đánh giá</Button>
+        </div>
+        <div style={{ marginTop: 8, fontSize: 12, color: "var(--ink-muted)" }}>
+          Chạy đánh giá AI theo TỪNG nhà thầu ở mục "Nhà thầu" bên dưới.
         </div>
       </Card>
       <Card title="Nhà thầu">
@@ -147,6 +149,9 @@ export default function PackageDetail() {
                       { value: "doc_lap", label: "Độc lập" },
                       { value: "lien_danh", label: "Liên danh" },
                     ]} />
+                  <Button size="small" type="primary" loading={evaluating === v.id}
+                    disabled={evaluating !== null} onClick={() => evalVendor(v.id)}>
+                    Chạy đánh giá</Button>
                 </div>
               ))}
             </div>
