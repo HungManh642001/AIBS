@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button, Card, Checkbox, Input, Select, Table, Tag, message } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
+import Loader from "../components/Loader";
 
 const { TextArea } = Input;
 const AUTO = { minRows: 1, maxRows: 6 } as const;
@@ -13,17 +14,27 @@ export default function Rubric() {
   const { id } = useParams();
   const nav = useNavigate();
   const [criteria, setCriteria] = useState<RubricCriteria[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [extracting, setExtracting] = useState(false);
   const artifactTypes = useArtifactTypes();
 
-  const load = () => api.get(`/packages/${id}/rubric`)
-    .then((r) => setCriteria(unwrap<{ criteria: RubricCriteria[] }>(r).criteria));
+  const load = () => {
+    setLoading(true); setErr(null);
+    api.get(`/packages/${id}/rubric`)
+      .then((r) => setCriteria(unwrap<{ criteria: RubricCriteria[] }>(r).criteria))
+      .catch((e) => setErr(e.message)).finally(() => setLoading(false));
+  };
   useEffect(() => { load(); }, [id]);
 
   const extract = async () => {
+    setExtracting(true);
+    message.loading({ content: "Đang bóc tách tiêu chí từ HSMT — có thể mất vài phút…", key: "extract", duration: 0 });
     try {
       setCriteria(unwrap<{ criteria: RubricCriteria[] }>(await api.post(`/packages/${id}/rubric`)).criteria);
-      message.success("Đã bóc tách tiêu chí đánh giá từ HSMT");
-    } catch (e: any) { message.error(e.message); }
+      message.success({ content: "Đã bóc tách tiêu chí đánh giá từ HSMT", key: "extract" });
+    } catch (e: any) { message.error({ content: e.message, key: "extract" }); }
+    finally { setExtracting(false); }
   };
   const save = async () => {
     try {
@@ -60,12 +71,19 @@ export default function Rubric() {
           <h1 className="page-title" style={{ marginBottom: 0 }}>Tiêu chí đánh giá</h1>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Button onClick={extract}>Bóc tách từ HSMT</Button>
-          <Button onClick={save}>Lưu</Button>
-          <Button type="primary" onClick={confirm}>Chốt tiêu chí</Button>
+          <Button loading={extracting} onClick={extract}>Bóc tách từ HSMT</Button>
+          <Button onClick={save} disabled={criteria.length === 0}>Lưu</Button>
+          <Button type="primary" onClick={confirm} disabled={criteria.length === 0}>Chốt tiêu chí</Button>
         </div>
       </div>
 
+      <Loader loading={loading} error={err} onRetry={load}>
+      {criteria.length === 0 && (
+        <div style={{ textAlign: "center", padding: "48px 0", background: "var(--paper)",
+                      border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink-muted)" }}>
+          Chưa có tiêu chí. Hãy upload HSMT rồi bấm "Bóc tách từ HSMT".
+        </div>
+      )}
       {criteria.map((c, ci) => (
         <Card key={ci} title={c.ten} style={{ marginBottom: 12 }} extra={
           <span>
@@ -118,6 +136,7 @@ export default function Rubric() {
             ]} />
         </Card>
       ))}
+      </Loader>
     </div>
   );
 }

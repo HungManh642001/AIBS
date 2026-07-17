@@ -5,14 +5,20 @@ import { Link } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import type { Package } from "../api/types";
 import StatusTag from "../components/StatusTag";
+import Loader from "../components/Loader";
 
 export default function Packages() {
   const [data, setData] = useState<Package[]>([]);
   const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
   const [form] = Form.useForm();
 
-  const load = () =>
-    api.get("/packages").then((r) => setData(unwrap<Package[]>(r))).catch(() => {});
+  const load = () => {
+    setLoading(true); setErr(null);
+    api.get("/packages").then((r) => setData(unwrap<Package[]>(r)))
+      .catch((e) => setErr(e.message)).finally(() => setLoading(false));
+  };
 
   useEffect(() => { load(); }, []);
 
@@ -52,6 +58,7 @@ export default function Packages() {
         </Button>
       </div>
 
+      <Loader loading={loading} error={err} onRetry={load}>
       <div style={{ background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>
         <Table
           rowKey="id"
@@ -103,6 +110,7 @@ export default function Packages() {
           ]}
         />
       </div>
+      </Loader>
 
       <Modal
         title="Tạo gói thầu mới"

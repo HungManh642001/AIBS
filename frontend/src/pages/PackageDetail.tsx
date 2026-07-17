@@ -8,6 +8,7 @@ import { api, unwrap } from "../api/client";
 import type { Package, TenderDoc, Vendor } from "../api/types";
 import { useArtifactTypes } from "../api/artifacts";
 import StatusTag from "../components/StatusTag";
+import Loader from "../components/Loader";
 
 const HINH_THUC_OPTS = [
   { value: "doc_lap", label: "Độc lập" },
@@ -112,11 +113,15 @@ export default function PackageDetail() {
   const [active, setActive] = useState("chung");
   const [evaluating, setEvaluating] = useState<number | null>(null);
   const [modal, setModal] = useState<Vendor | "new" | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
   const artifactTypes = useArtifactTypes() as ArtOpt[];
 
   const load = () => {
-    api.get(`/packages/${id}`).then((r) => setPkg(unwrap<Package>(r)));
-    api.get(`/packages/${id}/documents`).then((r) => setDocs(unwrap<TenderDoc[]>(r)));
+    setLoading(true); setErr(null);
+    api.get(`/packages/${id}`).then((r) => setPkg(unwrap<Package>(r)))
+      .catch((e) => setErr(e.message)).finally(() => setLoading(false));
+    api.get(`/packages/${id}/documents`).then((r) => setDocs(unwrap<TenderDoc[]>(r))).catch(() => {});
   };
   useEffect(load, [id]);
 
@@ -162,7 +167,7 @@ export default function PackageDetail() {
     finally { setEvaluating(null); }
   };
 
-  if (!pkg) return null;
+  if (!pkg) return <Loader loading={loading} error={err} onRetry={load}><div /></Loader>;
   const hsmt = docs.find((d) => d.loai === "HSMT");
   const tbmt = docs.filter((d) => d.loai === "TBMT");
   const shared = docs.filter((d) => d.loai === "HSDT" && d.vendor_id == null);

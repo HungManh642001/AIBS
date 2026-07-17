@@ -4,6 +4,7 @@ import { ArrowLeftOutlined, DownloadOutlined } from "@ant-design/icons";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import type { CriterionEval, EvalResultsPayload, Verdict, VendorEval } from "../api/types";
+import Loader from "../components/Loader";
 
 const KQ_OPTS = [
   { value: "đạt", label: "Đạt" },
@@ -230,11 +231,15 @@ export default function Evaluation() {
   const nav = useNavigate();
   const [sp, setSp] = useSearchParams();
   const [data, setData] = useState<EvalResultsPayload | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
 
-  const load = () =>
+  const load = () => {
+    setLoading(true); setErr(null);
     api.get(`/packages/${id}/results`)
       .then((r) => setData(unwrap<EvalResultsPayload>(r)))
-      .catch(() => {});
+      .catch((e) => setErr(e.message)).finally(() => setLoading(false));
+  };
 
   useEffect(() => { load(); }, [id]);
 
@@ -253,7 +258,15 @@ export default function Evaluation() {
     } catch (e: any) { message.error(e.message); }
   };
 
-  if (!data) return null;
+  if (!data) return (
+    <div>
+      <Button type="text" size="small" icon={<ArrowLeftOutlined />}
+        onClick={() => nav(`/packages/${id}`)} style={{ marginBottom: 8, paddingLeft: 0 }}>
+        Quay lại gói thầu
+      </Button>
+      <Loader loading={loading} error={err} onRetry={load}><div /></Loader>
+    </div>
+  );
 
   const isErr = (s: Verdict) => s.ket_qua === "lỗi" && !s.overridden;
   const hasError = data.vendors.some((v) =>
