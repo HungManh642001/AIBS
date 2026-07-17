@@ -8,6 +8,12 @@ export interface Package {
   vendors: Vendor[]; so_tai_lieu: number; so_tieu_chi: number;
 }
 
+export interface TenderDoc {
+  id: number; loai: string; vendor_id: number | null;
+  file_path: string; file_name?: string; file_kind: string; trang_thai_ocr: string;
+  artifact_type?: string; artifact_validation?: { match?: boolean; note?: string } | null;
+}
+
 // ---- Tiêu chí đánh giá (decompose) ----
 export interface NoiDungKiemTra {
   id?: number; noi_dung_kiem_tra: string; hsdt_kiem_tra: string; yeu_cau: string;
