@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  Button, Card, Empty, Input, Modal, Popconfirm, Select, Table, Tabs, Tag, Tooltip, Upload, message,
+  Button, Card, Empty, Input, Modal, Popconfirm, Select, Steps, Table, Tabs, Tag, Tooltip, Upload, message,
 } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
@@ -162,8 +162,12 @@ export default function PackageDetail() {
   };
   const evalVendor = async (vid: number) => {
     setEvaluating(vid);
-    try { await api.post(`/packages/${id}/vendors/${vid}/evaluate`); message.success("Đánh giá hoàn tất"); }
-    catch (e: any) { message.error(e.message); }
+    message.loading({ content: "Đang chấm HSDT — có thể mất vài phút…", key: "eval", duration: 0 });
+    try {
+      await api.post(`/packages/${id}/vendors/${vid}/evaluate`);
+      message.success({ content: "Đánh giá hoàn tất", key: "eval" });
+      load();   // cập nhật trạng thái gói (Steps -> Xem kết quả)
+    } catch (e: any) { message.error({ content: e.message, key: "eval" }); }
     finally { setEvaluating(null); }
   };
 
@@ -172,6 +176,12 @@ export default function PackageDetail() {
   const tbmt = docs.filter((d) => d.loai === "TBMT");
   const shared = docs.filter((d) => d.loai === "HSDT" && d.vendor_id == null);
   const vendorDocs = (vid: number) => docs.filter((d) => d.loai === "HSDT" && d.vendor_id === vid);
+
+  // Dẫn dắt luồng: HSMT -> tiêu chí -> HSDT -> chạy đánh giá -> kết quả.
+  const hasCriteria = (pkg.so_tieu_chi ?? 0) > 0;
+  const hasAnyHsdt = docs.some((d) => d.loai === "HSDT" && d.vendor_id != null);
+  const evaluated = pkg.trang_thai === "cho_review" || pkg.trang_thai === "hoan_thanh";
+  const step = !hsmt ? 0 : !hasCriteria ? 1 : !hasAnyHsdt ? 2 : !evaluated ? 3 : 4;
 
   const chungTab = (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -211,8 +221,14 @@ export default function PackageDetail() {
           onConfirm={() => deleteVendor(v.id)} okText="Xóa" cancelText="Hủy">
           <Button size="small" danger icon={<DeleteOutlined />}>Xóa</Button>
         </Popconfirm>
-        <Button size="small" type="primary" loading={evaluating === v.id} disabled={evaluating !== null}
-          onClick={() => evalVendor(v.id)}>Chạy đánh giá</Button>
+        <Tooltip title={!hasCriteria ? "Chưa có tiêu chí — hãy bóc & chốt tiêu chí trước"
+          : vendorDocs(v.id).length === 0 ? "Nhà thầu chưa có hồ sơ HSDT" : ""}>
+          <span>
+            <Button size="small" type="primary" loading={evaluating === v.id}
+              disabled={evaluating !== null || !hasCriteria || vendorDocs(v.id).length === 0}
+              onClick={() => evalVendor(v.id)}>Chạy đánh giá</Button>
+          </span>
+        </Tooltip>
         <Button size="small" onClick={() => nav(`/packages/${id}/evaluation?vendor=${v.id}`)}>
           Xem kết quả</Button>
       </div>
@@ -241,6 +257,13 @@ export default function PackageDetail() {
           <Button type="primary" onClick={() => nav(`/packages/${id}/evaluation`)}>Xem kết quả đánh giá</Button>
         </div>
       </div>
+
+      <Card style={{ marginBottom: 16 }}>
+        <Steps size="small" current={step} items={[
+          { title: "Tải HSMT" }, { title: "Bóc & chốt tiêu chí" }, { title: "Tải HSDT nhà thầu" },
+          { title: "Chạy đánh giá" }, { title: "Xem kết quả" },
+        ]} />
+      </Card>
 
       <Card styles={{ body: { paddingTop: 8 } }}>
         <Tabs activeKey={active} onChange={setActive} items={items}
