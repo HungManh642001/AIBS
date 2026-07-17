@@ -59,6 +59,12 @@ SYS_STRUCT = (
     "-> KHÔNG tra được trong HSMT: để trống can_lam_ro, can_tra_cuu=false (bước chấm sẽ đối chiếu "
     "trực tiếp trên HSDT).\n"
     "- can_tra_cuu: true nếu can_lam_ro khác rỗng; false nếu không.\n"
+    "- ap_dung: nội dung này áp dụng cho AI? '' = MỌI nhà thầu (mặc định). Đặt 'lien_danh' nếu "
+    "yeu_cau_goc NÊU RÕ nội dung CHỈ áp dụng khi nhà thầu là liên danh (mệnh đề 'Đối với nhà thầu "
+    "liên danh...', 'trường hợp liên danh...'); đặt 'doc_lap' nếu chỉ áp dụng nhà thầu độc lập. "
+    "MỘT yêu cầu gốc có thể CHỨA cả mệnh đề CHUNG (ap_dung='') lẫn mệnh đề điều kiện liên danh "
+    "(ap_dung='lien_danh') -> TÁCH thành nội dung riêng, gắn ap_dung đúng cho từng cái. KHI KHÔNG "
+    "CHẮC -> để '' (chấm cho mọi nhà thầu, không bỏ sót).\n"
     "TUYỆT ĐỐI KHÔNG bịa số/nội dung. Đặt tien_quyet=true nếu là tiêu chí loại/cổng."
 )
 SYS_QUERY = (
@@ -117,7 +123,7 @@ def anchors_prompt(body: str) -> str:
 _CRIT_SCHEMA = (
     '{"nhom","ten","yeu_cau_goc","hsdt_can_kiem_tra":[...],"tien_quyet":false,'
     '"noi_dung_can_kiem_tra":[{"noi_dung_kiem_tra","hsdt_kiem_tra","yeu_cau","can_lam_ro",'
-    '"can_tra_cuu":false}]}'
+    '"can_tra_cuu":false,"ap_dung":""}]}'
 )
 
 
@@ -163,17 +169,17 @@ def struct_prompt(crit: dict[str, Any]) -> str:
         '"yeu_cau":"Thỏa mãn giá trị bảo lãnh theo HSMT","can_lam_ro":"Giá trị bảo lãnh","can_tra_cuu":true},\n'
         '   {"noi_dung_kiem_tra":"Thời gian hiệu lực","hsdt_kiem_tra":"bao_dam_du_thau",'
         '"yeu_cau":"Thỏa mãn thời gian hiệu lực theo HSMT","can_lam_ro":"Thời gian hiệu lực bảo lãnh","can_tra_cuu":true}]\n'
-        "VÍ DỤ 3 — 'Đối với nhà thầu liên danh, đơn dự thầu phải do đại diện hợp pháp của từng thành "
-        "viên ký, hoặc thành viên đứng đầu ký thay mặt liên danh theo phân công trách nhiệm trong "
-        "thỏa thuận liên danh' (hsdt=[don_du_thau, thoa_thuan_lien_danh]) — chuẩn để đối chiếu nằm "
-        "TRONG hồ sơ nhà thầu, KHÔNG tra HSMT; hồ sơ BỊ CHẤM là đơn dự thầu, thỏa thuận liên danh là "
-        "tài liệu ĐỐI CHIẾU:\n"
-        '  [{"noi_dung_kiem_tra":"Người ký đơn là đại diện hợp pháp","hsdt_kiem_tra":"don_du_thau",'
-        '"yeu_cau":"Đơn do đại diện hợp pháp của từng thành viên ký tên, đóng dấu",'
-        '"can_lam_ro":"","can_tra_cuu":false},\n'
-        '   {"noi_dung_kiem_tra":"Ký thay mặt đúng phân công trách nhiệm","hsdt_kiem_tra":"don_du_thau",'
+        "VÍ DỤ 3 (TRỘN chung + liên danh) — 'Đơn dự thầu phải được đại diện hợp pháp của nhà thầu ký "
+        "tên, đóng dấu. Đối với nhà thầu liên danh, đơn phải do đại diện từng thành viên ký hoặc "
+        "thành viên đứng đầu ký thay mặt theo phân công trong thỏa thuận liên danh' "
+        "(hsdt=[don_du_thau, thoa_thuan_lien_danh]) — mệnh đề 1 áp dụng MỌI nhà thầu, mệnh đề 2 CHỈ "
+        "liên danh; hồ sơ BỊ CHẤM là đơn dự thầu, thỏa thuận liên danh là tài liệu ĐỐI CHIẾU:\n"
+        '  [{"noi_dung_kiem_tra":"Đơn ký bởi đại diện hợp pháp","hsdt_kiem_tra":"don_du_thau",'
+        '"yeu_cau":"Đơn được đại diện hợp pháp của nhà thầu ký tên, đóng dấu",'
+        '"can_lam_ro":"","can_tra_cuu":false,"ap_dung":""},\n'
+        '   {"noi_dung_kiem_tra":"Liên danh: ký thay mặt đúng phân công","hsdt_kiem_tra":"don_du_thau",'
         '"yeu_cau":"Thành viên đứng đầu ký thay mặt phù hợp phân công trong thỏa thuận liên danh",'
-        '"can_lam_ro":"","can_tra_cuu":false}]\n\n'
+        '"can_lam_ro":"","can_tra_cuu":false,"ap_dung":"lien_danh"}]\n\n'
         + cot_block(_CRIT_SCHEMA)
     )
 

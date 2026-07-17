@@ -51,6 +51,30 @@ def test_struct_prompt_teaches_hsdt_side_rule():
     assert '"can_tra_cuu":false' in p.replace(" ", "")      # ví dụ negative: KHÔNG tra cứu
 
 
+def test_sys_struct_teaches_ap_dung_per_noidung():
+    """ap_dung ở CẤP NỘI DUNG: mệnh đề điều kiện liên danh -> 'lien_danh'; chung -> '' (mặc định).
+
+    VÍ DỤ 3 (trộn) phải dạy tách nội dung chung (ap_dung='') và nội dung liên danh (ap_dung='lien_danh').
+    """
+    from experiment.decompose.prompts import SYS_STRUCT, struct_prompt
+
+    low = SYS_STRUCT.lower()
+    assert "ap_dung" in SYS_STRUCT and "lien_danh" in SYS_STRUCT
+    assert "mọi nhà thầu" in low                       # mặc định '' = mọi nhà thầu
+    p = struct_prompt({"ten": "Đơn dự thầu", "nhom": "hop_le"})
+    assert '"ap_dung":"lien_danh"' in p.replace(" ", "") and '"ap_dung":""' in p.replace(" ", "")
+
+
+def test_validate_criterion_keeps_ap_dung():
+    from experiment.decompose.schema import validate_criterion
+
+    out = validate_criterion({"ten": "X", "noi_dung_can_kiem_tra": [
+        {"noi_dung_kiem_tra": "n1", "hsdt_kiem_tra": "don_du_thau", "ap_dung": "lien_danh"},
+        {"noi_dung_kiem_tra": "n2", "hsdt_kiem_tra": "don_du_thau"}]})
+    nds = out["noi_dung_can_kiem_tra"]
+    assert nds[0]["ap_dung"] == "lien_danh" and nds[1]["ap_dung"] == ""   # mặc định rỗng
+
+
 def test_sys_list_allows_cross_check_docs_in_hsdt_can_kiem_tra():
     """SYS_LIST phải cho phép khai THÊM tài liệu đối chiếu, nếu không luật liên-tài-liệu chết.
 

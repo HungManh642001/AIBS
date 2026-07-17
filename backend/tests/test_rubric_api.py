@@ -66,6 +66,32 @@ def test_extract_no_tbmt_empty_scan_sources(client, monkeypatch):
     assert cap["scan_sources"] == []
 
 
+def test_rubric_persists_ap_dung(client, monkeypatch):
+    """ap_dung (áp dụng độc lập/liên danh cấp nội dung) lưu & đọc lại được, qua cả PUT chuyên gia sửa."""
+    decomp = {"doc": "HSMT", "groups": [{"group": "hop_le", "criteria": [{
+        "nhom": "hop_le", "ten": "Đơn dự thầu hợp lệ", "yeu_cau_goc": "…",
+        "hsdt_can_kiem_tra": ["don_du_thau", "thoa_thuan_lien_danh"], "tien_quyet": True,
+        "noi_dung_can_kiem_tra": [
+            {"noi_dung_kiem_tra": "Đơn ký hợp pháp", "hsdt_kiem_tra": "don_du_thau",
+             "yeu_cau": "ký hợp pháp", "can_lam_ro": "", "can_tra_cuu": False,
+             "thong_tin_bo_sung": "", "nguon": "", "can_review": False, "ap_dung": ""},
+            {"noi_dung_kiem_tra": "Liên danh ký theo phân công", "hsdt_kiem_tra": "don_du_thau",
+             "yeu_cau": "phân công", "can_lam_ro": "", "can_tra_cuu": False,
+             "thong_tin_bo_sung": "", "nguon": "", "can_review": False, "ap_dung": "lien_danh"}]}]}],
+        "summary": {"n_groups": 1, "n_criteria": 1}}
+    _mock_pipeline(monkeypatch, decomp=decomp)
+    pid = _pkg_with_hsmt(client)
+    got = client.post(f"/api/v1/packages/{pid}/rubric").json()["data"]
+    nds = got["criteria"][0]["noi_dung_can_kiem_tra"]
+    assert [n["ap_dung"] for n in nds] == ["", "lien_danh"]
+
+    # chuyên gia PUT lại (sửa ap_dung) -> vẫn giữ
+    nds[0]["ap_dung"] = "doc_lap"
+    client.put(f"/api/v1/packages/{pid}/rubric", json={"criteria": got["criteria"]})
+    got2 = client.get(f"/api/v1/packages/{pid}/rubric").json()["data"]
+    assert got2["criteria"][0]["noi_dung_can_kiem_tra"][0]["ap_dung"] == "doc_lap"
+
+
 def test_extract_edit_confirm_rubric(client, monkeypatch):
     _mock_pipeline(monkeypatch)
     pid = _pkg_with_hsmt(client)

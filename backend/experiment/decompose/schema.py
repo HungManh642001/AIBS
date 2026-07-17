@@ -48,6 +48,7 @@ class NoiDungKiemTra(_Base):
     nguon: str = ""               # (step 3) mã điều khoản nguồn (E-BDL/E-CDNT), cho audit
     can_review: bool = False      # (step 3) True nếu can_tra_cuu mà tra không ra (KHÔNG bịa)
     doi_chieu_hsdt: bool = False  # (step 3) True nếu thông tin THUỘC hồ sơ nhà thầu -> chấm trực tiếp
+    ap_dung: str = ""             # áp dụng cho ai: ''=mọi nhà thầu | 'lien_danh' | 'doc_lap'
 
 
 class ResolvedInfo(_Base):

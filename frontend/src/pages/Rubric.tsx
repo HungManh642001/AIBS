@@ -70,7 +70,7 @@ export default function Rubric() {
           </span>}>
           <p style={{ color: "#666", marginTop: 0 }}>Yêu cầu gốc (HSMT): {c.yeu_cau_goc}</p>
           <Table rowKey={(_, i) => String(i)} pagination={false} dataSource={c.noi_dung_can_kiem_tra}
-            scroll={{ x: 1180 }}
+            scroll={{ x: 1330 }}
             columns={[
               { title: "Nội dung kiểm tra (HSDT)", dataIndex: "noi_dung_kiem_tra", width: 220,
                 render: (t, _n, ni) => <TextArea autoSize={AUTO} value={t}
@@ -102,6 +102,14 @@ export default function Rubric() {
                     )}
                   </div>
                 ) },
+              { title: "Áp dụng", dataIndex: "ap_dung", width: 150,
+                render: (t: string, _n, ni) => <Select value={t || ""} style={{ width: "100%" }}
+                  onChange={(v) => setNoiDung(ci, ni, "ap_dung", v)}
+                  options={[
+                    { value: "", label: "Mọi nhà thầu" },
+                    { value: "lien_danh", label: "Chỉ liên danh" },
+                    { value: "doc_lap", label: "Chỉ độc lập" },
+                  ]} /> },
             ]} />
         </Card>
       ))}

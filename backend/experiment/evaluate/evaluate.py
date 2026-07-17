@@ -8,10 +8,11 @@ from experiment.evaluate.prompts import SYS_EVAL, eval_prompt
 from experiment.evaluate.route import _norm, loc_dung_chung, pages_by_type, pages_text, route_pages
 from experiment.evaluate.rules.registry import RuleRegistry, RuleSkill, run_skill
 from experiment.evaluate.schema import (
-    HINH_THUC_DOC_LAP,
+    HINH_THUC_DOC_LAP, HINH_THUC_LIEN_DANH,
     KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_KHONG_AP_DUNG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU,
     CriterionEval, PageRecord, VendorContext, VendorProfile, Verdict, validate_eval_verdict,
 )
+from experiment.evaluate.vendor_profile import canon_hinh_thuc
 from experiment.evaluate.vision import VisionFn
 
 log = logging.getLogger("experiment.evaluate")
@@ -71,28 +72,34 @@ def _can_cu_doc_lap(profile: VendorProfile) -> str:
 
 def _gate_khong_ap_dung(nd: dict[str, Any], profile: VendorProfile | None,
                         crit: dict[str, Any] | None = None) -> Verdict | None:
-    """Nhà thầu ĐỘC LẬP + tiêu chí dính hồ sơ chỉ-liên-danh -> N/A tất định, 0 call AI.
+    """Nội dung CHỈ áp dụng 1 hình thức + nhà thầu hình thức KHÁC -> N/A tất định, 0 call AI.
 
-    Xét CẢ hsdt_kiem_tra của nội dung LẪN hsdt_can_kiem_tra của tiêu chí: yêu cầu kiểu 'Đối với nhà
-    thầu liên danh, đơn phải ký theo phân công trong thỏa thuận' có hsdt_kiem_tra='don_du_thau'
-    nhưng khai thỏa thuận liên danh làm tài liệu đối chiếu — không xét cấp tiêu chí thì phải nhờ AI
-    tự nhận ra, tốn call và không chắc chắn.
+    Tín hiệu áp dụng ở CẤP NỘI DUNG (không phải cấp tiêu chí): trường `ap_dung` do decompose gán,
+    HOẶC nội dung route thẳng vào hồ sơ chỉ-liên-danh (thoa_thuan_lien_danh) -> hiển nhiên liên danh.
+    KHÔNG xét crit['hsdt_can_kiem_tra']: MỘT tiêu chí có thể TRỘN nội dung chung (mọi nhà thầu) với
+    nội dung điều kiện liên danh; gate cả tiêu chí sẽ bỏ sót nội dung chung (vd 'đơn ký bởi đại diện
+    hợp pháp' áp dụng mọi nhà thầu, không được bỏ khi nhà thầu độc lập).
 
-    Dựa trên QUY TẮC NGUYÊN TỬ: tiêu chí khai thoa_thuan_lien_danh là tiêu chí về nhánh liên danh.
-    Báo cáo in nguyên văn yêu cầu gốc bị bỏ qua để chuyên gia bắt lỗi nếu decompose gộp nhầm.
-    profile=None hoặc hình thức không rõ -> None (không gate) = hành vi cũ, fail-safe.
+    profile=None / hình thức không rõ -> None (fail-safe: chấm, không im lặng bỏ). Báo cáo in
+    nguyên văn yêu cầu gốc bị bỏ qua để chuyên gia bắt lỗi nếu decompose gán ap_dung sai.
     """
-    if profile is None or profile.hinh_thuc != HINH_THUC_DOC_LAP:
+    if profile is None or not profile.hinh_thuc:
         return None
-    dinh = {_norm(nd.get("hsdt_kiem_tra", ""))}
-    dinh |= {_norm(str(x)) for x in (crit or {}).get("hsdt_can_kiem_tra", [])}
-    if not (dinh & _HO_SO_CHI_LIEN_DANH):
+    ap = canon_hinh_thuc(nd.get("ap_dung", ""))   # -> "độc lập" | "liên danh" | ""
+    chi_lien_danh = ap == HINH_THUC_LIEN_DANH or _norm(nd.get("hsdt_kiem_tra", "")) in _HO_SO_CHI_LIEN_DANH
+    chi_doc_lap = ap == HINH_THUC_DOC_LAP
+    if profile.hinh_thuc == HINH_THUC_DOC_LAP and chi_lien_danh:
+        khac = HINH_THUC_LIEN_DANH
+    elif profile.hinh_thuc == HINH_THUC_LIEN_DANH and chi_doc_lap:
+        khac = HINH_THUC_DOC_LAP
+    else:
         return None
     goc = str((crit or {}).get("yeu_cau_goc", "")).strip()
     trich = f'; yêu cầu gốc bị bỏ qua: "{goc}"' if goc else ""
     return _verdict(nd, KET_QUA_KHONG_AP_DUNG, do_tin=profile.do_tin,
-                    ghi_chu=(f"{_can_cu_doc_lap(profile)} — nội dung này gắn hồ sơ 'thỏa thuận "
-                             f"liên danh', chỉ áp dụng cho nhà thầu liên danh{trich}"))
+                    ghi_chu=(f"nhà thầu dự thầu theo hình thức {profile.hinh_thuc} "
+                             f"(căn cứ: {profile.nguon}) — nội dung này chỉ áp dụng cho nhà thầu "
+                             f"{khac}{trich}"))
 
 
 def _skill_cho_nd(skills: list[RuleSkill], nd: dict[str, Any]) -> RuleSkill | None:

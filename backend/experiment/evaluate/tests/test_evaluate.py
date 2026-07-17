@@ -334,32 +334,65 @@ async def test_skill_serves_need_routed_to_reference_doc():
     assert not any("[EV:Giá công bố webform]" in hay for hay, _ in v.calls)
 
 
-async def test_gate_uses_criterion_level_docs():
-    """Tiêu chí KHAI thoa_thuan_lien_danh làm tài liệu đối chiếu -> độc lập vẫn N/A tất định, 0 call."""
+def _nd_ap(noi_dung, hsdt, ap_dung=""):
+    return dict(_nd(noi_dung, hsdt), ap_dung=ap_dung)
+
+
+async def test_gate_mixed_criterion_keeps_general_content():
+    """MẤU CHỐT (Claim 2): tiêu chí TRỘN nội dung chung + liên danh -> độc lập VẪN chấm nội dung chung.
+
+    'Đơn ký bởi đại diện hợp pháp' (ap_dung='') áp dụng mọi nhà thầu -> KHÔNG gate; 'ký theo phân
+    công liên danh' (ap_dung='lien_danh') -> N/A. Trước đây gate cấp tiêu chí bỏ sót nội dung chung.
+    """
     from experiment.evaluate.schema import HINH_THUC_DOC_LAP, KET_QUA_KHONG_AP_DUNG
 
-    crit = {"nhom": "hop_le", "ten": "Đơn ký theo phân công liên danh", "tien_quyet": True,
-            "yeu_cau_goc": "Đối với nhà thầu liên danh, đơn phải ký theo phân công",
+    crit = {"nhom": "hop_le", "ten": "Đơn dự thầu hợp lệ", "tien_quyet": True,
+            "yeu_cau_goc": "Đơn ký bởi đại diện hợp pháp. Đối với liên danh, ký theo phân công.",
             "hsdt_can_kiem_tra": ["don_du_thau", "thoa_thuan_lien_danh"],
-            "noi_dung_can_kiem_tra": [_nd("Ký đúng phân công", "don_du_thau")]}
-    v = ScriptedVision({})
+            "noi_dung_can_kiem_tra": [
+                _nd_ap("Đơn ký bởi đại diện hợp pháp", "don_du_thau", ""),
+                _nd_ap("Liên danh: ký theo phân công", "don_du_thau", "lien_danh")]}
+    v = ScriptedVision({"[EV:Đơn ký bởi đại diện hợp pháp]": {"ket_qua": "đạt", "bang_chung": "ký hợp lệ"}})
     ce = await evaluate_criterion(crit, [_page("don_du_thau", "đơn")], v,
                                   profile=_profile(HINH_THUC_DOC_LAP, do_tin=1.0))
-    assert ce.ket_qua == KET_QUA_KHONG_AP_DUNG and ce.loai is False and v.calls == []
-    # báo cáo phải in nguyên văn yêu cầu gốc bị bỏ qua -> chuyên gia bắt được nếu decompose gộp nhầm
-    assert "Đối với nhà thầu liên danh" in ce.verdicts[0].ghi_chu
+    kq = {x.noi_dung_kiem_tra: x.ket_qua for x in ce.verdicts}
+    assert kq["Đơn ký bởi đại diện hợp pháp"] == KET_QUA_DAT          # nội dung CHUNG được chấm
+    assert kq["Liên danh: ký theo phân công"] == KET_QUA_KHONG_AP_DUNG  # nội dung liên danh -> N/A
+    assert ce.ket_qua == KET_QUA_DAT and ce.loai is False            # roll-up không mất nội dung chung
+    assert len(v.calls) == 1                                          # chỉ 1 call cho nội dung chung
 
 
-async def test_gate_criterion_level_off_for_lien_danh_vendor():
+async def test_gate_ap_dung_lien_danh_routed_to_shared_doc():
+    """Nội dung ap_dung='lien_danh' route vào don_du_thau (không phải thoa_thuan) -> độc lập vẫn N/A."""
+    from experiment.evaluate.schema import HINH_THUC_DOC_LAP, KET_QUA_KHONG_AP_DUNG
+
+    v = ScriptedVision({})
+    got = await eval_noi_dung(_nd_ap("Ký theo phân công", "don_du_thau", "lien_danh"),
+                              [_page("don_du_thau", "đơn")], v,
+                              profile=_profile(HINH_THUC_DOC_LAP))
+    assert got.ket_qua == KET_QUA_KHONG_AP_DUNG and v.calls == []
+
+
+async def test_gate_ap_dung_doc_lap_for_lien_danh_vendor():
+    """Đối xứng: nội dung ap_dung='doc_lap' + nhà thầu liên danh -> N/A tất định."""
+    from experiment.evaluate.schema import HINH_THUC_LIEN_DANH, KET_QUA_KHONG_AP_DUNG
+
+    v = ScriptedVision({})
+    got = await eval_noi_dung(_nd_ap("Chỉ dành độc lập", "don_du_thau", "doc_lap"),
+                              [_page("don_du_thau", "đơn")], v,
+                              profile=_profile(HINH_THUC_LIEN_DANH))
+    assert got.ket_qua == KET_QUA_KHONG_AP_DUNG and v.calls == []
+
+
+async def test_gate_general_content_not_gated_for_lien_danh():
+    """Nội dung chung (ap_dung='') -> nhà thầu liên danh vẫn chấm bình thường."""
     from experiment.evaluate.schema import HINH_THUC_LIEN_DANH
 
-    crit = {"nhom": "hop_le", "ten": "Đơn ký theo phân công", "tien_quyet": True,
-            "hsdt_can_kiem_tra": ["don_du_thau", "thoa_thuan_lien_danh"],
-            "noi_dung_can_kiem_tra": [_nd("Ký đúng phân công", "don_du_thau")]}
-    v = ScriptedVision({"[EV:Ký đúng phân công]": {"ket_qua": "đạt", "bang_chung": "ok"}})
-    ce = await evaluate_criterion(crit, [_page("don_du_thau", "đơn")], v,
-                                  profile=_profile(HINH_THUC_LIEN_DANH))
-    assert ce.ket_qua == KET_QUA_DAT and len(v.calls) == 1     # liên danh -> chấm đủ
+    v = ScriptedVision({"[EV:Đơn ký hợp lệ]": {"ket_qua": "đạt", "bang_chung": "ok"}})
+    got = await eval_noi_dung(_nd_ap("Đơn ký hợp lệ", "don_du_thau", ""),
+                              [_page("don_du_thau", "đơn")], v,
+                              profile=_profile(HINH_THUC_LIEN_DANH))
+    assert got.ket_qua == KET_QUA_DAT and len(v.calls) == 1
 
 
 def test_sys_rule_bang_gia_warns_multi_vendor_table():

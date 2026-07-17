@@ -46,6 +46,7 @@ def _persist_decomp(db: Session, package_id: int, decomp: dict) -> None:
                     can_tra_cuu=bool(n.get("can_tra_cuu")),
                     thong_tin_bo_sung=n.get("thong_tin_bo_sung", ""),
                     nguon=n.get("nguon", ""), can_review=bool(n.get("can_review")),
+                    ap_dung=n.get("ap_dung", ""),
                 ))
             thu_tu += 1
     db.commit()
@@ -66,7 +67,7 @@ def _read_decomp(db: Session, package_id: int) -> dict:
                  "hsdt_kiem_tra": n.hsdt_kiem_tra, "yeu_cau": n.yeu_cau,
                  "can_lam_ro": n.can_lam_ro, "can_tra_cuu": n.can_tra_cuu,
                  "thong_tin_bo_sung": n.thong_tin_bo_sung, "nguon": n.nguon,
-                 "can_review": n.can_review}
+                 "can_review": n.can_review, "ap_dung": n.ap_dung}
                 for n in c.noi_dung
             ],
         })

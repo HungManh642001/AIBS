@@ -106,6 +106,7 @@ class RubricNoiDung(Base):
     thong_tin_bo_sung: Mapped[str] = mapped_column(Text, default="")
     nguon: Mapped[str] = mapped_column(String(128), default="")
     can_review: Mapped[bool] = mapped_column(default=False)
+    ap_dung: Mapped[str] = mapped_column(String(16), default="")  # ''=mọi | lien_danh | doc_lap
     criterion: Mapped[RubricCriterion] = relationship(back_populates="noi_dung")
 
 
