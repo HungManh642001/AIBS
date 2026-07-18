@@ -40,6 +40,10 @@ async def upload_document(
         return fail("Không tìm thấy gói thầu", 404)
     content = await file.read()
     file_kind = _detect_kind(file.filename, content)
+    if file_kind == "excel":
+        # Pipeline đánh giá hiện thuần vision PDF (experiment/evaluate) -> nhận Excel là nhận rồi
+        # bỏ qua âm thầm. Từ chối thẳng cho tới khi có đường xử lý Excel.
+        return fail("Chưa hỗ trợ Excel — hãy tải bản PDF của hồ sơ này", 415)
     if loai == "HSMT":
         subdir = "hsmt"
     elif loai == "TBMT":                       # tài liệu gói (scan), không thuộc nhà thầu

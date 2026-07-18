@@ -17,6 +17,10 @@ const HINH_THUC_OPTS = [
 
 type ArtOpt = { value: string; label: string };
 
+// Pipeline đánh giá hiện thuần PDF (vision) — chặn từ bước chọn file để không tải lên rồi mới báo lỗi.
+const PDF_ONLY = "Chỉ hỗ trợ file PDF — Excel sẽ được bổ sung sau";
+const isPdf = (f: File) => f.name.toLowerCase().endsWith(".pdf");
+
 function OcrBadge({ st }: { st: string }) {
   const err = st.startsWith("loi");
   const ok = st === "hoan_thanh";
@@ -74,8 +78,9 @@ function UploadDoc({ artifactTypes, onUpload, label = "Tải hồ sơ" }: {
     <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
       <Select placeholder="Chọn loại hồ sơ" style={{ minWidth: 200 }} value={at} onChange={setAt}
         options={artifactTypes} />
-      <Upload showUploadList={false} beforeUpload={(f) => {
+      <Upload showUploadList={false} accept=".pdf" beforeUpload={(f) => {
         if (!at) { message.warning("Chọn loại hồ sơ trước"); return false; }
+        if (!isPdf(f)) { message.error(PDF_ONLY); return false; }
         onUpload(f, at); return false;
       }}>
         <Button icon={<UploadOutlined />}>{label}</Button>
@@ -87,7 +92,10 @@ function UploadDoc({ artifactTypes, onUpload, label = "Tải hồ sơ" }: {
 // ── Tải tài liệu không cần loại (HSMT / TBMT) ─────────────────────────────────────────
 function UploadPlain({ onUpload, label }: { onUpload: (file: File) => Promise<void>; label: string }) {
   return (
-    <Upload showUploadList={false} beforeUpload={(f) => { onUpload(f); return false; }}>
+    <Upload showUploadList={false} accept=".pdf" beforeUpload={(f) => {
+      if (!isPdf(f)) { message.error(PDF_ONLY); return false; }
+      onUpload(f); return false;
+    }}>
       <Button icon={<UploadOutlined />}>{label}</Button>
     </Upload>
   );

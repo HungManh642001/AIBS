@@ -55,3 +55,30 @@ def test_patch_document_type_recomputes_validation(client):
     d = r.json()["data"]
     assert d["artifact_type"] == "bao_dam_du_thau"
     assert d["artifact_validation"] is not None      # đã tính lại cảnh báo nghi-nhầm-loại
+
+
+def _xlsx() -> bytes:
+    """File Excel tối thiểu (openpyxl) để thử upload."""
+    import io
+    from openpyxl import Workbook
+    wb = Workbook()
+    wb.active.append(["Hạng mục", "Đơn giá"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_upload_excel_bi_tu_choi(client):
+    """Excel CHƯA được pipeline đánh giá hỗ trợ -> từ chối ngay, không nhận rồi bỏ qua âm thầm."""
+    p = client.post("/api/v1/packages", json={"ma_so": "G-X", "ten": "G", "vendors": ["A"]}).json()["data"]
+    pid, vid = p["id"], p["vendors"][0]["id"]
+    files = {"file": ("bang_gia.xlsx", _xlsx(),
+                      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+    r = client.post(f"/api/v1/packages/{pid}/documents", files=files,
+                    data={"loai": "HSDT", "vendor_id": str(vid), "artifact_type": "bang_gia"})
+    assert r.status_code == 415
+    body = r.json()
+    assert body["success"] is False
+    assert "Excel" in body["error"]
+    # Không được tạo bản ghi tài liệu nào.
+    assert client.get(f"/api/v1/packages/{pid}/documents").json()["data"] == []
