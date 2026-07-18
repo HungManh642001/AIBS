@@ -13,6 +13,12 @@ import storage
 from database import get_db
 from responses import ok, fail
 from services import reports
+from experiment.evaluate.schema import KET_QUA_DAT, KET_QUA_KHONG_AP_DUNG, KET_QUA_LOI
+
+# Hợp lệ = mọi tiêu chí đã KẾT LUẬN ĐƯỢC và không có tiêu chí nào trượt. "cần làm rõ"/"thiếu hồ
+# sơ"/"lỗi" nghĩa là chưa đủ căn cứ -> KHÔNG được tính là hợp lệ (trước đây chỉ loại "không đạt",
+# nên hồ sơ chưa có bằng chứng nào vẫn ra "hợp lệ").
+_KET_QUA_HOP_LE = {KET_QUA_DAT, KET_QUA_KHONG_AP_DUNG}
 
 router = APIRouter(prefix="/api/v1", tags=["reports"])
 
@@ -66,7 +72,8 @@ def _rebuild_evals(
                 "evaluated_price": price,
             },
             "technical_score": 0.0,
-            "passed_legality": bool(tieu_chi) and all(e.ket_qua != "không đạt" for e in tieu_chi),
+            "passed_legality": bool(tieu_chi) and all(
+                e.ket_qua in _KET_QUA_HOP_LE for e in tieu_chi),
         }
 
     return vendor_names, evals
@@ -108,7 +115,7 @@ async def generate_report(
             models.HsdtVerdict.eval_id == models.HsdtCriterionEval.id,
         ).where(
             models.HsdtCriterionEval.package_id == package_id,
-            models.HsdtVerdict.ket_qua == "lỗi",
+            models.HsdtVerdict.ket_qua == KET_QUA_LOI,
             models.HsdtVerdict.overridden.is_(False),
         )
     )

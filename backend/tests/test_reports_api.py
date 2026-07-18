@@ -114,3 +114,33 @@ def test_export_blocked_when_unresolved_error(client, db_session):
     r = client.post(f"/api/v1/packages/{pid}/reports?loai=excel")
     assert r.status_code == 409
     assert "ai lỗi" in r.json()["error"].lower()
+
+
+def test_passed_legality_chi_dat_va_khong_ap_dung(client, db_session):
+    """Hợp lệ CHỈ khi mọi tiêu chí 'đạt' hoặc 'không áp dụng'.
+
+    'cần làm rõ'/'thiếu hồ sơ'/'lỗi' = CHƯA kết luận được -> không được coi là hợp lệ.
+    """
+    from routers.reports import _rebuild_evals
+    import models
+
+    pid, vid = _package(client)
+    pkg = db_session.get(models.ProcurementPackage, pid)
+
+    def _passed(*ket_quas: str) -> bool:
+        for e in db_session.query(models.HsdtCriterionEval).filter_by(package_id=pid).all():
+            db_session.delete(e)
+        db_session.commit()
+        for kq in ket_quas:
+            _seed_verdict(db_session, pid, vid, kq)
+        db_session.expire_all()
+        return _rebuild_evals(pkg, db_session)[1][vid]["passed_legality"]
+
+    assert _passed("đạt") is True
+    assert _passed("đạt", "không áp dụng") is True
+    assert _passed("không áp dụng") is True
+    assert _passed("đạt", "cần làm rõ") is False
+    assert _passed("cần làm rõ") is False
+    assert _passed("thiếu hồ sơ") is False
+    assert _passed("lỗi") is False
+    assert _passed("đạt", "không đạt") is False
