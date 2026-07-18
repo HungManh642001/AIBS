@@ -31,6 +31,10 @@ from experiment.evaluate.schema import (
 
 MA_SO = "DEMO-2026-001"
 
+# Mã áp dụng của rubric là mã kỹ thuật ('lien_danh'), KHÁC hằng hình thức nhà thầu ('liên danh').
+# Backend canon_hinh_thuc() nhận cả hai, nhưng Select trên giao diện khớp theo mã kỹ thuật.
+AP_DUNG_LIEN_DANH = "lien_danh"
+
 
 def _pdf(lines: list[str]) -> bytes:
     """PDF text 1 trang — đủ để giao diện có file thật để hiện/tải."""
@@ -198,7 +202,7 @@ def seed(reset: bool = False, with_error: bool = False) -> None:
             "yeu_cau": "Có chữ ký và đóng dấu", "nguon": NG1},
            {"ten": "Thành viên liên danh cùng ký theo thỏa thuận",
             "ho_so": "thoa_thuan_lien_danh", "yeu_cau": "Đúng phân công trong thỏa thuận",
-            "nguon": NG1, "ap_dung": HINH_THUC_LIEN_DANH}])
+            "nguon": NG1, "ap_dung": AP_DUNG_LIEN_DANH}])
     _crit(db, pid, 1, "Bảo đảm dự thầu",
           "Bảo đảm dự thầu phải có giá trị và thời hạn hiệu lực đáp ứng yêu cầu của HSMT.",
           ["bao_dam_du_thau"], True,
@@ -236,10 +240,10 @@ def seed(reset: bool = False, with_error: bool = False) -> None:
           ["thoa_thuan_lien_danh"], True,
           [{"ten": "Phân định trách nhiệm từng thành viên", "ho_so": "thoa_thuan_lien_danh",
             "yeu_cau": "Ghi rõ phần việc và tỷ lệ", "nguon": "E-CDNT 11.3",
-            "ap_dung": HINH_THUC_LIEN_DANH},
+            "ap_dung": AP_DUNG_LIEN_DANH},
            {"ten": "Đủ chữ ký các thành viên", "ho_so": "thoa_thuan_lien_danh",
             "yeu_cau": "Có chữ ký đại diện hợp pháp mỗi bên", "nguon": "E-CDNT 11.3",
-            "ap_dung": HINH_THUC_LIEN_DANH}])
+            "ap_dung": AP_DUNG_LIEN_DANH}])
 
     # ---- Kết quả đã chấm ----
     HS_AP = [{"loai_ho_so": "don_du_thau", "files": ["don_du_thau_an_phat.pdf"], "n_trang": 1},

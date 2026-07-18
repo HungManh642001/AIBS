@@ -27,3 +27,17 @@ export function useArtifactTypes(): ArtifactType[] {
   }, []);
   return types;
 }
+
+/** Nhãn tiếng Việt cho mã loại hồ sơ. Mã kỹ thuật (don_du_thau) KHÔNG được lọt ra giao diện. */
+export function useArtifactLabel(): (code: string) => string {
+  const types = useArtifactTypes();
+  return (code: string) => types.find((t) => t.value === code)?.label || code;
+}
+
+/** Nhãn nhóm tiêu chí (cột `nhom` của rubric). */
+export const NHOM_LABEL: Record<string, string> = {
+  hop_le: "Tính hợp lệ",
+  nang_luc: "Năng lực",
+  ky_thuat: "Kỹ thuật",
+  tai_chinh: "Tài chính",
+};

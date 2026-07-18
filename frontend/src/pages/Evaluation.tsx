@@ -4,6 +4,7 @@ import { ArrowLeftOutlined, DownloadOutlined } from "@ant-design/icons";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, unwrap } from "../api/client";
 import type { CriterionEval, EvalResultsPayload, Verdict, VendorEval } from "../api/types";
+import { useArtifactLabel } from "../api/artifacts";
 import Loader from "../components/Loader";
 
 const KQ_OPTS = [
@@ -14,15 +15,17 @@ const KQ_OPTS = [
 ];
 
 function pillClass(kq: string): string {
-  if (kq === "đạt") return "PASS";
-  if (kq === "không đạt") return "FAIL";
-  if (kq === "lỗi") return "ERROR";
-  if (kq === "không áp dụng") return "default"; // trung tính (xám) — khác cam "cần làm rõ"
-  return "PARTIAL"; // cần làm rõ | thiếu hồ sơ
+  if (kq === "đạt") return "dat";
+  if (kq === "không đạt") return "khong-dat";
+  if (kq === "lỗi") return "loi";
+  if (kq === "không áp dụng") return "khong-ap-dung";   // trung tính (xám), khác cam "cần làm rõ"
+  return "can-lam-ro";   // cần làm rõ | thiếu hồ sơ
 }
 
 function ResultPill({ kq }: { kq: string }) {
-  const label = kq === "lỗi" ? "AI LỖI" : kq.toUpperCase();
+  // Không viết hoa: "CẦN LÀM RÕ" là thứ được quét mắt nhiều nhất trang này, mà viết hoa tiếng Việt
+  // làm dấu bó sát và chậm đọc. Hoa đầu câu là đủ để tách khỏi tên tiêu chí.
+  const label = kq === "lỗi" ? "Lỗi AI" : kq.charAt(0).toUpperCase() + kq.slice(1);
   return <span className={`verdict-result-pill ${pillClass(kq)}`}>{label}</span>;
 }
 
@@ -33,14 +36,14 @@ function filesOf(v: VendorEval): Record<string, string[]> {
   return m;
 }
 
-function nguonHsdt(vd: Verdict, files: Record<string, string[]>): string {
+function nguonHsdt(vd: Verdict, files: Record<string, string[]>, nhan: (c: string) => string): string {
   const loais = vd.nguon_doc && vd.nguon_doc.length > 0 ? vd.nguon_doc : [vd.hsdt_kiem_tra];
   const parts = loais.filter(Boolean).map((t) => {
     const fs = files[t];
-    return fs && fs.length ? `${t} (${fs.join(", ")})` : t;
+    return fs && fs.length ? `${nhan(t)} — ${fs.join(", ")}` : nhan(t);
   });
-  const tr = vd.trang?.length ? `tr.${vd.trang.join(",")}` : "tr.(không nêu)";
-  return `${parts.join("; ")} ${tr}`;
+  const tr = vd.trang?.length ? `tr.${vd.trang.join(",")}` : "không nêu trang";
+  return `${parts.join("; ")} · ${tr}`;
 }
 
 function VerdictTable({ verdicts, files, onOverride }: {
@@ -48,42 +51,45 @@ function VerdictTable({ verdicts, files, onOverride }: {
   files: Record<string, string[]>;
   onOverride: (id: number, payload: Record<string, unknown>) => void;
 }) {
+  const nhan = useArtifactLabel();
   return (
     <Table<Verdict>
       rowKey="id"
       dataSource={verdicts}
       pagination={false}
       size="small"
-      scroll={{ x: 1240 }}
+      scroll={{ x: 1020 }}
       columns={[
         {
-          title: "Nội dung kiểm tra", width: 220,
+          title: "Nội dung kiểm tra", width: 230,
           render: (_, v) => (
             <div>
               <div style={{ fontWeight: 600 }}>{v.noi_dung_kiem_tra}</div>
-              <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>HSDT: {v.hsdt_kiem_tra}</div>
+              <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+                Hồ sơ: {nhan(v.hsdt_kiem_tra)}
+              </div>
             </div>
           ),
         },
         {
-          title: "Chuẩn HSMT", width: 210,
+          title: "Chuẩn theo HSMT", width: 210,
           render: (_, v) => (
             <div>
               <div>{v.thong_tin_bo_sung || <span style={{ color: "var(--ink-muted)" }}>—</span>}</div>
               {v.nguon_hsmt && (
                 <div className="mono" style={{ fontSize: 12, color: "var(--ink-muted)" }}>
-                  điều khoản: {v.nguon_hsmt}
+                  {v.nguon_hsmt}
                 </div>
               )}
             </div>
           ),
         },
         {
-          title: "Kết quả", width: 190,
+          title: "Kết quả", width: 185,
           render: (_, v) => (
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <Select
-                size="small" style={{ width: 140 }} value={v.ket_qua} options={KQ_OPTS}
+                size="small" style={{ width: 150 }} value={v.ket_qua} options={KQ_OPTS}
                 onChange={(kq) => onOverride(v.id, { ket_qua: kq })}
               />
               {v.overridden && <Tag color="blue">đã sửa</Tag>}
@@ -91,23 +97,25 @@ function VerdictTable({ verdicts, files, onOverride }: {
           ),
         },
         {
-          title: "Bằng chứng (HSDT)", width: 280,
+          // Độ tin gộp vào đây thay vì đứng cột riêng: nó là thuộc tính CỦA bằng chứng, tách ra
+          // vừa tốn 66px vừa bắt mắt nhảy ngang để ghép lại hai thứ vốn đi cùng nhau.
+          title: "Bằng chứng trong HSDT", width: 300,
           render: (_, v) => (
             <div>
               <div>{v.bang_chung || <span style={{ color: "var(--ink-muted)" }}>—</span>}</div>
               <div className="mono" style={{ fontSize: 12, color: "var(--ink-muted)" }}>
-                {nguonHsdt(v, files)}
+                {nguonHsdt(v, files, nhan)}
+                {v.do_tin > 0 && <> · độ tin {v.do_tin.toFixed(2)}</>}
               </div>
             </div>
           ),
         },
-        { title: "Độ tin", dataIndex: "do_tin", width: 66,
-          render: (d: number) => <span className="mono">{d.toFixed(2)}</span> },
         {
-          title: "Ghi chú", width: 200,
+          title: "Ghi chú của chuyên gia", width: 220,
           render: (_, v) => (
             <Input.TextArea
               size="small" autoSize={{ minRows: 1, maxRows: 4 }} defaultValue={v.ghi_chu}
+              placeholder="Nhận định của bạn…"
               onBlur={(e) => {
                 if (e.target.value !== v.ghi_chu) onOverride(v.id, { ghi_chu: e.target.value });
               }}
@@ -123,12 +131,14 @@ function SummaryChips({ v }: { v: VendorEval }) {
   const s = v.summary;
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      {/* Số 0 tô màu cảnh báo là nhiễu thị giác: mắt bị kéo về chỗ không có vấn đề gì. Chỉ tô khi
+          thực sự có số đếm. */}
       <Tag>{s.n_tieu_chi} tiêu chí</Tag>
-      <Tag color="green">{s.n_dat} đạt</Tag>
-      <Tag color="red">{s.n_khong_dat} không đạt</Tag>
-      <Tag color="orange">{s.n_can_lam_ro} cần làm rõ</Tag>
+      <Tag color={s.n_dat > 0 ? "green" : undefined}>{s.n_dat} đạt</Tag>
+      <Tag color={s.n_khong_dat > 0 ? "red" : undefined}>{s.n_khong_dat} không đạt</Tag>
+      <Tag color={s.n_can_lam_ro > 0 ? "orange" : undefined}>{s.n_can_lam_ro} cần làm rõ</Tag>
       {(s.n_khong_ap_dung ?? 0) > 0 && <Tag>{s.n_khong_ap_dung} không áp dụng</Tag>}
-      {s.n_loai > 0 && <Tag color="volcano">⛔ {s.n_loai} tiêu chí loại</Tag>}
+      {s.n_loai > 0 && <Tag color="volcano">{s.n_loai} tiêu chí bị loại</Tag>}
     </div>
   );
 }
@@ -148,9 +158,10 @@ function HinhThucBanner({ v }: { v: VendorEval }) {
         <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>“{p.bang_chung}”</div>
       )}
       {p.mau_thuan && (
-        <div style={{ marginTop: 6, padding: "8px 12px", borderRadius: 6,
+        <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 6,
                       background: "var(--partial-bg)", color: "var(--partial)", fontSize: 13 }}>
-          ⚠️ MÂU THUẪN hình thức: {p.ghi_chu} — mọi nội dung liên danh VẪN được chấm đầy đủ; cần xác minh.
+          <b>Mâu thuẫn hình thức dự thầu.</b> {p.ghi_chu}. Các nội dung dành cho liên danh vẫn được
+          chấm đầy đủ — hãy xác minh trước khi kết luận.
         </div>
       )}
     </div>
@@ -170,12 +181,11 @@ function VendorSection({ v, onOverride }: {
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, padding: "16px 20px",
                     borderBottom: "1px solid var(--line)", background: "var(--surface)" }}>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.06em",
-                        textTransform: "uppercase", color: "var(--ink-muted)", marginBottom: 2 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink-muted)", marginBottom: 2 }}>
             Nhà thầu
           </div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)" }}>
-            {v.ten} {biLoai && <Tag color="volcano" style={{ marginLeft: 8 }}>Bị loại (tiên quyết)</Tag>}
+          <div style={{ fontSize: 17, fontWeight: 700, color: "var(--ink)" }}>
+            {v.ten} {biLoai && <Tag color="volcano" style={{ marginLeft: 8 }}>Bị loại — trượt tiêu chí tiên quyết</Tag>}
           </div>
           <HinhThucBanner v={v} />
         </div>
@@ -195,8 +205,8 @@ function VendorSection({ v, onOverride }: {
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <ResultPill kq={c.ket_qua} />
                   <span style={{ fontWeight: 600 }}>{c.ten}</span>
-                  {c.tien_quyet && <Tag>tiên quyết</Tag>}
-                  {c.loai && <Tag color="volcano">⛔ LOẠI</Tag>}
+                  {c.tien_quyet && <Tag>Tiên quyết</Tag>}
+                  {c.loai && <Tag color="volcano">Bị loại</Tag>}
                 </div>
               ),
               children: (
@@ -215,8 +225,11 @@ function VendorSection({ v, onOverride }: {
 
         {phatHien.length > 0 && (
           <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 8 }}>
-              🔎 Phát hiện của hệ thống (ngoài checklist HSMT)
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", marginBottom: 2 }}>
+              Phát hiện thêm của hệ thống
+            </div>
+            <div style={{ fontSize: 12.5, color: "var(--ink-muted)", marginBottom: 8 }}>
+              Những điểm nằm ngoài danh mục tiêu chí của HSMT, không tính vào kết quả tổng hợp.
             </div>
             <VerdictTable verdicts={phatHien} files={files} onOverride={onOverride} />
           </div>
@@ -246,7 +259,7 @@ export default function Evaluation() {
   const onOverride = async (verdictId: number, payload: Record<string, unknown>) => {
     try {
       await api.put(`/evaluation/verdict/${verdictId}/override`, payload);
-      message.success("Đã cập nhật");
+      message.success("Đã lưu chỉnh sửa của chuyên gia");
       load();
     } catch (e: any) { message.error(e.message); }
   };
@@ -285,13 +298,13 @@ export default function Evaluation() {
       </Button>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 }}>
         <div>
-          <span className="page-eyebrow">Kết quả đánh giá</span>
-          <h1 className="page-title" style={{ marginBottom: 0 }}>Phán quyết có dẫn chứng</h1>
+          <span className="page-eyebrow">Gói thầu</span>
+          <h1 className="page-title" style={{ marginBottom: 0 }}>Kết quả đánh giá</h1>
         </div>
-        <Tooltip title={hasError ? "Còn verdict AI lỗi — hãy xử lý trước khi xuất" : ""}>
+        <Tooltip title={hasError ? "Còn kết quả AI báo lỗi chưa xử lý — hãy chỉnh lại trước khi xuất báo cáo" : ""}>
           <span style={{ display: "inline-flex", gap: 8 }}>
-            <Button icon={<DownloadOutlined />} disabled={hasError} onClick={() => genReport("word")}>Xuất Word (cả gói)</Button>
-            <Button icon={<DownloadOutlined />} disabled={hasError} onClick={() => genReport("excel")}>Xuất Excel (cả gói)</Button>
+            <Button icon={<DownloadOutlined />} disabled={hasError} onClick={() => genReport("word")}>Báo cáo Word</Button>
+            <Button icon={<DownloadOutlined />} disabled={hasError} onClick={() => genReport("excel")}>Báo cáo Excel</Button>
           </span>
         </Tooltip>
       </div>
@@ -299,7 +312,7 @@ export default function Evaluation() {
       {vendors.length === 0 ? (
         <div style={{ textAlign: "center", padding: "60px 0", background: "var(--paper)",
                       border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink-muted)", fontSize: 14 }}>
-          Chưa có kết quả. Hãy chạy đánh giá trước.
+          Chưa có kết quả đánh giá. Quay lại gói thầu, chọn một nhà thầu rồi bấm “Chạy đánh giá”.
         </div>
       ) : (
         <Tabs activeKey={active} onChange={(k) => setSp({ vendor: k }, { replace: true })}
@@ -325,27 +338,30 @@ export default function Evaluation() {
 // ── Bảng tổng hợp so sánh nhà thầu (ra quyết định nhanh) ───────────────────────────────
 function SummaryTable({ vendors, onOpen }: { vendors: VendorEval[]; onOpen: (vid: number) => void }) {
   return (
+    <div style={{ border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden" }}>
     <Table<VendorEval> rowKey="vendor_id" dataSource={vendors} pagination={false} size="small"
       onRow={(v) => ({ onClick: () => onOpen(v.vendor_id), style: { cursor: "pointer" } })}
       columns={[
         { title: "Nhà thầu", render: (_, v) => <span style={{ fontWeight: 600 }}>{v.ten}</span> },
         { title: "Hình thức", width: 120,
           render: (_, v) => <span style={{ color: "var(--ink-muted)" }}>{v.hinh_thuc || v.vendor_profile?.hinh_thuc || "—"}</span> },
-        { title: "Kết quả", width: 130, render: (_, v) =>
+        { title: "Kết luận", width: 140, render: (_, v) =>
             v.criteria.some((c) => c.loai)
-              ? <Tag color="volcano">⛔ BỊ LOẠI</Tag>
+              ? <Tag color="volcano">Bị loại</Tag>
               : v.criteria.length === 0
-                ? <Tag>chưa chấm</Tag>
-                : <Tag color="green">HỢP LỆ</Tag> },
-        { title: "Đạt", width: 60, align: "center", render: (_, v) => v.summary.n_dat },
-        { title: "Không đạt", width: 90, align: "center",
+                ? <Tag>Chưa chấm</Tag>
+                : <Tag color="green">Hợp lệ</Tag> },
+        { title: "Đạt", width: 70, align: "center", render: (_, v) => v.summary.n_dat },
+        { title: "Không đạt", width: 100, align: "center",
           render: (_, v) => v.summary.n_khong_dat > 0
             ? <span style={{ color: "var(--fail)", fontWeight: 600 }}>{v.summary.n_khong_dat}</span> : 0 },
-        { title: "Cần làm rõ", width: 90, align: "center",
+        { title: "Cần làm rõ", width: 105, align: "center",
           render: (_, v) => v.summary.n_can_lam_ro > 0
             ? <span style={{ color: "var(--partial)", fontWeight: 600 }}>{v.summary.n_can_lam_ro}</span> : 0 },
-        { title: "N/A", width: 60, align: "center", render: (_, v) => v.summary.n_khong_ap_dung ?? 0 },
-        { title: "", width: 90, render: (_, v) => <a onClick={() => onOpen(v.vendor_id)}>Chi tiết →</a> },
+        { title: "Không áp dụng", width: 120, align: "center",
+          render: (_, v) => v.summary.n_khong_ap_dung ?? 0 },
+        { title: "", width: 100, render: (_, v) => <a onClick={() => onOpen(v.vendor_id)}>Chi tiết →</a> },
       ]} />
+    </div>
   );
 }

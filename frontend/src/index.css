@@ -27,12 +27,22 @@
 /* ── Base ───────────────────────────────────────────────── */
 * { box-sizing: border-box; }
 
+/* Tiếng Việt cần nhiều leading hơn tiếng Anh: dấu xếp cả trên (ố) lẫn dưới (ệ) thân chữ nên
+   line-height mặc định của AntD (1.5715) làm dấu hai dòng chạm nhau trong bảng dày. */
 body {
   font-family: var(--font-sans);
   background: var(--surface);
   color: var(--ink);
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Giới hạn bề ngang vùng nội dung: dòng tiếng Việt dài quá ~120 ký tự thì mắt khó bắt dòng kế
+   tiếp, còn bảng thì giãn vô tội vạ trên màn siêu rộng.
+   PHẢI đặt trên thẻ bọc BÊN TRONG <main>, không đặt thẳng lên <main>: main là flex item, mà
+   `margin:0 auto` trên trục ngang của flex item sẽ tắt `align-self: stretch` -> nó co theo nội
+   dung rộng nhất (thanh tab nhiều nhà thầu) và tràn ra ngoài viewport. */
+.app-max { max-width: 1560px; margin: 0 auto; }
 
 /* ── App shell ──────────────────────────────────────────── */
 .abes-sider {
@@ -60,13 +70,15 @@ body {
   line-height: 1;
 }
 
+/* KHÔNG viết hoa tiếng Việt ở mọi vai trò nhãn: dấu bị đẩy quá cap-height nên bó sát dòng trên,
+   và letter-spacing thành răng cưa vì bề rộng dấu không đều (ĐANG XỬ LÝ, CẦN LÀM RÕ). Vai trò
+   "nhãn phụ" giữ bằng cỡ chữ + độ đậm + màu là đủ. */
 .abes-logo-sub {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(255,255,255,0.55);
-  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: rgba(255,255,255,0.6);
+  margin-top: 4px;
 }
 
 .abes-nav {
@@ -125,20 +137,20 @@ body {
 
 /* ── Page titles ────────────────────────────────────────── */
 .page-title {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 700;
   color: var(--ink);
-  letter-spacing: -0.2px;
+  letter-spacing: -0.3px;
+  line-height: 1.3;
   margin: 0 0 20px;
 }
 
 .page-eyebrow {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
   color: var(--teal);
-  margin-bottom: 2px;
+  margin-bottom: 3px;
   display: block;
 }
 
@@ -173,42 +185,53 @@ body {
 }
 
 .stat-label {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--ink-muted);
   margin-top: 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.01em;
 }
 
-/* ── Verdict result pill (dùng ở trang Kết quả đánh giá) ── */
+/* ── Pill kết quả (trang Kết quả đánh giá) ───────────────
+   Bề rộng cố định để tên tiêu chí thẳng hàng theo cột dọc — quét mắt xuống danh sách nhanh hơn
+   nhiều so với pill co giãn theo độ dài chữ ("Đạt" vs "Không áp dụng"). */
 .verdict-result-pill {
   font-family: var(--font-sans);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 3px 10px;
   border-radius: 4px;
-  text-transform: uppercase;
   flex-shrink: 0;
   white-space: nowrap;
+  display: inline-block;
+  min-width: 104px;
+  text-align: center;
 }
 
-.verdict-result-pill.PASS    { background: var(--pass-bg);    color: var(--pass); }
-.verdict-result-pill.FAIL    { background: var(--fail-bg);    color: var(--fail); }
-.verdict-result-pill.PARTIAL { background: var(--partial-bg); color: var(--partial); }
-.verdict-result-pill.default { background: #F0F0F0; color: #666; }
-.verdict-result-pill.ERROR   { background: #FBE3E1; color: var(--seal); font-weight: 700; }
+.verdict-result-pill.dat          { background: var(--pass-bg);    color: var(--pass); }
+.verdict-result-pill.khong-dat    { background: var(--fail-bg);    color: var(--fail); }
+.verdict-result-pill.can-lam-ro   { background: var(--partial-bg); color: var(--partial); }
+.verdict-result-pill.khong-ap-dung{ background: #F0F0F0;           color: #6B7280; }
+.verdict-result-pill.loi          { background: #FBE3E1;           color: var(--seal); }
 
 /* ── AntD global overrides ──────────────────────────────── */
 .ant-table-thead > tr > th {
   background: var(--surface) !important;
   color: var(--ink-muted) !important;
-  font-size: 11px !important;
+  font-size: 12.5px !important;
   font-weight: 600 !important;
-  letter-spacing: 0.04em !important;
-  text-transform: uppercase !important;
+  letter-spacing: 0.01em !important;
+  white-space: nowrap;
   border-bottom: 1px solid var(--line) !important;
+}
+
+/* Bảng cuộn ngang: viền phải mờ dần báo "còn nội dung bên phải". Không có tín hiệu này thì cột
+   cuối bị cắt trông như lỗi hiển thị — người dùng không biết là cuộn được. */
+.ant-table-content { scrollbar-width: thin; }
+.ant-table-content::-webkit-scrollbar { height: 10px; }
+.ant-table-content::-webkit-scrollbar-thumb {
+  background: #C9CFC8; border-radius: 5px;
 }
 
 .ant-card {

@@ -24,9 +24,13 @@ const isPdf = (f: File) => f.name.toLowerCase().endsWith(".pdf");
 function OcrBadge({ st }: { st: string }) {
   const err = st.startsWith("loi");
   const ok = st === "hoan_thanh";
-  return <Tag color={ok ? "green" : err ? "red" : "orange"}>
-    {ok ? "OCR xong" : err ? "OCR lỗi" : "đang xử lý"}
-  </Tag>;
+  // "OCR" là thuật ngữ kỹ thuật, lại sai với PDF text (không hề OCR). Nói theo việc người dùng
+  // quan tâm: hệ thống đã đọc được file hay chưa.
+  return <Tooltip title={err ? st : ""}>
+    <Tag color={ok ? "green" : err ? "red" : "orange"}>
+      {ok ? "Đã đọc" : err ? "Đọc lỗi" : "Đang đọc"}
+    </Tag>
+  </Tooltip>;
 }
 
 // ── Bảng hồ sơ (của 1 nhà thầu hoặc dùng chung) — đổi loại tại chỗ + xóa ───────────────
@@ -198,18 +202,18 @@ export default function PackageDetail() {
   const chungTab = (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div>
-        <div className="page-eyebrow">HSMT — hồ sơ mời thầu (bóc tiêu chí)</div>
+        <div className="page-eyebrow">Hồ sơ mời thầu (HSMT) — nguồn để trích tiêu chí</div>
         {hsmt
           ? <DocRow d={hsmt} onDelete={deleteDoc} />
           : <div style={{ marginTop: 8 }}><UploadPlain label="Tải HSMT" onUpload={(f) => uploadDoc(f, "HSMT")} /></div>}
       </div>
       <div>
-        <div className="page-eyebrow">TBMT — thông báo mời thầu (mốc đóng/mở thầu)</div>
+        <div className="page-eyebrow">Thông báo mời thầu (TBMT) — mốc đóng/mở thầu</div>
         {tbmt.map((d) => <DocRow key={d.id} d={d} onDelete={deleteDoc} />)}
         <div style={{ marginTop: 8 }}><UploadPlain label="Tải TBMT" onUpload={(f) => uploadDoc(f, "TBMT")} /></div>
       </div>
       <div>
-        <div className="page-eyebrow">Dùng chung cả gói (webform / kết quả mở thầu…)</div>
+        <div className="page-eyebrow">Tài liệu dùng chung — áp cho mọi nhà thầu</div>
         <DocTable docs={shared} artifactTypes={artifactTypes} onChangeType={changeDocType} onDelete={deleteDoc} />
         <UploadDoc artifactTypes={artifactTypes} label="Tải tài liệu dùng chung"
           onUpload={(f, at) => uploadDoc(f, "HSDT", undefined, at)} />
@@ -228,13 +232,8 @@ export default function PackageDetail() {
         <Select size="small" style={{ minWidth: 170 }} allowClear placeholder="Hình thức: tự dò"
           value={v.hinh_thuc || undefined} options={HINH_THUC_OPTS}
           onChange={(val) => setHinhThuc(v.id, val ?? "")} />
-        <Button size="small" icon={<EditOutlined />} onClick={() => setModal(v)}>Sửa</Button>
-        <Popconfirm title="Xóa nhà thầu này? (kèm hồ sơ & kết quả đánh giá)"
-          onConfirm={() => deleteVendor(v.id)} okText="Xóa" cancelText="Hủy">
-          <Button size="small" danger icon={<DeleteOutlined />}>Xóa</Button>
-        </Popconfirm>
-        <Tooltip title={!hasCriteria ? "Chưa có tiêu chí — hãy bóc & chốt tiêu chí trước"
-          : vendorDocs(v.id).length === 0 ? "Nhà thầu chưa có hồ sơ HSDT" : ""}>
+        <Tooltip title={!hasCriteria ? "Chưa có tiêu chí — hãy trích và chốt tiêu chí trước"
+          : vendorDocs(v.id).length === 0 ? "Nhà thầu này chưa có hồ sơ nào" : ""}>
           <span>
             <Button size="small" type="primary" loading={evaluating === v.id}
               disabled={evaluating !== null || !hasCriteria || vendorDocs(v.id).length === 0}
@@ -243,6 +242,16 @@ export default function PackageDetail() {
         </Tooltip>
         <Button size="small" onClick={() => nav(`/packages/${id}/evaluation?vendor=${v.id}`)}>
           Xem kết quả</Button>
+        {/* Thao tác phá hủy tách khỏi nút chính bằng vạch ngăn — tránh bấm nhầm "Xóa" khi định
+            bấm "Chạy đánh giá". */}
+        <span style={{ width: 1, height: 20, background: "var(--line)", margin: "0 2px" }} />
+        <Button size="small" icon={<EditOutlined />} onClick={() => setModal(v)}>Sửa</Button>
+        <Popconfirm title="Xóa nhà thầu này?"
+          description="Xóa cả hồ sơ đã tải và kết quả đánh giá của nhà thầu."
+          onConfirm={() => deleteVendor(v.id)} okText="Xóa" cancelText="Hủy"
+          okButtonProps={{ danger: true }}>
+          <Button size="small" danger icon={<DeleteOutlined />}>Xóa</Button>
+        </Popconfirm>
       </div>
       <DocTable docs={vendorDocs(v.id)} artifactTypes={artifactTypes}
         onChangeType={changeDocType} onDelete={deleteDoc} />
@@ -281,14 +290,14 @@ export default function PackageDetail() {
           <h1 className="page-title" style={{ marginBottom: 0 }}>{pkg.ten}</h1>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Button onClick={() => nav(`/packages/${id}/rubric`)}>Tiêu chí đánh giá</Button>
-          <Button type="primary" onClick={() => nav(`/packages/${id}/evaluation`)}>Xem kết quả đánh giá</Button>
+          <Button onClick={() => nav(`/packages/${id}/rubric`)}>Tiêu chuẩn đánh giá</Button>
+          <Button type="primary" onClick={() => nav(`/packages/${id}/evaluation`)}>Xem kết quả</Button>
         </div>
       </div>
 
       <Card style={{ marginBottom: 16 }}>
         <Steps size="small" current={step} items={[
-          { title: "Tải HSMT" }, { title: "Bóc & chốt tiêu chí" }, { title: "Tải HSDT nhà thầu" },
+          { title: "Tải HSMT" }, { title: "Chốt tiêu chí" }, { title: "Tải hồ sơ nhà thầu" },
           { title: "Chạy đánh giá" }, { title: "Xem kết quả" },
         ]} />
       </Card>

@@ -8,7 +8,7 @@ import StatusTag from "../components/StatusTag";
 import Loader from "../components/Loader";
 
 const STATUS_LABEL: Record<string, string> = {
-  khoi_tao: "Khởi tạo", dang_xu_ly: "Đang xử lý", cho_review: "Chờ review", hoan_thanh: "Hoàn thành",
+  khoi_tao: "Khởi tạo", dang_xu_ly: "Đang xử lý", cho_review: "Chờ rà soát", hoan_thanh: "Hoàn thành",
 };
 
 export default function Packages() {
@@ -57,7 +57,6 @@ export default function Packages() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20 }}>
         <div>
-          <span className="page-eyebrow">Quản lý</span>
           <h1 className="page-title" style={{ marginBottom: 0 }}>Gói thầu</h1>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>

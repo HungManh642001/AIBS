@@ -97,7 +97,9 @@ export default function App() {
         <AiBadge health={health} />
       </Layout.Sider>
 
-      <Layout style={{ marginLeft: 220 }}>
+      {/* minWidth:0 để cột nội dung co được: là flex item, mặc định min-width:auto khiến nó nở
+          theo nội dung rộng nhất (thanh tab nhiều nhà thầu) và đẩy tràn ngang cả trang. */}
+      <Layout style={{ marginLeft: 220, minWidth: 0 }}>
         <Layout.Header className="abes-header">
           <Breadcrumb items={crumbs} />
           <span style={{ fontSize: 11, color: "var(--ink-muted)", fontFamily: "var(--font-mono)" }}>
@@ -106,13 +108,15 @@ export default function App() {
         </Layout.Header>
 
         <Layout.Content className="abes-content">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/packages" element={<Packages />} />
-            <Route path="/packages/:id" element={<PackageDetail />} />
-            <Route path="/packages/:id/evaluation" element={<Evaluation />} />
-            <Route path="/packages/:id/rubric" element={<Rubric />} />
-          </Routes>
+          <div className="app-max">
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/packages" element={<Packages />} />
+              <Route path="/packages/:id" element={<PackageDetail />} />
+              <Route path="/packages/:id/evaluation" element={<Evaluation />} />
+              <Route path="/packages/:id/rubric" element={<Rubric />} />
+            </Routes>
+          </div>
         </Layout.Content>
       </Layout>
     </Layout>

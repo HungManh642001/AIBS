@@ -1,7 +1,7 @@
 const MAP: Record<string, { bg: string; color: string; label: string }> = {
   khoi_tao:   { bg: "#F0F0F0", color: "#666",          label: "Khởi tạo" },
   dang_xu_ly: { bg: "#FEF4E3", color: "#C77D11",       label: "Đang xử lý" },
-  cho_review: { bg: "#E6F4F2", color: "#0F6E62",       label: "Chờ review" },
+  cho_review: { bg: "#E6F4F2", color: "#0F6E62",       label: "Chờ rà soát" },
   hoan_thanh: { bg: "#EAF6EF", color: "#2E7D54",       label: "Hoàn thành" },
 };
 
@@ -10,12 +10,11 @@ export default function StatusTag({ status }: { status: string }) {
   return (
     <span style={{
       display: "inline-block",
-      padding: "2px 9px",
+      padding: "2px 10px",
       borderRadius: 4,
-      fontSize: 11,
+      fontSize: 12,
       fontWeight: 600,
-      letterSpacing: "0.04em",
-      textTransform: "uppercase" as const,
+      letterSpacing: "0.01em",
       background: it.bg,
       color: it.color,
     }}>

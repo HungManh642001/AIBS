@@ -37,22 +37,25 @@ export default function Dashboard() {
 
   return (
     <div>
-      <span className="page-eyebrow">Tổng quan</span>
-      <h1 className="page-title">Trạng thái hệ thống</h1>
+      {/* Không đặt eyebrow "ABES" ở đây: logo sidebar đã nói đúng câu đó rồi. Tiêu đề dùng chung
+          một từ với breadcrumb và menu ("Tổng quan") để người dùng nhận ra mình đang ở đâu. */}
+      <h1 className="page-title">Tổng quan</h1>
 
       <Loader loading={loading} error={err} onRetry={load}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 32 }}>
-          <StatCard label="Tổng gói thầu" value={pkgs.length} accent="teal" to="/packages" />
+          <StatCard label="Tất cả gói thầu" value={pkgs.length} accent="teal" to="/packages" />
           <StatCard label="Đang xử lý" value={byStatus("dang_xu_ly")} accent="partial" to="/packages?trang_thai=dang_xu_ly" />
-          <StatCard label="Chờ review" value={byStatus("cho_review")} accent="ink" to="/packages?trang_thai=cho_review" />
+          <StatCard label="Chờ rà soát" value={byStatus("cho_review")} accent="ink" to="/packages?trang_thai=cho_review" />
           <StatCard label="Hoàn thành" value={byStatus("hoan_thanh")} accent="pass" to="/packages?trang_thai=hoan_thanh" />
         </div>
 
-        <span className="page-eyebrow">Gói thầu</span>
+        <span className="page-eyebrow">Gói thầu gần đây</span>
         <div style={{ background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 8,
                       overflow: "hidden", marginTop: 8 }}>
           {pkgs.length === 0
-            ? <div style={{ padding: "24px", color: "var(--ink-muted)", textAlign: "center" }}>Chưa có gói thầu nào.</div>
+            ? <div style={{ padding: "24px", color: "var(--ink-muted)", textAlign: "center" }}>
+                Chưa có gói thầu nào. Sang mục <Link to="/packages" style={{ color: "var(--teal)" }}>Gói thầu</Link> để tạo gói đầu tiên.
+              </div>
             : pkgs.slice(0, 8).map((p) => (
               <Link key={p.id} to={`/packages/${p.id}`}
                 style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
