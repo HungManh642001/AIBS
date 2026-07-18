@@ -29,3 +29,18 @@ def test_build_embedder_no_network():
 
     emb = build_embedder(_S())
     assert getattr(emb, "model_name", None) == "bge-m3"
+
+
+def test_build_embedder_bao_loi_ngay_o_che_do_mock():
+    """ABES_AI_MOCK=1: raise NGAY thay vì để llama_index retry vào proxy chết.
+
+    KHÔNG rơi về DeterministicEmbedding: vector giả -> retrieval giả -> tiêu chí bịa.
+    """
+    import pytest as _pytest
+    from types import SimpleNamespace
+    from experiment.index.embedder import build_embedder
+
+    s = SimpleNamespace(ai_mock=True, ai_embed_model="bge-m3",
+                        ai_base_url="http://localhost:4000/v1", ai_api_key="")
+    with _pytest.raises(RuntimeError, match="mock"):
+        build_embedder(s)

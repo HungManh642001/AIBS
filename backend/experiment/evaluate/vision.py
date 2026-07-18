@@ -43,9 +43,16 @@ async def default_vision_fn(
     system: str, prompt: str, images: list[bytes] = (), validate=None, max_tokens: int | None = None,
 ) -> AiOutcome:
     """Gọi Qwen VL qua LiteLLM proxy (text + ảnh base64). Lỗi -> status='error'."""
+    settings = get_settings()
+    if settings.ai_mock:
+        # Không có mock cho vision: nội dung phụ thuộc ảnh cụ thể, bịa ra là bịa bằng chứng.
+        # Nhưng phải báo NGAY thay vì để người dùng chờ 2x300s timeout khi máy không có proxy.
+        return AiOutcome(status="error", data=None, model="mock",
+                         error="Chế độ mock không đọc được ảnh — cần bật AI thật để chấm HSDT")
+
     import litellm
 
-    settings = get_settings()
+
     model = settings.ai_model
     if "/" not in model:
         model = f"openai/{model}"

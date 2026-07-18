@@ -20,6 +20,11 @@ from experiment.index.schema import FAKE_DIM
 
 def build_embedder(settings: Any) -> OpenAILikeEmbedding:
     """Dense embedder THẬT qua LiteLLM proxy (model `settings.ai_embed_model`)."""
+    if getattr(settings, "ai_mock", False):
+        # KHÔNG rơi về DeterministicEmbedding: vector giả -> retrieval giả -> tiêu chí bịa.
+        # Raise ngay, nếu không llama_index sẽ retry lũy thừa vào proxy không tồn tại (treo phút).
+        raise RuntimeError(
+            "Chế độ mock không tạo được embedding — bóc tiêu chí cần LiteLLM proxy thật")
     return OpenAILikeEmbedding(
         model_name=settings.ai_embed_model,
         api_base=settings.ai_base_url,
