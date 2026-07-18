@@ -1,4 +1,4 @@
-from services.prompts import cot_block, SCALE_DEF
+from services.prompts import cot_block
 
 
 def test_cot_block_demands_reasoning_then_json():
@@ -8,6 +8,7 @@ def test_cot_block_demands_reasoning_then_json():
     assert '{"result":"..."}' in b
 
 
-def test_cot_block_includes_scale_when_given():
-    b = cot_block('{"x":1}', scale=SCALE_DEF)
-    assert "PASS" in b and "FAIL" in b and "PARTIAL" in b
+def test_cot_block_yeu_cau_evidence_truoc_ket_luan():
+    """Ràng buộc chống ảo giác: bắt model dẫn chứng trước khi chốt kết quả."""
+    b = cot_block('{"x":1}')
+    assert "TRƯỚC result" in b

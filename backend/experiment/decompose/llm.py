@@ -18,10 +18,14 @@ async def default_llm_fn(
     prompt: str,
     validate: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     *,
-    mock_key: str = "extract_rubric",
+    mock_key: str = "decompose",
     max_tokens: int | None = None,
 ) -> AiOutcome:
-    """Gọi LLM thật qua proxy. Proxy lỗi -> AiOutcome(status='error') (KHÔNG bịa)."""
+    """Gọi LLM thật qua proxy. Proxy lỗi -> AiOutcome(status='error') (KHÔNG bịa).
+
+    Phân rã tiêu chí KHÔNG có mock hợp lệ (output phụ thuộc HSMT cụ thể) -> chạy với
+    ABES_AI_MOCK=1 sẽ trả status='error' thay vì dữ liệu bịa.
+    """
     return await ai_call(system, prompt, mock_key=mock_key, validate=validate, max_tokens=max_tokens)
 
 

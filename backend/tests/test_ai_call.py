@@ -5,10 +5,20 @@ from services import ai_client
 @pytest.mark.asyncio
 async def test_mock_returns_ok_outcome(monkeypatch):
     monkeypatch.setattr(ai_client.settings, "ai_mock", True)
-    out = await ai_client.ai_call("sys", "p", mock_key="eval_subcheck")
+    out = await ai_client.ai_call("sys", "p", mock_key="validate_artifact")
     assert out.status == "ok"
     assert out.model == "mock"
-    assert out.data["result"] in {"PASS", "FAIL", "PARTIAL"}
+    assert out.data["match"] is True
+
+
+@pytest.mark.asyncio
+async def test_mock_key_khong_ton_tai_tra_error(monkeypatch):
+    """no-silent-mock: mock thiếu dữ liệu -> error, KHÔNG bịa payload sai schema."""
+    monkeypatch.setattr(ai_client.settings, "ai_mock", True)
+    out = await ai_client.ai_call("sys", "p", mock_key="khong_co_that")
+    assert out.status == "error"
+    assert out.data is None
+    assert "khong_co_that" in out.error
 
 
 @pytest.mark.asyncio
@@ -21,7 +31,7 @@ async def test_real_parse_failure_retries_then_errors(monkeypatch):
         return "đây không phải JSON"
 
     monkeypatch.setattr(ai_client, "_litellm_completion", garbage)
-    out = await ai_client.ai_call("sys", "p", mock_key="eval_subcheck")
+    out = await ai_client.ai_call("sys", "p", mock_key="validate_artifact")
     assert out.status == "error"
     assert out.data is None
     assert calls["n"] == 2   # initial + 1 retry
@@ -33,7 +43,7 @@ async def test_real_success_parses_fenced_json(monkeypatch):
     monkeypatch.setattr(ai_client.settings, "ai_mock", False)
     monkeypatch.setattr(ai_client, "_litellm_completion",
                         lambda *a, **k: 'Suy luận...\n```json\n{"result":"PASS","evidence":"ok","page_ref":[1]}\n```')
-    out = await ai_client.ai_call("sys", "p", mock_key="eval_subcheck")
+    out = await ai_client.ai_call("sys", "p", mock_key="validate_artifact")
     assert out.status == "ok"
     assert out.data["result"] == "PASS"
 
@@ -49,5 +59,5 @@ async def test_validate_failure_becomes_error(monkeypatch):
             raise ValueError("thiếu evidence")
         return d
 
-    out = await ai_client.ai_call("sys", "p", mock_key="eval_subcheck", validate=validate)
+    out = await ai_client.ai_call("sys", "p", mock_key="validate_artifact", validate=validate)
     assert out.status == "error"

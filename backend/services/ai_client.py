@@ -25,34 +25,10 @@ else:
         "AI mode = REAL — LiteLLM Proxy base=%s model=%s", settings.ai_base_url, settings.ai_model
     )
 
+# Mock CHỈ phục vụ chạy demo không có proxy. Giữ đúng những key còn đường gọi thật — mock theo
+# schema đã chết là bẫy bịa dữ liệu: bật ABES_AI_MOCK=1 sẽ trả payload mà không nơi nào hiểu.
 MOCK_RESPONSES: dict[str, dict[str, Any]] = {
-    "eval_legality": {"result": "PASS", "score": 100, "evidence": "Đơn dự thầu có chữ ký hợp lệ", "page_ref": [1], "note": "Đầy đủ"},
-    "eval_capacity": {"result": "PASS", "score": 85, "evidence": "Doanh thu 3 năm đạt 1.8 lần giá gói thầu", "page_ref": [4], "note": "Đạt yêu cầu"},
-    "eval_technical": {"result": "PARTIAL", "score": 78, "evidence": "Đáp ứng 88% thông số kỹ thuật", "page_ref": [7], "note": "Thiếu 2 thông số phụ"},
-    "eval_financial": {"result": "PASS", "score": 0, "evidence": "Bảng chào giá đầy đủ 12 hạng mục", "page_ref": [10], "note": "Cần hậu kiểm số học"},
-    "extract_rubric": {
-        "criteria": [
-            {"nhom": "hop_le", "ten": "Đơn dự thầu hợp lệ", "yeu_cau": "Theo mẫu, có chữ ký",
-             "required_artifacts": ["don_du_thau"], "kieu": "pass_fail", "trong_so": 0,
-             "sub_checks": [
-                 {"ten": "Có đơn dự thầu", "check_type": "presence", "thong_so": {}, "required_artifact": "don_du_thau", "blocking": True},
-                 {"ten": "Có chữ ký/đóng dấu", "check_type": "signature_stamp", "thong_so": {}, "required_artifact": "don_du_thau", "blocking": True},
-             ], "proposed_artifacts": []},
-            {"nhom": "hop_le", "ten": "Bảo đảm dự thầu", "yeu_cau": "Giá trị và hiệu lực theo HSMT",
-             "required_artifacts": ["bao_dam_du_thau"], "kieu": "pass_fail", "trong_so": 0,
-             "sub_checks": [
-                 {"ten": "Có bảo đảm dự thầu", "check_type": "presence", "thong_so": {}, "required_artifact": "bao_dam_du_thau", "blocking": True},
-                 {"ten": "Giá trị ≥ ngưỡng", "check_type": "value_threshold",
-                  "thong_so": {"gia_tri_so": 150000000, "don_vi": "VND", "nguon": "BDS", "can_review": False},
-                  "required_artifact": "bao_dam_du_thau", "blocking": True},
-                 {"ten": "Hiệu lực ≥ yêu cầu", "check_type": "date_validity",
-                  "thong_so": {"so_ngay": 120, "nguon": "BDS", "can_review": False},
-                  "required_artifact": "bao_dam_du_thau", "blocking": True},
-             ], "proposed_artifacts": []},
-        ]
-    },
     "validate_artifact": {"match": True, "suggested_type": "", "confidence": 1.0, "note": "Khớp loại khai báo"},
-    "eval_subcheck": {"result": "PASS", "evidence": "Đáp ứng yêu cầu", "page_ref": [1]},
 }
 
 
@@ -98,6 +74,10 @@ async def ai_call(
 ) -> AiOutcome:
     """Gọi AI và trả AiOutcome. Mock CHỈ khi ai_mock=1; chế độ thật lỗi -> status='error'."""
     if settings.ai_mock:
+        if mock_key not in MOCK_RESPONSES:
+            # no-silent-mock: không có mock hợp lệ thì báo lỗi, KHÔNG bịa payload sai schema.
+            return AiOutcome(status="error", data=None, model="mock",
+                             error=f"Chế độ mock không có dữ liệu cho '{mock_key}' — cần bật AI thật")
         data = copy.deepcopy(MOCK_RESPONSES[mock_key])
         if validate is not None:
             data = validate(data)
