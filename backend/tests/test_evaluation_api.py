@@ -229,3 +229,22 @@ def test_evaluate_batch_mot_nha_thau_loi_van_giu_ket_qua_con_lai(client, monkeyp
     by_name = {v["ten"]: v for v in res["vendors"]}
     assert len(by_name["A"]["criteria"]) == 1 and len(by_name["C"]["criteria"]) == 1
     assert by_name["B"]["criteria"] == []
+
+
+def test_evaluate_bao_loi_khi_ho_so_thieu_loai(client, monkeypatch):
+    """Hồ sơ HSDT thiếu loại (dữ liệu cũ) -> báo rõ tên file, KHÔNG lặng lẽ chấm thiếu."""
+    monkeypatch.setattr("routers.evaluation.evaluate_vendor", _fake_eval("đạt"))
+    pid = _seed(client)
+    import models
+    import database as _db
+    sess = _db.SessionLocal()
+    vid = sess.query(models.Vendor).filter_by(package_id=pid).first().id
+    sess.add(models.TenderDocument(
+        package_id=pid, loai="HSDT", vendor_id=vid, file_path=f"{pid}/hsdt/{vid}/bi_thieu.pdf",
+        file_kind="pdf_scan", trang_thai_ocr="hoan_thanh", artifact_type=None))
+    sess.commit()
+    sess.close()
+
+    r = client.post(f"/api/v1/packages/{pid}/vendors/{vid}/evaluate")
+    assert r.status_code == 400
+    assert "bi_thieu.pdf" in r.json()["error"]

@@ -42,22 +42,27 @@ def _criteria_dicts(db: Session, package_id: int) -> list[dict[str, Any]]:
     } for c in crits]
 
 
-def _hsdt_files(pkg: models.ProcurementPackage, vendor_id: int) -> list[tuple[str, str, bytes]]:
-    """Gom HSDT (pdf) của 1 nhà thầu + tài liệu DÙNG CHUNG (vendor_id NULL, vd webform).
+def _ho_so_cua_vendor(pkg: models.ProcurementPackage, vendor_id: int) -> list[models.TenderDocument]:
+    """HSDT của 1 nhà thầu + tài liệu DÙNG CHUNG (vendor_id NULL, vd webform).
 
     Tài liệu dùng chung áp cho MỌI nhà thầu; lõi eval tự lọc về đúng dòng nhà thầu trước khi vào
-    prompt (loc_dung_chung). Vision chỉ đọc PDF.
+    prompt (loc_dung_chung).
     """
-    out: list[tuple[str, str, bytes]] = []
-    for d in pkg.documents:
-        if d.loai != "HSDT" or not d.artifact_type:
-            continue
-        if d.vendor_id != vendor_id and d.vendor_id is not None:
-            continue
-        if not d.file_kind.startswith("pdf"):
-            continue
-        out.append((Path(d.file_path).name, d.artifact_type, storage.read_bytes(d.file_path)))
-    return out
+    return [d for d in pkg.documents
+            if d.loai == "HSDT" and d.vendor_id in (vendor_id, None)]
+
+
+def _thieu_loai_ho_so(pkg: models.ProcurementPackage, vendor_id: int) -> list[str]:
+    """Tên các file HSDT chưa gán loại hồ sơ — không chấm được, phải báo thay vì bỏ qua."""
+    return [Path(d.file_path).name
+            for d in _ho_so_cua_vendor(pkg, vendor_id) if not d.artifact_type]
+
+
+def _hsdt_files(pkg: models.ProcurementPackage, vendor_id: int) -> list[tuple[str, str, bytes]]:
+    """Gom hồ sơ đã sẵn sàng chấm. Vision chỉ đọc PDF (Excel bị chặn từ bước upload)."""
+    return [(Path(d.file_path).name, d.artifact_type, storage.read_bytes(d.file_path))
+            for d in _ho_so_cua_vendor(pkg, vendor_id)
+            if d.artifact_type and d.file_kind.startswith("pdf")]
 
 
 def _rollup(kqs: set[str]) -> str:
@@ -141,6 +146,10 @@ async def evaluate_one(package_id: int, vendor_id: int, db: Session = Depends(ge
     crits = _criteria_dicts(db, package_id)
     if not crits:
         return fail("Chưa có tiêu chí đánh giá — hãy bóc & chốt tiêu chí trước", 400)
+    thieu = _thieu_loai_ho_so(pkg, vendor.id)
+    if thieu:
+        return fail(f"Chưa gán loại hồ sơ cho: {', '.join(thieu)} — "
+                    "gán loại rồi chạy lại, nếu không các file này sẽ không được chấm", 400)
     try:
         vendor_out = await _eval_and_save_vendor(db, pkg, vendor, crits)
     except Exception as exc:  # no-silent-mock: proxy vision lỗi -> báo rõ, KHÔNG bịa
@@ -167,6 +176,11 @@ async def evaluate(package_id: int, db: Session = Depends(get_db)):
     vendors_out: list[dict[str, Any]] = []
     loi: list[dict[str, Any]] = []
     for vendor in pkg.vendors:
+        thieu = _thieu_loai_ho_so(pkg, vendor.id)
+        if thieu:
+            loi.append({"vendor_id": vendor.id, "ten": vendor.ten,
+                        "error": f"Chưa gán loại hồ sơ cho: {', '.join(thieu)}"})
+            continue
         try:
             vendors_out.append(await _eval_and_save_vendor(db, pkg, vendor, crits))
             db.commit()          # chốt từng nhà thầu -> lỗi sau đó không cuốn theo kết quả trước

@@ -44,6 +44,10 @@ async def upload_document(
         # Pipeline đánh giá hiện thuần vision PDF (experiment/evaluate) -> nhận Excel là nhận rồi
         # bỏ qua âm thầm. Từ chối thẳng cho tới khi có đường xử lý Excel.
         return fail("Chưa hỗ trợ Excel — hãy tải bản PDF của hồ sơ này", 415)
+    if loai == "HSDT" and not (artifact_type or "").strip():
+        # HSDT không có loại hồ sơ bị _hsdt_files bỏ qua -> tài liệu nằm im trong UI mà không
+        # bao giờ được chấm. Bắt khai báo ngay tại nguồn.
+        return fail("Thiếu loại hồ sơ — hãy chọn loại hồ sơ cho file HSDT này", 400)
     if loai == "HSMT":
         subdir = "hsmt"
     elif loai == "TBMT":                       # tài liệu gói (scan), không thuộc nhà thầu
@@ -58,6 +62,9 @@ async def upload_document(
         vendor_id=vendor_id,
         file_path=rel,
         file_kind=file_kind,
+        # Ghi loại hồ sơ NGAY khi tạo, ngoài khối OCR: OCR lỗi mà mất loại thì tài liệu bị
+        # _hsdt_files bỏ qua âm thầm, tệ hơn nhiều so với chỉ thiếu text.
+        artifact_type=(artifact_type or "").strip() or None,
         trang_thai_ocr="dang_xu_ly",
     )
     db.add(doc)
@@ -68,9 +75,8 @@ async def upload_document(
         pages = documents.extract_document(content, file_kind)
         doc.extracted_text = json.dumps(pages, ensure_ascii=False)
         doc.trang_thai_ocr = "hoan_thanh"
-        if loai == "HSDT" and artifact_type:
-            doc.artifact_type = artifact_type
-            doc.artifact_validation = await validate_artifact(pages, artifact_type)
+        if doc.artifact_type:
+            doc.artifact_validation = await validate_artifact(pages, doc.artifact_type)
     except Exception as exc:  # graceful degradation (NFR 5.3)
         doc.trang_thai_ocr = f"loi: {exc}"
     db.commit()
@@ -97,7 +103,11 @@ async def update_document_type(package_id: int, doc_id: int, payload: dict[str, 
     if not doc or doc.package_id != package_id:
         return fail("Không tìm thấy tài liệu", 404)
     artifact_type = (payload.get("artifact_type") or "").strip()
-    doc.artifact_type = artifact_type
+    if doc.loai == "HSDT" and not artifact_type:
+        # Xóa trắng loại = tài liệu biến mất khỏi đánh giá trong khi UI vẫn đếm nó. Muốn bỏ hẳn
+        # thì xóa tài liệu, không để nó tồn tại ở trạng thái không chấm được.
+        return fail("Không thể bỏ trống loại hồ sơ — chọn loại khác hoặc xóa tài liệu", 400)
+    doc.artifact_type = artifact_type or None
     if artifact_type:
         pages = json.loads(doc.extracted_text or "[]")
         doc.artifact_validation = await validate_artifact(pages, artifact_type)

@@ -82,3 +82,46 @@ def test_upload_excel_bi_tu_choi(client):
     assert "Excel" in body["error"]
     # Không được tạo bản ghi tài liệu nào.
     assert client.get(f"/api/v1/packages/{pid}/documents").json()["data"] == []
+
+
+def test_upload_hsdt_thieu_loai_ho_so_bi_tu_choi(client):
+    """HSDT không có loại hồ sơ sẽ bị pipeline đánh giá bỏ qua -> chặn ngay từ upload."""
+    p = client.post("/api/v1/packages", json={"ma_so": "G-NT", "ten": "G", "vendors": ["A"]}).json()["data"]
+    pid, vid = p["id"], p["vendors"][0]["id"]
+    files = {"file": ("don.pdf", _text_pdf("Đơn dự thầu"), "application/pdf")}
+    r = client.post(f"/api/v1/packages/{pid}/documents", files=files,
+                    data={"loai": "HSDT", "vendor_id": str(vid)})
+    assert r.status_code == 400
+    assert "loại hồ sơ" in r.json()["error"].lower()
+    assert client.get(f"/api/v1/packages/{pid}/documents").json()["data"] == []
+
+
+def test_upload_hsmt_khong_can_loai_ho_so(client):
+    """HSMT/TBMT không thuộc danh mục loại hồ sơ HSDT -> vẫn tải được như cũ."""
+    pid = client.post("/api/v1/packages", json={"ma_so": "G-HM", "ten": "G"}).json()["data"]["id"]
+    files = {"file": ("hsmt.pdf", _text_pdf("Tiêu chí"), "application/pdf")}
+    assert client.post(f"/api/v1/packages/{pid}/documents", files=files,
+                       data={"loai": "HSMT"}).status_code == 200
+
+
+def test_upload_giu_loai_ho_so_khi_ocr_loi(client, monkeypatch):
+    """OCR lỗi KHÔNG được làm mất loại hồ sơ đã khai — mất là tài liệu bị loại thầm lặng khỏi chấm."""
+    import services.documents as sd
+    monkeypatch.setattr(sd, "extract_document", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("hỏng")))
+    p = client.post("/api/v1/packages", json={"ma_so": "G-OE", "ten": "G", "vendors": ["A"]}).json()["data"]
+    pid, vid = p["id"], p["vendors"][0]["id"]
+    files = {"file": ("don.pdf", _text_pdf("Đơn dự thầu"), "application/pdf")}
+    doc = client.post(f"/api/v1/packages/{pid}/documents", files=files,
+                      data={"loai": "HSDT", "vendor_id": str(vid),
+                            "artifact_type": "don_du_thau"}).json()["data"]
+    assert doc["trang_thai_ocr"].startswith("loi")
+    assert doc["artifact_type"] == "don_du_thau"
+
+
+def test_patch_khong_cho_xoa_trang_loai_ho_so(client):
+    """Xóa trắng loại hồ sơ = tài liệu biến mất khỏi đánh giá mà UI vẫn đếm -> chặn."""
+    pid, _vid, did = _pkg_with_hsdt(client)
+    r = client.patch(f"/api/v1/packages/{pid}/documents/{did}", json={"artifact_type": ""})
+    assert r.status_code == 400
+    got = client.get(f"/api/v1/packages/{pid}/documents").json()["data"]
+    assert got[0]["artifact_type"] == "don_du_thau"   # giữ nguyên giá trị cũ
