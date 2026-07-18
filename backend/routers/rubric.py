@@ -62,6 +62,8 @@ def _read_decomp(db: Session, package_id: int) -> dict:
         out.append({
             "id": c.id, "nhom": c.nhom, "ten": c.ten, "yeu_cau_goc": c.yeu_cau_goc,
             "hsdt_can_kiem_tra": c.hsdt_can_kiem_tra, "tien_quyet": c.tien_quyet,
+            # Phải trả về: PUT ghi lại nguyên payload, thiếu trường nào là trường đó bị xóa trắng.
+            "loi_ai": c.loi_ai,
             "noi_dung_can_kiem_tra": [
                 {"id": n.id, "noi_dung_kiem_tra": n.noi_dung_kiem_tra,
                  "hsdt_kiem_tra": n.hsdt_kiem_tra, "yeu_cau": n.yeu_cau,

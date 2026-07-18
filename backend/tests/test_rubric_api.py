@@ -130,3 +130,31 @@ def test_extract_pipeline_error_returns_502(client, monkeypatch):
     r = client.post(f"/api/v1/packages/{pid}/rubric")
     assert r.status_code == 502
     assert "proxy down" in r.json()["error"]
+
+
+def test_loi_ai_khong_mat_khi_chuyen_gia_luu(client):
+    """GET phải trả loi_ai, nếu không PUT round-trip sẽ ghi đè thành rỗng.
+
+    Ghi chú lỗi AI của tiêu chí là dấu vết để chuyên gia biết chỗ nào máy không chắc — mất nó ngay
+    lần sửa đầu tiên thì coi như không có.
+    """
+    import models
+    import database as _db
+
+    pid = client.post("/api/v1/packages", json={"ma_so": "G-LA", "ten": "g"}).json()["data"]["id"]
+    sess = _db.SessionLocal()
+    sess.add(models.RubricCriterion(
+        package_id=pid, thu_tu=0, nhom="hop_le", ten="Đơn dự thầu", yeu_cau_goc="Có đơn",
+        hsdt_can_kiem_tra=["don_du_thau"], tien_quyet=True, loi_ai="Không tra được mốc đóng thầu"))
+    sess.commit()
+    sess.close()
+
+    got = client.get(f"/api/v1/packages/{pid}/rubric").json()["data"]["criteria"]
+    assert got[0]["loi_ai"] == "Không tra được mốc đóng thầu"
+
+    # Chuyên gia sửa tên rồi Lưu -> loi_ai phải còn.
+    got[0]["ten"] = "Đơn dự thầu (đã sửa)"
+    client.put(f"/api/v1/packages/{pid}/rubric", json={"criteria": got})
+    after = client.get(f"/api/v1/packages/{pid}/rubric").json()["data"]["criteria"]
+    assert after[0]["ten"] == "Đơn dự thầu (đã sửa)"
+    assert after[0]["loi_ai"] == "Không tra được mốc đóng thầu"

@@ -196,3 +196,36 @@ def test_override_verdict_recomputes(client, monkeypatch):
     crit2 = res2["vendors"][0]["criteria"][0]
     assert crit2["ket_qua"] == "không đạt" and crit2["loai"] is True
     assert crit2["verdicts"][0]["overridden"] is True
+
+
+def test_evaluate_batch_mot_nha_thau_loi_van_giu_ket_qua_con_lai(client, monkeypatch):
+    """Batch: 1 nhà thầu lỗi KHÔNG được hủy kết quả của các nhà thầu đã chấm xong."""
+    ok_eval = _fake_eval("đạt")
+
+    async def flaky(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
+                    registry=None):
+        if vendor_ctx and vendor_ctx.ten == "B":
+            raise RuntimeError("proxy vision sập")
+        return await ok_eval(criteria, hsdt_files, doc=doc, vision_fn=vision_fn,
+                             vendor_ctx=vendor_ctx, registry=registry)
+
+    monkeypatch.setattr("routers.evaluation.evaluate_vendor", flaky)
+    p = client.post("/api/v1/packages",
+                    json={"ma_so": "G-PF", "ten": "g", "vendors": ["A", "B", "C"]}).json()["data"]
+    pid = p["id"]
+    client.put(f"/api/v1/packages/{pid}/rubric", json={"criteria": [{
+        "nhom": "hop_le", "ten": "X", "yeu_cau_goc": "", "hsdt_can_kiem_tra": ["don_du_thau"],
+        "tien_quyet": False, "noi_dung_can_kiem_tra": []}]})
+
+    r = client.post(f"/api/v1/packages/{pid}/evaluate")
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert [v["ten"] for v in data["vendors"]] == ["A", "C"]      # 2 nhà thầu chấm được
+    assert [e["ten"] for e in data["loi"]] == ["B"]               # nhà thầu lỗi báo rõ
+    assert "proxy vision sập" in data["loi"][0]["error"]
+
+    # Kết quả của A và C đã LƯU, không bị cuốn theo lỗi của B.
+    res = client.get(f"/api/v1/packages/{pid}/results").json()["data"]
+    by_name = {v["ten"]: v for v in res["vendors"]}
+    assert len(by_name["A"]["criteria"]) == 1 and len(by_name["C"]["criteria"]) == 1
+    assert by_name["B"]["criteria"] == []

@@ -24,6 +24,7 @@ export interface NoiDungKiemTra {
 export interface RubricCriteria {
   id?: number; nhom: string; ten: string; yeu_cau_goc: string;
   hsdt_can_kiem_tra: string[]; tien_quyet: boolean; noi_dung_can_kiem_tra: NoiDungKiemTra[];
+  loi_ai?: string;   // ghi chú AI không chắc — GET trả về để PUT không ghi đè mất
 }
 
 // ---- Đánh giá HSDT (verdict pipeline vision) ----

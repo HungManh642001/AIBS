@@ -153,7 +153,11 @@ async def evaluate_one(package_id: int, vendor_id: int, db: Session = Depends(ge
 
 @router.post("/packages/{package_id}/evaluate")
 async def evaluate(package_id: int, db: Session = Depends(get_db)):
-    """Chạy đánh giá HSDT cho TẤT CẢ nhà thầu (tiện lợi chạy hàng loạt)."""
+    """Chạy đánh giá HSDT cho TẤT CẢ nhà thầu (tiện lợi chạy hàng loạt).
+
+    Một nhà thầu lỗi KHÔNG hủy cả lô: kết quả các nhà thầu chấm xong vẫn được lưu, nhà thầu lỗi
+    liệt kê trong `loi` để chạy lại riêng. Chấm lại cả gói vì 1 proxy timeout là quá đắt.
+    """
     pkg = db.get(models.ProcurementPackage, package_id)
     if not pkg:
         return fail("Không tìm thấy gói thầu", 404)
@@ -161,15 +165,19 @@ async def evaluate(package_id: int, db: Session = Depends(get_db)):
     if not crits:
         return fail("Chưa có tiêu chí đánh giá — hãy bóc & chốt tiêu chí trước", 400)
     vendors_out: list[dict[str, Any]] = []
+    loi: list[dict[str, Any]] = []
     for vendor in pkg.vendors:
         try:
             vendors_out.append(await _eval_and_save_vendor(db, pkg, vendor, crits))
-        except Exception as exc:  # no-silent-mock
+            db.commit()          # chốt từng nhà thầu -> lỗi sau đó không cuốn theo kết quả trước
+        except Exception as exc:  # no-silent-mock: báo rõ nhà thầu nào lỗi, KHÔNG bịa kết quả
+            db.rollback()
             log.warning("[eval] gói %s nhà thầu %s: pipeline lỗi: %s", package_id, vendor.ten, exc)
-            return fail(f"Đánh giá thất bại: {exc}", 502)
-    pkg.trang_thai = "cho_review"
+            loi.append({"vendor_id": vendor.id, "ten": vendor.ten, "error": str(exc)})
+    if vendors_out:
+        pkg.trang_thai = "cho_review"
     db.commit()
-    return ok({"vendors": vendors_out})
+    return ok({"vendors": vendors_out, "loi": loi})
 
 
 def _hsnd(h) -> dict[str, Any]:
