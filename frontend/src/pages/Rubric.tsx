@@ -69,7 +69,7 @@ export default function Rubric() {
             style={{ paddingLeft: 0 }} aria-label="Quay lại gói thầu" />
           <h1 className="page-title" style={{ marginBottom: 0 }}>Tiêu chuẩn đánh giá</h1>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: "var(--sp-2)" }}>
           <Button loading={extracting} onClick={extract}>Trích tiêu chí từ HSMT</Button>
           <Button onClick={save} disabled={criteria.length === 0}>Lưu</Button>
           <Button type="primary" onClick={confirm} disabled={criteria.length === 0}>Chốt tiêu chí</Button>
@@ -78,13 +78,13 @@ export default function Rubric() {
 
       <Loader loading={loading} error={err} onRetry={load}>
       {criteria.length === 0 && (
-        <div style={{ textAlign: "center", padding: "48px 0", background: "var(--paper)",
+        <div style={{ textAlign: "center", padding: "var(--sp-6) 0", background: "var(--paper)",
                       border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink-muted)" }}>
           Chưa có tiêu chí nào. Tải HSMT lên ở trang gói thầu, rồi bấm “Trích tiêu chí từ HSMT”.
         </div>
       )}
       {criteria.map((c, ci) => (
-        <Card key={ci} title={c.ten} style={{ marginBottom: 12 }} extra={
+        <Card key={ci} title={c.ten} style={{ marginBottom: "var(--sp-3)" }} extra={
           <span>
             <Tag color="blue">{NHOM_LABEL[c.nhom] ?? c.nhom}</Tag>
             {c.tien_quyet && <Tag color="red">Tiên quyết</Tag>}
@@ -114,7 +114,7 @@ export default function Rubric() {
                       placeholder="HSMT không nêu mức cụ thể"
                       onChange={(e) => setNoiDung(ci, ni, "thong_tin_bo_sung", e.target.value)} />
                     <Input size="small" value={_n.nguon} placeholder="điều khoản nguồn"
-                      style={{ marginTop: 4, fontSize: "var(--fs-label)" }} className="mono"
+                      style={{ marginTop: "var(--sp-1)", fontSize: "var(--fs-label)" }} className="mono"
                       onChange={(e) => setNoiDung(ci, ni, "nguon", e.target.value)} />
                   </div>
                 ) },
@@ -134,7 +134,7 @@ export default function Rubric() {
                     <Checkbox checked={t}
                       onChange={(e) => setNoiDung(ci, ni, "can_review", e.target.checked)} />
                     {t && _n.can_lam_ro && (
-                      <div style={{ fontSize: "var(--fs-label)", color: "var(--partial)", marginTop: 4 }}>
+                      <div style={{ fontSize: "var(--fs-label)", color: "var(--partial)", marginTop: "var(--sp-1)" }}>
                         {_n.can_lam_ro}
                       </div>
                     )}

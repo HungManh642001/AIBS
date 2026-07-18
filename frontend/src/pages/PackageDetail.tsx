@@ -46,7 +46,7 @@ function DocTable({ docs, artifactTypes, onChangeType, onDelete }: {
         {
           title: "Loại hồ sơ", width: 260,
           render: (_, d) => (
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
               <Select size="small" style={{ minWidth: 190 }} value={d.artifact_type || undefined}
                 placeholder="chọn loại" options={artifactTypes}
                 onChange={(v) => onChangeType(d.id, v)} />
@@ -79,7 +79,7 @@ function UploadDoc({ artifactTypes, onUpload, label = "Tải hồ sơ" }: {
 }) {
   const [at, setAt] = useState<string>();
   return (
-    <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+    <div style={{ display: "flex", gap: "var(--sp-2)", marginTop: "var(--sp-3)", flexWrap: "wrap", alignItems: "center" }}>
       <Select placeholder="Chọn loại hồ sơ" style={{ minWidth: 200 }} value={at} onChange={setAt}
         options={artifactTypes} />
       <Upload showUploadList={false} accept=".pdf" beforeUpload={(f) => {
@@ -107,7 +107,7 @@ function UploadPlain({ onUpload, label }: { onUpload: (file: File) => Promise<vo
 
 function DocRow({ d, onDelete }: { d: TenderDoc; onDelete: (id: number) => void }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)", padding: "var(--sp-2) 0" }}>
       <span style={{ fontWeight: 500 }}>{d.file_name || d.file_path}</span>
       <OcrBadge st={d.trang_thai_ocr} />
       <Popconfirm title="Xóa tài liệu này?" onConfirm={() => onDelete(d.id)} okText="Xóa" cancelText="Hủy">
@@ -200,17 +200,17 @@ export default function PackageDetail() {
   const step = !hsmt ? 0 : !hasCriteria ? 1 : !hasAnyHsdt ? 2 : !evaluated ? 3 : 4;
 
   const chungTab = (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-5)" }}>
       <div>
         <div className="page-eyebrow">Hồ sơ mời thầu (HSMT) — nguồn để trích tiêu chí</div>
         {hsmt
           ? <DocRow d={hsmt} onDelete={deleteDoc} />
-          : <div style={{ marginTop: 8 }}><UploadPlain label="Tải HSMT" onUpload={(f) => uploadDoc(f, "HSMT")} /></div>}
+          : <div style={{ marginTop: "var(--sp-2)" }}><UploadPlain label="Tải HSMT" onUpload={(f) => uploadDoc(f, "HSMT")} /></div>}
       </div>
       <div>
         <div className="page-eyebrow">Thông báo mời thầu (TBMT) — mốc đóng/mở thầu</div>
         {tbmt.map((d) => <DocRow key={d.id} d={d} onDelete={deleteDoc} />)}
-        <div style={{ marginTop: 8 }}><UploadPlain label="Tải TBMT" onUpload={(f) => uploadDoc(f, "TBMT")} /></div>
+        <div style={{ marginTop: "var(--sp-2)" }}><UploadPlain label="Tải TBMT" onUpload={(f) => uploadDoc(f, "TBMT")} /></div>
       </div>
       <div>
         <div className="page-eyebrow">Tài liệu dùng chung — áp cho mọi nhà thầu</div>
@@ -223,7 +223,7 @@ export default function PackageDetail() {
 
   const vendorTab = (v: Vendor) => (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)", flexWrap: "wrap", marginBottom: "var(--sp-3)" }}>
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontSize: "var(--fs-lead)", fontWeight: 700 }}>
             {v.ten}{v.ten_viet_tat ? <span style={{ color: "var(--ink-muted)", fontWeight: 400 }}> ({v.ten_viet_tat})</span> : null}
@@ -265,12 +265,12 @@ export default function PackageDetail() {
     return (
       <span>
         {evaluatedVids.has(v.id) && (
-          <Tooltip title="Đã chấm"><CheckCircleOutlined style={{ color: "var(--pass)", marginRight: 6 }} /></Tooltip>
+          <Tooltip title="Đã chấm"><CheckCircleOutlined style={{ color: "var(--pass)", marginRight: "var(--sp-2)" }} /></Tooltip>
         )}
         {v.ten}
         <Tooltip title={n === 0 ? "Chưa có hồ sơ" : `${n} hồ sơ`}>
           <Badge count={n} showZero size="small" color={n === 0 ? "#d9d9d9" : "#0F6E62"}
-            style={{ marginLeft: 8 }} />
+            style={{ marginLeft: "var(--sp-2)" }} />
         </Tooltip>
       </span>
     );
@@ -284,25 +284,25 @@ export default function PackageDetail() {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end",
-                    gap: 16, marginBottom: 20, flexWrap: "wrap" }}>
+                    gap: "var(--sp-4)", marginBottom: "var(--sp-5)", flexWrap: "wrap" }}>
         <div>
           <span className="page-eyebrow">Gói thầu {pkg.ma_so} · <StatusTag status={pkg.trang_thai} /></span>
           <h1 className="page-title" style={{ marginBottom: 0 }}>{pkg.ten}</h1>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: "var(--sp-2)" }}>
           <Button onClick={() => nav(`/packages/${id}/rubric`)}>Tiêu chuẩn đánh giá</Button>
           <Button type="primary" onClick={() => nav(`/packages/${id}/evaluation`)}>Xem kết quả</Button>
         </div>
       </div>
 
-      <Card style={{ marginBottom: 16 }}>
+      <Card style={{ marginBottom: "var(--sp-4)" }}>
         <Steps size="small" current={step} items={[
           { title: "Tải HSMT" }, { title: "Chốt tiêu chí" }, { title: "Tải hồ sơ nhà thầu" },
           { title: "Chạy đánh giá" }, { title: "Xem kết quả" },
         ]} />
       </Card>
 
-      <Card styles={{ body: { paddingTop: 8 } }}>
+      <Card styles={{ body: { paddingTop: "var(--sp-2)" } }}>
         <Tabs activeKey={active} onChange={setActive} items={items}
           tabBarExtraContent={
             <Button type="dashed" icon={<PlusOutlined />} onClick={() => setModal("new")}>Thêm nhà thầu</Button>} />
@@ -342,7 +342,7 @@ function VendorModal({ open, vendor, pkgId, onClose, onSaved }: {
   return (
     <Modal open={open} onCancel={onClose} onOk={save} okText="Lưu" cancelText="Hủy"
       title={vendor ? "Sửa nhà thầu" : "Thêm nhà thầu"} destroyOnClose>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)", marginTop: "var(--sp-2)" }}>
         <Input placeholder="Tên đầy đủ" value={ten} onChange={(e) => setTen(e.target.value)} />
         <Input placeholder="Tên viết tắt (khớp webform)" value={tt} onChange={(e) => setTt(e.target.value)} />
         <Select placeholder="Hình thức dự thầu (để trống = tự dò)" value={ht || undefined} allowClear

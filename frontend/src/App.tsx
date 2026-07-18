@@ -14,13 +14,49 @@ interface HealthData {
   ai_model: string;
 }
 
+interface PkgBrief { id: number; ma_so: string; ten: string; trang_thai: string }
+
+const TRANG_THAI_LABEL: Record<string, string> = {
+  khoi_tao: "Khởi tạo", dang_xu_ly: "Đang xử lý",
+  cho_review: "Chờ rà soát", hoan_thanh: "Hoàn thành",
+};
+
+/** Khối ngữ cảnh gói thầu đang mở — hiện ở khoảng trống giữa sidebar.
+ *
+ *  Không phải trang trí: trước đây từ trang Kết quả muốn sang Tiêu chí phải quay về gói thầu rồi
+ *  bấm tiếp. Ba liên kết này đi thẳng từ bất kỳ trang con nào. */
+function PackageContext({ pkg, pathname }: { pkg: PkgBrief; pathname: string }) {
+  const base = `/packages/${pkg.id}`;
+  const links = [
+    { to: base, label: "Tài liệu & nhà thầu" },
+    { to: `${base}/rubric`, label: "Tiêu chuẩn đánh giá" },
+    { to: `${base}/evaluation`, label: "Kết quả đánh giá" },
+  ];
+  return (
+    <div className="abes-pkg">
+      <div className="abes-pkg-label">Gói thầu đang mở</div>
+      <div className="abes-pkg-ma mono">{pkg.ma_so}</div>
+      <div className="abes-pkg-ten">{pkg.ten}</div>
+      <div className="abes-pkg-status">{TRANG_THAI_LABEL[pkg.trang_thai] ?? pkg.trang_thai}</div>
+      <div className="abes-pkg-links">
+        {links.map((l) => (
+          <Link key={l.to} to={l.to}
+            className={`abes-pkg-link${pathname === l.to ? " is-active" : ""}`}>
+            {l.label}
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AiBadge({ health }: { health: HealthData | null }) {
   if (!health) return null;
   const isReal = health.ai_mode === "real";
   return (
     <Tooltip title={isReal ? `Mô hình: ${health.ai_model}` : "Chế độ mô phỏng (mock)"}>
       <div className="abes-ai-badge">
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
           <span
             className="abes-ai-dot"
             style={{ background: isReal ? "#4ADE80" : "rgba(255,255,255,0.35)" }}
@@ -43,7 +79,7 @@ function AiBadge({ health }: { health: HealthData | null }) {
 export default function App() {
   const location = useLocation();
   const [health, setHealth] = useState<HealthData | null>(null);
-  const [pkgName, setPkgName] = useState<string>("");
+  const [pkg, setPkg] = useState<PkgBrief | null>(null);
 
   useEffect(() => {
     api.get("/health").then((r) => {
@@ -53,11 +89,12 @@ export default function App() {
 
   const pkgId = location.pathname.match(/^\/packages\/(\d+)/)?.[1];
   useEffect(() => {
-    if (!pkgId) { setPkgName(""); return; }
+    if (!pkgId) { setPkg(null); return; }
     api.get(`/packages/${pkgId}`)
-      .then((r) => setPkgName(unwrap<{ ma_so: string; ten: string }>(r).ma_so))
-      .catch(() => setPkgName(""));
+      .then((r) => setPkg(unwrap<PkgBrief>(r)))
+      .catch(() => setPkg(null));
   }, [pkgId]);
+  const pkgName = pkg?.ma_so ?? "";
 
   const selectedKey = location.pathname.startsWith("/packages") ? "pkg" : "home";
 
@@ -93,6 +130,7 @@ export default function App() {
               },
             ]}
           />
+          {pkg && <PackageContext pkg={pkg} pathname={location.pathname} />}
         </div>
         <AiBadge health={health} />
       </Layout.Sider>

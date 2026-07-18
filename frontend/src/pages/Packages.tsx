@@ -55,7 +55,7 @@ export default function Packages() {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "var(--sp-5)" }}>
         <div>
           <h1 className="page-title" style={{ marginBottom: 0 }}>Gói thầu</h1>
         </div>
@@ -65,7 +65,7 @@ export default function Packages() {
       </div>
 
       {filter && (
-        <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: "var(--sp-3)" }}>
           <Tag closable closeIcon={<CloseOutlined />} onClose={() => setSp({})}>
             Lọc: {STATUS_LABEL[filter] ?? filter}
           </Tag>
@@ -135,7 +135,7 @@ export default function Packages() {
         cancelText="Hủy"
         width={480}
       >
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        <Form form={form} layout="vertical" style={{ marginTop: "var(--sp-4)" }}>
           <Form.Item name="ma_so" label="Mã số" rules={[{ required: true, message: "Nhập mã số" }]}>
             <Input placeholder="Vd: GT-2026-001" />
           </Form.Item>

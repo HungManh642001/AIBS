@@ -87,7 +87,7 @@ function VerdictTable({ verdicts, files, onOverride }: {
         {
           title: "Kết quả", width: 185,
           render: (_, v) => (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap" }}>
               <Select
                 size="small" style={{ width: 150 }} value={v.ket_qua} options={KQ_OPTS}
                 onChange={(kq) => onOverride(v.id, { ket_qua: kq })}
@@ -130,7 +130,7 @@ function VerdictTable({ verdicts, files, onOverride }: {
 function SummaryChips({ v }: { v: VendorEval }) {
   const s = v.summary;
   return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+    <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", flexWrap: "wrap" }}>
       {/* Số 0 tô màu cảnh báo là nhiễu thị giác: mắt bị kéo về chỗ không có vấn đề gì. Chỉ tô khi
           thực sự có số đếm. */}
       <Tag>{s.n_tieu_chi} tiêu chí</Tag>
@@ -158,7 +158,7 @@ function HinhThucBanner({ v }: { v: VendorEval }) {
         <div style={{ fontSize: "var(--fs-label)", color: "var(--ink-muted)" }}>“{p.bang_chung}”</div>
       )}
       {p.mau_thuan && (
-        <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 6,
+        <div style={{ marginTop: "var(--sp-2)", padding: "var(--sp-2) var(--sp-3)", borderRadius: 6,
                       background: "var(--partial-bg)", color: "var(--partial)", fontSize: "var(--fs-body)" }}>
           <b>Mâu thuẫn hình thức dự thầu.</b> {p.ghi_chu}. Các nội dung dành cho liên danh vẫn được
           chấm đầy đủ — hãy xác minh trước khi kết luận.
@@ -177,7 +177,7 @@ function VendorSection({ v, onOverride }: {
   const phatHien = v.phat_hien_bo_sung ?? [];
   return (
     <div style={{ background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 8,
-                  overflow: "hidden", marginBottom: 20 }}>
+                  overflow: "hidden", marginBottom: "var(--sp-5)" }}>
       {/* Một cột dọc: tên → tổng hợp → căn cứ. Trước đây chip tổng hợp neo bên phải một khối cao
           4 dòng nên nó trôi lơ lửng, mắt phải nhảy ngang rồi quay lại mới ghép được tên với kết quả. */}
       <div style={{ padding: "var(--sp-4) var(--sp-5)", borderBottom: "1px solid var(--line)",
@@ -191,9 +191,9 @@ function VendorSection({ v, onOverride }: {
         <HinhThucBanner v={v} />
       </div>
 
-      <div style={{ padding: "12px 16px 16px" }}>
+      <div style={{ padding: "var(--sp-3) var(--sp-4) var(--sp-4)" }}>
         {v.criteria.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "24px 0", color: "var(--ink-muted)", fontSize: "var(--fs-body)" }}>
+          <div style={{ textAlign: "center", padding: "var(--sp-5) 0", color: "var(--ink-muted)", fontSize: "var(--fs-body)" }}>
             Chưa có kết quả đánh giá
           </div>
         ) : (
@@ -201,7 +201,7 @@ function VendorSection({ v, onOverride }: {
             items={v.criteria.map((c: CriterionEval) => ({
               key: String(c.eval_id),
               label: (
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)" }}>
                   <ResultPill kq={c.ket_qua} />
                   <span style={{ fontWeight: 600 }}>{c.ten}</span>
                   {c.tien_quyet && <Tag>Tiên quyết</Tag>}
@@ -211,7 +211,7 @@ function VendorSection({ v, onOverride }: {
               children: (
                 <>
                   {c.yeu_cau_goc && (
-                    <div style={{ marginBottom: 8, fontSize: "var(--fs-body)", color: "var(--ink-muted)" }}>
+                    <div style={{ marginBottom: "var(--sp-2)", fontSize: "var(--fs-body)", color: "var(--ink-muted)" }}>
                       <b>Yêu cầu gốc (HSMT):</b> {c.yeu_cau_goc}
                     </div>
                   )}
@@ -223,11 +223,11 @@ function VendorSection({ v, onOverride }: {
         )}
 
         {phatHien.length > 0 && (
-          <div style={{ marginTop: 16 }}>
-            <div style={{ fontSize: "var(--fs-body)", fontWeight: 700, color: "var(--ink)", marginBottom: 2 }}>
+          <div style={{ marginTop: "var(--sp-4)" }}>
+            <div style={{ fontSize: "var(--fs-body)", fontWeight: 700, color: "var(--ink)", marginBottom: "var(--sp-1)" }}>
               Phát hiện thêm của hệ thống
             </div>
-            <div style={{ fontSize: "var(--fs-label)", color: "var(--ink-muted)", marginBottom: 8 }}>
+            <div style={{ fontSize: "var(--fs-label)", color: "var(--ink-muted)", marginBottom: "var(--sp-2)" }}>
               Những điểm nằm ngoài danh mục tiêu chí của HSMT, không tính vào kết quả tổng hợp.
             </div>
             <VerdictTable verdicts={phatHien} files={files} onOverride={onOverride} />
@@ -273,7 +273,7 @@ export default function Evaluation() {
   if (!data) return (
     <div>
       <Button type="text" size="small" icon={<ArrowLeftOutlined />}
-        onClick={() => nav(`/packages/${id}`)} style={{ marginBottom: 8, paddingLeft: 0 }}>
+        onClick={() => nav(`/packages/${id}`)} style={{ marginBottom: "var(--sp-2)", paddingLeft: 0 }}>
         Quay lại gói thầu
       </Button>
       <Loader loading={loading} error={err} onRetry={load}><div /></Loader>
@@ -301,7 +301,7 @@ export default function Evaluation() {
           <h1 className="page-title" style={{ marginBottom: 0 }}>Kết quả đánh giá</h1>
         </div>
         <Tooltip title={hasError ? "Còn kết quả AI báo lỗi chưa xử lý — hãy chỉnh lại trước khi xuất báo cáo" : ""}>
-          <span style={{ display: "inline-flex", gap: 8 }}>
+          <span style={{ display: "inline-flex", gap: "var(--sp-2)" }}>
             <Button icon={<DownloadOutlined />} disabled={hasError} onClick={() => genReport("word")}>Báo cáo Word</Button>
             <Button icon={<DownloadOutlined />} disabled={hasError} onClick={() => genReport("excel")}>Báo cáo Excel</Button>
           </span>
@@ -309,7 +309,7 @@ export default function Evaluation() {
       </div>
 
       {vendors.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "60px 0", background: "var(--paper)",
+        <div style={{ textAlign: "center", padding: "var(--sp-6) 0", background: "var(--paper)",
                       border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink-muted)", fontSize: "var(--fs-body)" }}>
           Chưa có kết quả đánh giá. Quay lại gói thầu, chọn một nhà thầu rồi bấm “Chạy đánh giá”.
         </div>
@@ -322,7 +322,7 @@ export default function Evaluation() {
               key: String(v.vendor_id),
               label: (
                 <span>
-                  {v.criteria.some((c) => c.loai) && <Badge color="red" style={{ marginRight: 6 }} />}
+                  {v.criteria.some((c) => c.loai) && <Badge color="red" style={{ marginRight: "var(--sp-2)" }} />}
                   {v.ten}
                 </span>
               ),

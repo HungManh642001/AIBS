@@ -42,7 +42,7 @@ export default function Dashboard() {
       <h1 className="page-title">Tổng quan</h1>
 
       <Loader loading={loading} error={err} onRetry={load}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 32 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--sp-4)", marginBottom: "var(--sp-6)" }}>
           <StatCard label="Tất cả gói thầu" value={pkgs.length} accent="teal" to="/packages" />
           <StatCard label="Đang xử lý" value={byStatus("dang_xu_ly")} accent="partial" to="/packages?trang_thai=dang_xu_ly" />
           <StatCard label="Chờ rà soát" value={byStatus("cho_review")} accent="ink" to="/packages?trang_thai=cho_review" />
@@ -51,21 +51,21 @@ export default function Dashboard() {
 
         <span className="page-eyebrow">Gói thầu gần đây</span>
         <div style={{ background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 8,
-                      overflow: "hidden", marginTop: 8 }}>
+                      overflow: "hidden", marginTop: "var(--sp-2)" }}>
           {pkgs.length === 0
-            ? <div style={{ padding: "24px", color: "var(--ink-muted)", textAlign: "center" }}>
+            ? <div style={{ padding: "var(--sp-5)", color: "var(--ink-muted)", textAlign: "center" }}>
                 Chưa có gói thầu nào. Sang mục <Link to="/packages" style={{ color: "var(--teal)" }}>Gói thầu</Link> để tạo gói đầu tiên.
               </div>
             : pkgs.slice(0, 8).map((p) => (
               <Link key={p.id} to={`/packages/${p.id}`}
                 style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
-                         gap: 12, padding: "12px 16px", borderBottom: "1px solid var(--line)",
+                         gap: "var(--sp-3)", padding: "var(--sp-3) var(--sp-4)", borderBottom: "1px solid var(--line)",
                          textDecoration: "none", color: "inherit" }}>
                 <span>
-                  <span className="mono" style={{ fontSize: "var(--fs-label)", color: "var(--ink-muted)", marginRight: 10 }}>{p.ma_so}</span>
+                  <span className="mono" style={{ fontSize: "var(--fs-label)", color: "var(--ink-muted)", marginRight: "var(--sp-3)" }}>{p.ma_so}</span>
                   <span style={{ fontWeight: 600 }}>{p.ten}</span>
                 </span>
-                <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)" }}>
                   <span style={{ fontSize: "var(--fs-label)", color: "var(--ink-muted)" }}>{p.vendors.length} nhà thầu</span>
                   <StatusTag status={p.trang_thai} />
                 </span>

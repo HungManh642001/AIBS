@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import { ConfigProvider } from "antd";
 import viVN from "antd/locale/vi_VN";
 import "antd/dist/reset.css";
+import "./fonts.css";      // phải nạp trước index.css để @font-face sẵn sàng khi áp font-family
 import "./index.css";
 import App from "./App";
 
