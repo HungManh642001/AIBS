@@ -62,11 +62,11 @@ export default function Dashboard() {
                          gap: 12, padding: "12px 16px", borderBottom: "1px solid var(--line)",
                          textDecoration: "none", color: "inherit" }}>
                 <span>
-                  <span className="mono" style={{ fontSize: 12, color: "var(--ink-muted)", marginRight: 10 }}>{p.ma_so}</span>
+                  <span className="mono" style={{ fontSize: "var(--fs-label)", color: "var(--ink-muted)", marginRight: 10 }}>{p.ma_so}</span>
                   <span style={{ fontWeight: 600 }}>{p.ten}</span>
                 </span>
                 <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{p.vendors.length} nhà thầu</span>
+                  <span style={{ fontSize: "var(--fs-label)", color: "var(--ink-muted)" }}>{p.vendors.length} nhà thầu</span>
                   <StatusTag status={p.trang_thai} />
                 </span>
               </Link>

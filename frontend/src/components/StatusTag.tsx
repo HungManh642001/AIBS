@@ -12,7 +12,7 @@ export default function StatusTag({ status }: { status: string }) {
       display: "inline-block",
       padding: "2px 10px",
       borderRadius: 4,
-      fontSize: 12,
+      fontSize: "var(--fs-label)",
       fontWeight: 600,
       letterSpacing: "0.01em",
       background: it.bg,

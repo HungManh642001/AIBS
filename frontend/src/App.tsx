@@ -26,7 +26,7 @@ function AiBadge({ health }: { health: HealthData | null }) {
             style={{ background: isReal ? "#4ADE80" : "rgba(255,255,255,0.35)" }}
           />
           <span style={{
-            fontSize: 11,
+            fontSize: "var(--fs-meta)",
             fontWeight: 600,
             color: isReal ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.45)",
             letterSpacing: "0.04em",
@@ -102,7 +102,7 @@ export default function App() {
       <Layout style={{ marginLeft: 220, minWidth: 0 }}>
         <Layout.Header className="abes-header">
           <Breadcrumb items={crumbs} />
-          <span style={{ fontSize: 11, color: "var(--ink-muted)", fontFamily: "var(--font-mono)" }}>
+          <span style={{ fontSize: "var(--fs-meta)", color: "var(--ink-muted)", fontFamily: "var(--font-mono)" }}>
             ABES Demo
           </span>
         </Layout.Header>

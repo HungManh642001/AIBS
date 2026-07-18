@@ -83,7 +83,7 @@ export default function Packages() {
               title: "Mã số",
               dataIndex: "ma_so",
               width: 130,
-              render: (v) => <span className="mono" style={{ fontSize: 13 }}>{v}</span>,
+              render: (v) => <span className="mono" style={{ fontSize: "var(--fs-body)" }}>{v}</span>,
             },
             {
               title: "Tên gói thầu",

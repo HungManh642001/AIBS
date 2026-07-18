@@ -22,6 +22,18 @@
   --seal:        #B23A3A;
   --font-sans:   'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono:   'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+
+  /* THANG CHỮ — 5 bậc, tỉ lệ ~1.25 để mỗi bậc nhìn ra được.
+     Trước đây có 9 cỡ (11/12/12.5/13/14/16/17/18/24): năm bậc chen giữa 11 và 14, chênh nhau
+     0.5–1px nên mắt không phân biệt nổi — tức là chúng KHÔNG tạo phân cấp nào, chỉ gây lộn xộn. */
+  --fs-title: 24px;   /* tiêu đề trang, 1 chỗ/trang */
+  --fs-lead:  18px;   /* chủ thể của khối: tên nhà thầu, tiêu đề thẻ */
+  --fs-body:  14px;   /* chữ chính */
+  --fs-label: 12px;   /* nhãn phụ, đầu cột bảng */
+  --fs-meta:  11.5px; /* dòng truy vết mono, chú thích */
+
+  /* LƯỚI 4px — trước đây có 12 giá trị rời rạc kể cả 3, 7, 10. */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
 }
 
 /* ── Base ───────────────────────────────────────────────── */
@@ -64,7 +76,7 @@ body {
 .abes-logo-mark {
   font-family: var(--font-sans);
   font-weight: 700;
-  font-size: 18px;
+  font-size: var(--fs-lead);
   letter-spacing: -0.3px;
   color: #fff;
   line-height: 1;
@@ -74,7 +86,7 @@ body {
    và letter-spacing thành răng cưa vì bề rộng dấu không đều (ĐANG XỬ LÝ, CẦN LÀM RÕ). Vai trò
    "nhãn phụ" giữ bằng cỡ chữ + độ đậm + màu là đủ. */
 .abes-logo-sub {
-  font-size: 11px;
+  font-size: var(--fs-label);
   font-weight: 500;
   letter-spacing: 0.01em;
   color: rgba(255,255,255,0.6);
@@ -95,7 +107,7 @@ body {
 .abes-sider .ant-menu-item {
   color: rgba(255,255,255,0.7) !important;
   border-radius: 6px !important;
-  margin: 2px 10px !important;
+  margin: 2px var(--sp-2) !important;
   width: calc(100% - 20px) !important;
 }
 
@@ -137,7 +149,7 @@ body {
 
 /* ── Page titles ────────────────────────────────────────── */
 .page-title {
-  font-size: 24px;
+  font-size: var(--fs-title);
   font-weight: 700;
   color: var(--ink);
   letter-spacing: -0.3px;
@@ -146,11 +158,11 @@ body {
 }
 
 .page-eyebrow {
-  font-size: 12px;
+  font-size: var(--fs-label);
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--teal);
-  margin-bottom: 3px;
+  margin-bottom: var(--sp-1);
   display: block;
 }
 
@@ -185,10 +197,10 @@ body {
 }
 
 .stat-label {
-  font-size: 13px;
+  font-size: var(--fs-body);
   font-weight: 600;
   color: var(--ink-muted);
-  margin-top: 6px;
+  margin-top: var(--sp-2);
   letter-spacing: 0.01em;
 }
 
@@ -197,29 +209,40 @@ body {
    nhiều so với pill co giãn theo độ dài chữ ("Đạt" vs "Không áp dụng"). */
 .verdict-result-pill {
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--fs-label);
   font-weight: 600;
   letter-spacing: 0.01em;
-  padding: 3px 10px;
+  padding: 4px 10px;
   border-radius: 4px;
   flex-shrink: 0;
   white-space: nowrap;
   display: inline-block;
-  min-width: 104px;
+  min-width: 112px;   /* = bề rộng nhãn dài nhất ("Không áp dụng"); hụt 1px là tên tiêu chí lệch hàng */
   text-align: center;
 }
 
 .verdict-result-pill.dat          { background: var(--pass-bg);    color: var(--pass); }
 .verdict-result-pill.khong-dat    { background: var(--fail-bg);    color: var(--fail); }
 .verdict-result-pill.can-lam-ro   { background: var(--partial-bg); color: var(--partial); }
-.verdict-result-pill.khong-ap-dung{ background: #F0F0F0;           color: #6B7280; }
+.verdict-result-pill.khong-ap-dung{ background: #F0F0F0;           color: var(--ink-muted); }
 .verdict-result-pill.loi          { background: #FBE3E1;           color: var(--seal); }
 
 /* ── AntD global overrides ──────────────────────────────── */
+
+/* Tag preset của AntD (green/red/orange/volcano) dùng bảng màu RIÊNG, không lấy theo
+   colorSuccess/colorError trong ConfigProvider. Nên phải kéo về tokens ở đây, nếu không cùng
+   một nghĩa lại ra hai màu: "đạt" xanh AntD ở Tag nhưng xanh --pass ở pill. */
+.ant-tag-green   { color: var(--pass) !important;    background: var(--pass-bg) !important;    border-color: #CDE7D8 !important; }
+.ant-tag-red     { color: var(--fail) !important;    background: var(--fail-bg) !important;    border-color: #F3CFCA !important; }
+.ant-tag-orange,
+.ant-tag-warning { color: var(--partial) !important; background: var(--partial-bg) !important; border-color: #F0DDB8 !important; }
+.ant-tag-volcano { color: var(--seal) !important;    background: #FBE9E7 !important;           border-color: #EFC9C4 !important; }
+.ant-tag-blue    { color: var(--teal) !important;    background: var(--teal-tint) !important;  border-color: #BFDFDA !important; }
+
 .ant-table-thead > tr > th {
   background: var(--surface) !important;
   color: var(--ink-muted) !important;
-  font-size: 12.5px !important;
+  font-size: var(--fs-label) !important;
   font-weight: 600 !important;
   letter-spacing: 0.01em !important;
   white-space: nowrap;

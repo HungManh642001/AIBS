@@ -225,7 +225,7 @@ export default function PackageDetail() {
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
         <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontSize: 16, fontWeight: 700 }}>
+          <div style={{ fontSize: "var(--fs-lead)", fontWeight: 700 }}>
             {v.ten}{v.ten_viet_tat ? <span style={{ color: "var(--ink-muted)", fontWeight: 400 }}> ({v.ten_viet_tat})</span> : null}
           </div>
         </div>

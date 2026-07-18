@@ -62,13 +62,11 @@ export default function Rubric() {
 
   return (
     <div>
-      <Button type="text" size="small" icon={<ArrowLeftOutlined />}
-        onClick={() => nav(`/packages/${id}`)} style={{ marginBottom: 8, paddingLeft: 0 }}>
-        Quay lại gói thầu
-      </Button>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20 }}>
-        <div>
-          <span className="page-eyebrow">Gói thầu</span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+                    gap: "var(--sp-4)", marginBottom: "var(--sp-5)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
+          <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => nav(`/packages/${id}`)}
+            style={{ paddingLeft: 0 }} aria-label="Quay lại gói thầu" />
           <h1 className="page-title" style={{ marginBottom: 0 }}>Tiêu chuẩn đánh giá</h1>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -116,7 +114,7 @@ export default function Rubric() {
                       placeholder="HSMT không nêu mức cụ thể"
                       onChange={(e) => setNoiDung(ci, ni, "thong_tin_bo_sung", e.target.value)} />
                     <Input size="small" value={_n.nguon} placeholder="điều khoản nguồn"
-                      style={{ marginTop: 4, fontSize: 12 }} className="mono"
+                      style={{ marginTop: 4, fontSize: "var(--fs-label)" }} className="mono"
                       onChange={(e) => setNoiDung(ci, ni, "nguon", e.target.value)} />
                   </div>
                 ) },
@@ -136,7 +134,7 @@ export default function Rubric() {
                     <Checkbox checked={t}
                       onChange={(e) => setNoiDung(ci, ni, "can_review", e.target.checked)} />
                     {t && _n.can_lam_ro && (
-                      <div style={{ fontSize: 12, color: "var(--partial)", marginTop: 4 }}>
+                      <div style={{ fontSize: "var(--fs-label)", color: "var(--partial)", marginTop: 4 }}>
                         {_n.can_lam_ro}
                       </div>
                     )}
