@@ -73,7 +73,7 @@ def _verdict(ket_qua: str, bang_chung: str = "", trang: list[int] | None = None,
 
 async def handler(by_type: dict[str, list[PageRecord]], vendor_ctx: VendorContext | None,
                   criterion: dict[str, Any], vision_fn: Any,
-                  *, nd: dict[str, Any] | None = None) -> Verdict:
+                  *, nd: dict[str, Any] | None = None, pkg: Any = None) -> Verdict:
     # can_vendor=True: run_skill đã chặn ctx None; assert giữ hợp đồng nội bộ.
     assert vendor_ctx is not None
     thieu = [c for c in _HO_SO if not by_type.get(c)]

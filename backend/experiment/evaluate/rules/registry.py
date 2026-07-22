@@ -21,14 +21,16 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 from experiment.evaluate.route import _norm
-from experiment.evaluate.schema import KET_QUA_LOI, KET_QUA_SOI, PageRecord, VendorContext, Verdict
+from experiment.evaluate.schema import (
+    KET_QUA_LOI, KET_QUA_SOI, PackageContext, PageRecord, VendorContext, Verdict,
+)
 
 log = logging.getLogger("experiment.evaluate")
 
 PHAM_VI_TIEU_CHI = "tieu_chi"
 PHAM_VI_GOI = "goi"
 
-# handler(by_type, vendor_ctx, criterion, vision_fn, *, nd=None) -> Verdict
+# handler(by_type, vendor_ctx, criterion, vision_fn, *, nd=None, pkg=None) -> Verdict
 RuleHandler = Callable[..., Awaitable[Verdict]]
 
 
@@ -40,6 +42,7 @@ class RuleSkill:
     can_vendor: bool              # cần danh tính nhà thầu?
     handler: RuleHandler
     pham_vi: str = PHAM_VI_TIEU_CHI
+    can_pkg: bool = False         # cần ngữ cảnh gói thầu (tên/mã số)?
 
 
 class RuleRegistry:
@@ -62,10 +65,14 @@ class RuleRegistry:
 def default_registry() -> RuleRegistry:
     """Registry mặc định — các luật built-in đăng ký tại đây (import cục bộ, tránh vòng import)."""
     from experiment.evaluate.rules.bang_gia_khop_webform import SKILL as bang_gia
+    from experiment.evaluate.rules.bao_dam_uy_quyen import SKILL as bao_dam
     from experiment.evaluate.rules.chu_ky_khop_dkkd import SKILL as chu_ky
+    from experiment.evaluate.rules.ten_goi_thau_khop import SKILL as ten_goi
 
     reg = RuleRegistry()
     reg.register(chu_ky)
+    reg.register(ten_goi)
+    reg.register(bao_dam)
     reg.register(bang_gia)
     return reg
 
@@ -78,14 +85,19 @@ def _rule_verdict(skill: RuleSkill, ket_qua: str, bang_chung: str = "", ghi_chu:
 
 async def run_skill(skill: RuleSkill, by_type: dict[str, list[PageRecord]],
                     vendor_ctx: VendorContext | None, criterion: dict[str, Any], vision_fn: Any,
-                    *, nd: dict[str, Any] | None = None) -> Verdict:
-    """Chạy 1 luật -> verdict. Thiếu ngữ cảnh nhà thầu -> SOI (KHÔNG gọi handler); lỗi -> 'lỗi'."""
+                    *, nd: dict[str, Any] | None = None,
+                    pkg: PackageContext | None = None) -> Verdict:
+    """Chạy 1 luật -> verdict. Thiếu ngữ cảnh (nhà thầu/gói thầu) -> SOI (KHÔNG gọi handler);
+    lỗi -> 'lỗi'."""
     if skill.can_vendor and vendor_ctx is None:
         return _rule_verdict(skill, KET_QUA_SOI,
                              ghi_chu="thiếu ngữ cảnh nhà thầu (tên/MST) — không đối chiếu được")
+    if skill.can_pkg and pkg is None:
+        return _rule_verdict(skill, KET_QUA_SOI,
+                             ghi_chu="thiếu ngữ cảnh gói thầu (tên/mã số) — không đối chiếu được")
     log.info("    [rule] %s", skill.id)
     try:
-        return await skill.handler(by_type, vendor_ctx, criterion, vision_fn, nd=nd)
+        return await skill.handler(by_type, vendor_ctx, criterion, vision_fn, nd=nd, pkg=pkg)
     except Exception as exc:  # no-silent-mock: lộ lỗi thành verdict 'lỗi'
         log.warning("    [rule] %s -> lỗi: %s", skill.id, exc)
         return _rule_verdict(skill, KET_QUA_LOI, bang_chung=f"AI/handler lỗi: {exc}",
@@ -93,6 +105,8 @@ async def run_skill(skill: RuleSkill, by_type: dict[str, list[PageRecord]],
 
 
 async def dispatch_standing(registry: RuleRegistry, by_type: dict[str, list[PageRecord]],
-                            vendor_ctx: VendorContext | None, vision_fn: Any) -> list[Verdict]:
+                            vendor_ctx: VendorContext | None, vision_fn: Any,
+                            *, pkg: PackageContext | None = None) -> list[Verdict]:
     """Kiểm tra thường trực — 1 lần/nhà thầu, verdict NGOÀI roll-up tiêu chí."""
-    return [await run_skill(s, by_type, vendor_ctx, {}, vision_fn) for s in registry.standing()]
+    return [await run_skill(s, by_type, vendor_ctx, {}, vision_fn, pkg=pkg)
+            for s in registry.standing()]

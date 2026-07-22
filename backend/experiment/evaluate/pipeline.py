@@ -12,7 +12,7 @@ from experiment.evaluate.evaluate import evaluate_criterion
 from experiment.evaluate.ingest import ingest_hsdt
 from experiment.evaluate.route import inventory_pages, pages_by_type
 from experiment.evaluate.rules.registry import RuleRegistry, default_registry, dispatch_standing
-from experiment.evaluate.schema import EvalResult, VendorContext
+from experiment.evaluate.schema import EvalResult, PackageContext, VendorContext
 from experiment.evaluate.vendor_profile import detect_vendor_profile
 from experiment.evaluate.vision import VisionFn, default_vision_fn
 
@@ -22,11 +22,13 @@ log = logging.getLogger("experiment.evaluate")
 async def evaluate_hsdt(criteria: list[dict[str, Any]], hsdt_files: list[tuple[str, str, bytes]],
                         *, doc: str = "HSDT", vision_fn: VisionFn | None = None,
                         vendor: VendorContext | None = None,
-                        registry: RuleRegistry | None = None) -> EvalResult:
+                        registry: RuleRegistry | None = None,
+                        pkg: PackageContext | None = None) -> EvalResult:
     """HSDT (pdf scan) + tiêu chí -> EvalResult đầy đủ (verdict + hình thức + hồ sơ + phát hiện).
 
     hsdt_files: (tên_file, loai_ho_so [mã catalog], data pdf). vendor: danh tính nhà thầu (gate N/A,
     lọc tài liệu dùng chung, luật can_vendor). registry: mặc định = default_registry().
+    pkg: ngữ cảnh gói thầu đang xét (tên/mã số) — luật can_pkg cần.
     """
     vision_fn = vision_fn or default_vision_fn
     registry = registry if registry is not None else default_registry()
@@ -41,7 +43,7 @@ async def evaluate_hsdt(criteria: list[dict[str, Any]], hsdt_files: list[tuple[s
         log.warning("[eval] %s: ⚠️ MÂU THUẪN hình thức nhà thầu: %s", doc, profile.ghi_chu)
 
     # Kiểm tra thường trực: 1 lần/nhà thầu, KHÔNG gắn tiêu chí, không vào roll-up.
-    phat_hien = await dispatch_standing(registry, by_type, vendor, vision_fn)
+    phat_hien = await dispatch_standing(registry, by_type, vendor, vision_fn, pkg=pkg)
     result = EvalResult(doc=doc, vendor=vendor, vendor_profile=profile,
                         ho_so_nhan_duoc=inventory_pages(pages), phat_hien_bo_sung=phat_hien)
     for c in criteria:

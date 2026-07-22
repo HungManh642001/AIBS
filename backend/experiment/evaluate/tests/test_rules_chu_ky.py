@@ -74,6 +74,53 @@ async def test_handler_dat_khong_dat_soi():
     assert v3.ket_qua == KET_QUA_SOI
 
 
+_LECH = {"[RULE:chu_ky_khop_dkkd]": {
+    "ket_qua": "không đạt", "nguoi_ky": "Trần Văn B", "dai_dien_phap_luat": "Nguyễn Văn A",
+    "bang_chung": "ký B ≠ đại diện A", "trang": [1]}}
+
+_BY_TYPE_GUQ = {**_BY_TYPE, "giay_uy_quyen": [
+    _p(1, "giay_uy_quyen", "GIẤY ỦY QUYỀN: Nguyễn Văn A ủy quyền cho Trần Văn B ký đơn dự thầu")]}
+
+
+async def test_handler_khong_khop_no_guq_khong_dat():
+    """Người ký ≠ đại diện PL và HSDT KHÔNG có giấy ủy quyền -> 'không đạt', KHÔNG gọi LLM lần 2."""
+    vision = ScriptedVision(dict(_LECH))
+    v = await SKILL.handler(_BY_TYPE, None, {}, vision)
+    assert v.ket_qua == KET_QUA_KHONG
+    assert "ủy quyền" in v.ghi_chu                          # nêu rõ lý do: không có GUQ
+    assert len(vision.calls) == 1
+
+
+async def test_handler_khong_khop_guq_hop_le_dat():
+    """Ký thay + GUQ hợp lệ (đúng người, đúng phạm vi) -> 'đạt'; call 2 phải thấy tên 2 phía + GUQ."""
+    vision = ScriptedVision({**_LECH, "[RULE:chu_ky_uy_quyen]": {
+        "ket_qua": "đạt", "nguoi_uy_quyen": "Nguyễn Văn A", "nguoi_duoc_uy_quyen": "Trần Văn B",
+        "bang_chung": "GUQ: A ủy quyền B ký đơn dự thầu", "trang": [1], "do_tin": 0.9}})
+    v = await SKILL.handler(_BY_TYPE_GUQ, None, {}, vision)
+    assert v.ket_qua == KET_QUA_DAT
+    assert "giay_uy_quyen" in v.nguon_doc                   # audit: đã đối chiếu GUQ
+    assert "ủy quyền" in v.bang_chung
+    assert len(vision.calls) == 2
+    hay2 = vision.calls[-1][0]
+    assert "Trần Văn B" in hay2 and "Nguyễn Văn A" in hay2 and "GIẤY ỦY QUYỀN" in hay2
+
+
+async def test_handler_khong_khop_guq_khong_cho_ky_thay():
+    """GUQ có nhưng sai người/không cho ký thay đơn dự thầu -> 'không đạt'."""
+    vision = ScriptedVision({**_LECH, "[RULE:chu_ky_uy_quyen]": {
+        "ket_qua": "không đạt", "nguoi_uy_quyen": "Nguyễn Văn A", "nguoi_duoc_uy_quyen": "Lê C",
+        "bang_chung": "GUQ ủy quyền cho Lê C, không phải người ký Trần Văn B", "trang": [1]}})
+    v = await SKILL.handler(_BY_TYPE_GUQ, None, {}, vision)
+    assert v.ket_qua == KET_QUA_KHONG and "giay_uy_quyen" in v.nguon_doc
+
+
+async def test_handler_guq_call_error_becomes_loi():
+    """Call thẩm định GUQ lỗi -> verdict 'lỗi' (no-silent-mock), không rơi về kết luận bịa."""
+    vision = ScriptedVision(dict(_LECH))                    # KHÔNG có kịch bản call 2
+    v = await SKILL.handler(_BY_TYPE_GUQ, None, {}, vision)
+    assert v.ket_qua == KET_QUA_LOI
+
+
 async def test_handler_missing_doc_thieu_no_llm():
     vision = ScriptedVision({})
     v = await SKILL.handler({"don_du_thau": _BY_TYPE["don_du_thau"]}, None, {}, vision)

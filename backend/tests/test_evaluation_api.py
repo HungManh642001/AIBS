@@ -14,7 +14,7 @@ def _fake_eval(ket_qua: str = "đạt", *, phat_hien: bool = False):
     ho_so_nhan_duoc, phat_hien_bo_sung) — chứng minh router lưu đủ chuỗi audit + hình thức.
     """
     async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
-                   registry=None):
+                   registry=None, pkg_ctx=None):
         r = EvalResult(doc=doc, vendor=vendor_ctx,
                        vendor_profile=VendorProfile(hinh_thuc="độc lập", nguon="khai báo",
                                                     bang_chung="dự thầu độc lập", do_tin=0.9),
@@ -52,6 +52,22 @@ def _seed(client, tien_quyet: bool = True) -> int:
     return pid
 
 
+def test_evaluate_passes_pkg_ctx_to_pipeline(client, monkeypatch):
+    """Router phải truyền ngữ cảnh gói thầu (tên/mã) — luật tên gói thầu cần để đối chiếu."""
+    seen = {}
+    base = _fake_eval("đạt")
+
+    async def fake(criteria, hsdt_files, *, pkg_ctx=None, **kw):
+        seen["pkg_ctx"] = pkg_ctx
+        return await base(criteria, hsdt_files, **kw)
+
+    monkeypatch.setattr("routers.evaluation.evaluate_vendor", fake)
+    pid = _seed(client)
+    client.post(f"/api/v1/packages/{pid}/evaluate")
+    assert seen["pkg_ctx"] is not None
+    assert seen["pkg_ctx"].ten == "g" and seen["pkg_ctx"].ma_so == "G-EV"
+
+
 def test_evaluate_persists_audit_and_profile(client, monkeypatch):
     """Wiring: điều khoản nguồn + yêu cầu gốc + hình thức nhà thầu + phát hiện bổ sung được lưu & trả."""
     monkeypatch.setattr("routers.evaluation.evaluate_vendor", _fake_eval("đạt", phat_hien=True))
@@ -75,7 +91,7 @@ def test_evaluate_builds_vendor_context_with_abbreviation(client, monkeypatch):
     seen = {}
 
     async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
-                   registry=None):
+                   registry=None, pkg_ctx=None):
         seen["ctx"] = vendor_ctx
         from experiment.evaluate.schema import EvalResult
         return EvalResult(doc=doc, vendor=vendor_ctx)
@@ -203,7 +219,7 @@ def test_evaluate_batch_mot_nha_thau_loi_van_giu_ket_qua_con_lai(client, monkeyp
     ok_eval = _fake_eval("đạt")
 
     async def flaky(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
-                    registry=None):
+                    registry=None, pkg_ctx=None):
         if vendor_ctx and vendor_ctx.ten == "B":
             raise RuntimeError("proxy vision sập")
         return await ok_eval(criteria, hsdt_files, doc=doc, vision_fn=vision_fn,

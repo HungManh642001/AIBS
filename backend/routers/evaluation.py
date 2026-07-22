@@ -17,7 +17,7 @@ from responses import ok, fail
 from services.hsdt_pipeline import evaluate_vendor  # tests monkeypatch tên này
 from experiment.evaluate.schema import (
     KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_KHONG_AP_DUNG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU,
-    VendorContext,
+    PackageContext, VendorContext,
 )
 
 router = APIRouter(prefix="/api/v1", tags=["evaluation"])
@@ -110,7 +110,8 @@ async def _eval_and_save_vendor(db: Session, pkg: models.ProcurementPackage,
     # Tên viết tắt -> alias: webform có lúc ghi tên đầy đủ, có lúc tên tắt -> khớp cả hai.
     aliases = [vendor.ten_viet_tat.strip()] if (vendor.ten_viet_tat or "").strip() else []
     ctx = VendorContext(ten=vendor.ten, aliases=aliases, hinh_thuc=vendor.hinh_thuc or "")
-    result = await evaluate_vendor(crits, files, doc=vendor.ten, vendor_ctx=ctx)
+    pkg_ctx = PackageContext(ten=pkg.ten, ma_so=pkg.ma_so or "")
+    result = await evaluate_vendor(crits, files, doc=vendor.ten, vendor_ctx=ctx, pkg_ctx=pkg_ctx)
 
     prof = result.vendor_profile
     if prof is not None:

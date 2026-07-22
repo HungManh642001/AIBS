@@ -471,7 +471,7 @@ def _reg_gia(ket_qua=KET_QUA_DAT, ho_so_can=("bang_gia", "webform")):
     from experiment.evaluate.rules.registry import RuleRegistry, RuleSkill
     from experiment.evaluate.schema import Verdict
 
-    async def handler(by_type, ctx, c, vision_fn, *, nd=None):
+    async def handler(by_type, ctx, c, vision_fn, *, nd=None, pkg=None):
         return Verdict(noi_dung_kiem_tra=(nd or {}).get("noi_dung_kiem_tra", "luật"),
                        hsdt_kiem_tra="bang_gia", yeu_cau="", thong_tin_bo_sung="",
                        ket_qua=ket_qua, bang_chung="giá 2 phía khớp", trang=[1], do_tin=0.9,

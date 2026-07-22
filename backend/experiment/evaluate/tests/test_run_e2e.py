@@ -1,8 +1,8 @@
 import json
 import fitz
 
-from experiment.evaluate.run_evaluate import _parse_vendor, run
-from experiment.evaluate.schema import VendorContext
+from experiment.evaluate.run_evaluate import _parse_pkg, _parse_vendor, run
+from experiment.evaluate.schema import PackageContext, VendorContext
 from experiment.evaluate.vision import ScriptedVision
 
 
@@ -51,6 +51,38 @@ def test_parse_vendor_with_hinh_thuc():
     assert _parse_vendor("ABC", "doc_lap").hinh_thuc == HINH_THUC_DOC_LAP
     assert _parse_vendor("", "lien_danh") == VendorContext(ten="", hinh_thuc=HINH_THUC_LIEN_DANH)
     assert _parse_vendor("") is None                 # GIỮ hành vi cũ: cả hai rỗng -> None
+
+
+def test_parse_pkg():
+    assert _parse_pkg("Mua sắm thiết bị|G-01") == PackageContext(ten="Mua sắm thiết bị",
+                                                                 ma_so="G-01")
+    assert _parse_pkg("Mua sắm thiết bị") == PackageContext(ten="Mua sắm thiết bị")
+    assert _parse_pkg("") is None
+
+
+async def test_run_forwards_pkg_to_core(tmp_path):
+    """--goi-thau phải xuống tới luật standing (luật tên gói thầu cần)."""
+    from experiment.evaluate.rules.registry import PHAM_VI_GOI, RuleRegistry, RuleSkill
+    from experiment.evaluate.schema import Verdict
+
+    seen = {}
+
+    async def handler(by_type, ctx, crit, vision_fn, *, nd=None, pkg=None):
+        seen["pkg"] = pkg
+        return Verdict(noi_dung_kiem_tra="x", hsdt_kiem_tra="don_du_thau", yeu_cau="",
+                       thong_tin_bo_sung="", ket_qua="đạt", bang_chung="", trang=[],
+                       do_tin=1.0, ghi_chu="")
+
+    reg = RuleRegistry()
+    reg.register(RuleSkill(id="luat_gia", ten="Luật giả", ho_so_can=["don_du_thau"],
+                           can_vendor=False, handler=handler, pham_vi=PHAM_VI_GOI))
+    dp = tmp_path / "decomposition.json"
+    dp.write_text(json.dumps({"doc": "E-HSMT", "groups": []}), encoding="utf-8")
+    vision = ScriptedVision({"[IN]": {"text": "đơn"}})
+    pkg = PackageContext(ten="Gói A", ma_so="01")
+    await run(str(dp), [("don.pdf", "don_du_thau", _pdf("đơn"))], str(tmp_path / "out"),
+              vision_fn=vision, registry=reg, pkg=pkg)
+    assert seen["pkg"] == pkg
 
 
 def _decomp_don(tmp_path):
@@ -114,7 +146,7 @@ async def test_run_e2e_rules_with_vendor(tmp_path):
                         vision_fn=vision, vendor=VendorContext(ten="Công ty TNHH ABC"))
     assert metrics["n_tieu_chi"] == 3 and metrics["n_dat"] == 3
     assert metrics["n_can_lam_ro"] == 0                       # KHÔNG còn SOI giả
-    assert metrics["n_phat_hien_bo_sung"] == 1
+    assert metrics["n_phat_hien_bo_sung"] == 3    # chữ ký + tên gói (SOI, không pkg) + bảo đảm (thiếu)
 
     data = json.loads((out / "evaluation.json").read_text(encoding="utf-8"))
     tc = {c["ten"]: c for c in data["criteria"]}
@@ -127,8 +159,11 @@ async def test_run_e2e_rules_with_vendor(tmp_path):
     assert tc["Bảng giá đúng mẫu"]["verdicts"][0]["nguon_doc"] == []
 
     # chữ ký = standing: nằm ở phat_hien_bo_sung, KHÔNG nằm trong tiêu chí nào
-    assert [v["noi_dung_kiem_tra"] for v in data["phat_hien_bo_sung"]] == \
-        ["Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)"]
+    assert [v["noi_dung_kiem_tra"] for v in data["phat_hien_bo_sung"]] == [
+        "Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)",
+        "Tên gói thầu ghi trong tài liệu khớp gói thầu đang xét",
+        "Người ký bảo đảm dự thầu có thẩm quyền (đứng đầu hoặc ủy quyền hợp lệ)",
+    ]
     assert not any(v["noi_dung_kiem_tra"].startswith("Người ký")
                    for c in data["criteria"] for v in c["verdicts"])
 

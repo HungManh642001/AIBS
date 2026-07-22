@@ -35,6 +35,29 @@ async def test_evaluate_vendor_dat(monkeypatch):
     assert result.summary["n_dat"] == 1
 
 
+async def test_evaluate_vendor_forwards_pkg_ctx_to_standing_rules():
+    """pkg_ctx (tên/mã gói) phải xuống tới luật standing — luật tên gói thầu cần để đối chiếu."""
+    from experiment.evaluate.rules.registry import PHAM_VI_GOI, RuleRegistry, RuleSkill
+    from experiment.evaluate.schema import PackageContext, Verdict
+
+    seen = {}
+
+    async def handler(by_type, ctx, crit, vision_fn, *, nd=None, pkg=None):
+        seen["pkg"] = pkg
+        return Verdict(noi_dung_kiem_tra="x", hsdt_kiem_tra="don_du_thau", yeu_cau="",
+                       thong_tin_bo_sung="", ket_qua="đạt", bang_chung="", trang=[],
+                       do_tin=1.0, ghi_chu="")
+
+    reg = RuleRegistry()
+    reg.register(RuleSkill(id="luat_gia", ten="Luật giả", ho_so_can=["don_du_thau"],
+                           can_vendor=False, handler=handler, pham_vi=PHAM_VI_GOI))
+    vision = ScriptedVision({SYS_INGEST: {"text": "Đơn dự thầu"}})
+    pkg = PackageContext(ten="Gói thầu ABC", ma_so="G-01")
+    await evaluate_vendor([], [("don.pdf", "don_du_thau", _pdf("Đơn"))], doc="Cty A",
+                          vision_fn=vision, registry=reg, pkg_ctx=pkg)
+    assert seen["pkg"] == pkg
+
+
 async def test_evaluate_vendor_runs_gate_in_production():
     """Prod giờ chạy gate hình thức: độc lập + tiêu chí TTLĐ -> 'không áp dụng' (khác hành vi cũ).
 

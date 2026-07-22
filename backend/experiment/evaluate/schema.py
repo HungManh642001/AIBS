@@ -101,6 +101,13 @@ class VendorContext:
 
 
 @dataclass
+class PackageContext:
+    """Ngữ cảnh gói thầu đang xét — luật can_pkg đối chiếu tên/mã gói ghi trong tài liệu HSDT."""
+    ten: str
+    ma_so: str = ""
+
+
+@dataclass
 class VendorProfile:
     """Hình thức dự thầu của nhà thầu đang chấm + CĂN CỨ — gate 'không áp dụng' và audit."""
     hinh_thuc: str = HINH_THUC_KHONG_RO

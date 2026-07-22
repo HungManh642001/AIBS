@@ -35,6 +35,16 @@ def test_resolve_code_keeps_valid_and_rejects_unknown():
     assert cat.resolve_code("") is None
 
 
+def test_catalog_has_giay_uy_quyen():
+    """Giấy ủy quyền = file riêng trong HSDT — luật chữ ký cần mã này để tìm GUQ khi ký thay."""
+    a = cat.get_artifact("giay_uy_quyen")
+    assert a is not None and a["nhom"] == "hop_le" and a["label"]
+    assert cat.resolve_code("giay_uy_quyen") == "giay_uy_quyen"
+    assert cat.resolve_code("Giấy ủy quyền") == "giay_uy_quyen"
+    assert cat.resolve_code("văn bản ủy quyền") == "giay_uy_quyen"
+    assert cat.la_dung_chung("giay_uy_quyen") is False
+
+
 def test_catalog_has_webform():
     """webform = kết quả mở thầu (dùng chung cả gói) — decompose cần mã này để khai hsdt_can_kiem_tra."""
     a = cat.get_artifact("webform")

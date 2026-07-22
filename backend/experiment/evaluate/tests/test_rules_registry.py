@@ -4,7 +4,7 @@ from experiment.evaluate.rules.registry import (
     run_skill,
 )
 from experiment.evaluate.schema import (
-    KET_QUA_KHONG, KET_QUA_LOI, KET_QUA_SOI, PageRecord, VendorContext, Verdict,
+    KET_QUA_KHONG, KET_QUA_LOI, KET_QUA_SOI, PackageContext, PageRecord, VendorContext, Verdict,
 )
 
 
@@ -19,11 +19,12 @@ def _verdict(ket_qua):
 
 
 def _skill(id="luat_gia", can_vendor=False, handler=None, ho_so_can=None,
-           pham_vi=PHAM_VI_TIEU_CHI):
-    async def _default_handler(by_type, ctx, crit, vision_fn, *, nd=None):
+           pham_vi=PHAM_VI_TIEU_CHI, can_pkg=False):
+    async def _default_handler(by_type, ctx, crit, vision_fn, *, nd=None, pkg=None):
         return _verdict(KET_QUA_KHONG)
     return RuleSkill(id=id, ten="Luật giả", ho_so_can=ho_so_can or ["bang_gia", "webform"],
-                     can_vendor=can_vendor, handler=handler or _default_handler, pham_vi=pham_vi)
+                     can_vendor=can_vendor, handler=handler or _default_handler, pham_vi=pham_vi,
+                     can_pkg=can_pkg)
 
 
 def _crit(*ho_so):
@@ -58,16 +59,19 @@ def test_matching_excludes_standing_skills():
 
 def test_default_registry_scopes():
     reg = default_registry()
-    assert [s.id for s in reg.standing()] == ["chu_ky_khop_dkkd"]       # chữ ký = standing
+    # 3 kiểm tra thường trực: chữ ký đơn, tên gói thầu, thẩm quyền ký bảo đảm
+    assert [s.id for s in reg.standing()] == \
+        ["chu_ky_khop_dkkd", "ten_goi_thau_khop", "chu_ky_bao_dam_uy_quyen"]
     assert [s.id for s in reg.matching(_crit("bang_gia", "webform"))] == ["bang_gia_khop_webform"]
     assert reg.matching(_crit("don_du_thau")) == []                     # chữ ký không gắn tiêu chí
     assert reg.matching(_crit("bang_gia")) == []
+    assert reg.matching(_crit("bao_dam_du_thau")) == []                 # standing không gắn tiêu chí
 
 
 async def test_run_skill_can_vendor_without_ctx_returns_soi():
     called = []
 
-    async def handler(by_type, ctx, crit, vision_fn, *, nd=None):
+    async def handler(by_type, ctx, crit, vision_fn, *, nd=None, pkg=None):
         called.append(1)
         return _verdict(KET_QUA_KHONG)
 
@@ -81,7 +85,7 @@ async def test_run_skill_can_vendor_without_ctx_returns_soi():
 
 
 async def test_run_skill_handler_raise_becomes_loi():
-    async def handler(by_type, ctx, crit, vision_fn, *, nd=None):
+    async def handler(by_type, ctx, crit, vision_fn, *, nd=None, pkg=None):
         raise RuntimeError("nổ")
 
     got = await run_skill(_skill(handler=handler), {}, None, _crit(), None)
@@ -91,7 +95,7 @@ async def test_run_skill_handler_raise_becomes_loi():
 async def test_run_skill_passes_nd_to_handler():
     seen = {}
 
-    async def handler(by_type, ctx, crit, vision_fn, *, nd=None):
+    async def handler(by_type, ctx, crit, vision_fn, *, nd=None, pkg=None):
         seen["nd"] = nd
         return _verdict(KET_QUA_KHONG)
 
@@ -100,10 +104,53 @@ async def test_run_skill_passes_nd_to_handler():
     assert seen["nd"] == nd
 
 
+async def test_run_skill_passes_pkg_to_handler():
+    seen = {}
+
+    async def handler(by_type, ctx, crit, vision_fn, *, nd=None, pkg=None):
+        seen["pkg"] = pkg
+        return _verdict(KET_QUA_KHONG)
+
+    pkg = PackageContext(ten="Gói thầu mua sắm thiết bị", ma_so="G-2026-01")
+    await run_skill(_skill(handler=handler), {}, None, _crit(), None, pkg=pkg)
+    assert seen["pkg"] == pkg
+
+
+async def test_run_skill_can_pkg_without_ctx_returns_soi():
+    """Luật cần ngữ cảnh gói thầu mà không có -> SOI, KHÔNG gọi handler (như can_vendor)."""
+    called = []
+
+    async def handler(by_type, ctx, crit, vision_fn, *, nd=None, pkg=None):
+        called.append(1)
+        return _verdict(KET_QUA_KHONG)
+
+    got = await run_skill(_skill(can_pkg=True, handler=handler), {}, None, _crit(), None)
+    assert got.ket_qua == KET_QUA_SOI and called == []
+    assert "gói thầu" in got.ghi_chu
+
+    got2 = await run_skill(_skill(can_pkg=True, handler=handler), {}, None, _crit(), None,
+                           pkg=PackageContext(ten="Gói A"))
+    assert got2.ket_qua == KET_QUA_KHONG and called == [1]
+
+
+async def test_dispatch_standing_passes_pkg():
+    seen = {}
+
+    async def handler(by_type, ctx, crit, vision_fn, *, nd=None, pkg=None):
+        seen["pkg"] = pkg
+        return _verdict(KET_QUA_KHONG)
+
+    reg = RuleRegistry()
+    reg.register(_skill(id="standing", pham_vi=PHAM_VI_GOI, handler=handler))
+    pkg = PackageContext(ten="Gói A", ma_so="01")
+    await dispatch_standing(reg, {}, None, None, pkg=pkg)
+    assert seen["pkg"] == pkg
+
+
 async def test_dispatch_standing_runs_each_once():
     calls = []
 
-    async def handler(by_type, ctx, crit, vision_fn, *, nd=None):
+    async def handler(by_type, ctx, crit, vision_fn, *, nd=None, pkg=None):
         calls.append(1)
         return _verdict(KET_QUA_KHONG)
 

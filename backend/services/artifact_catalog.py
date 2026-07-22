@@ -25,6 +25,11 @@ CATALOG: dict[str, dict] = {
         "mo_ta": "Giấy chứng nhận đăng ký doanh nghiệp, tư cách pháp lý.",
         "aliases": ["đăng ký doanh nghiệp", "dkkd", "tư cách hợp lệ", "tư cách pháp lý", "giấy chứng nhận đăng ký"],
     },
+    "giay_uy_quyen": {
+        "label": "Giấy ủy quyền", "nhom": "hop_le",
+        "mo_ta": "Giấy ủy quyền của đại diện pháp luật cho người ký thay hồ sơ dự thầu.",
+        "aliases": ["giấy ủy quyền", "giay uy quyen", "văn bản ủy quyền", "van ban uy quyen", "ủy quyền"],
+    },
     "bao_cao_tai_chinh": {
         "label": "Báo cáo tài chính", "nhom": "nang_luc",
         "mo_ta": "Báo cáo tài chính các năm gần nhất.", "aliases": ["báo cáo tài chính", "bctc", "bao cao tai chinh"],
