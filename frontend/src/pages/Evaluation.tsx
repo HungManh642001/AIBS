@@ -72,6 +72,14 @@ function VerdictTable({ verdicts, files, onOverride }: {
           ),
         },
         {
+          title: "Yêu cầu", width: 230,
+          render: (_, v) => (
+            <div>
+              <div style={{ fontWeight: 600 }}>{v.yeu_cau}</div>
+            </div>
+          ),
+        },
+        {
           title: "Chuẩn theo HSMT", width: 210,
           render: (_, v) => (
             <div>
@@ -85,7 +93,7 @@ function VerdictTable({ verdicts, files, onOverride }: {
           ),
         },
         {
-          title: "Kết quả", width: 185,
+          title: "Kết quả", width: 120,
           render: (_, v) => (
             <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap" }}>
               <Select
@@ -111,7 +119,7 @@ function VerdictTable({ verdicts, files, onOverride }: {
           ),
         },
         {
-          title: "Ghi chú của chuyên gia", width: 220,
+          title: "Ghi chú", width: 220,
           render: (_, v) => (
             <Input.TextArea
               size="small" autoSize={{ minRows: 1, maxRows: 4 }} defaultValue={v.ghi_chu}
@@ -152,18 +160,7 @@ function HinhThucBanner({ v }: { v: VendorEval }) {
       <span style={{ fontSize: "var(--fs-body)", color: "var(--ink-muted)" }}>
         Hình thức dự thầu:{" "}
         <b style={{ color: "var(--ink)" }}>{p.hinh_thuc || "không rõ"}</b>
-        {" "}— căn cứ: {p.nguon}{p.do_tin > 0 && ` (độ tin ${p.do_tin.toFixed(2)})`}
       </span>
-      {p.bang_chung && (
-        <div style={{ fontSize: "var(--fs-label)", color: "var(--ink-muted)" }}>“{p.bang_chung}”</div>
-      )}
-      {p.mau_thuan && (
-        <div style={{ marginTop: "var(--sp-2)", padding: "var(--sp-2) var(--sp-3)", borderRadius: 6,
-                      background: "var(--partial-bg)", color: "var(--partial)", fontSize: "var(--fs-body)" }}>
-          <b>Mâu thuẫn hình thức dự thầu.</b> {p.ghi_chu}. Các nội dung dành cho liên danh vẫn được
-          chấm đầy đủ — hãy xác minh trước khi kết luận.
-        </div>
-      )}
     </div>
   );
 }
@@ -226,9 +223,6 @@ function VendorSection({ v, onOverride }: {
           <div style={{ marginTop: "var(--sp-4)" }}>
             <div style={{ fontSize: "var(--fs-body)", fontWeight: 700, color: "var(--ink)", marginBottom: "var(--sp-1)" }}>
               Phát hiện thêm của hệ thống
-            </div>
-            <div style={{ fontSize: "var(--fs-label)", color: "var(--ink-muted)", marginBottom: "var(--sp-2)" }}>
-              Những điểm nằm ngoài danh mục tiêu chí của HSMT, không tính vào kết quả tổng hợp.
             </div>
             <VerdictTable verdicts={phatHien} files={files} onOverride={onOverride} />
           </div>

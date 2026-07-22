@@ -5,6 +5,8 @@ backend/abes_demo.db
 backend/storage/
 frontend/node_modules/
 frontend/dist/
+docs/
+Screenshot/
 .superpowers/
 .claude/
 .codegraph/

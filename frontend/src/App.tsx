@@ -140,9 +140,6 @@ export default function App() {
       <Layout style={{ marginLeft: 220, minWidth: 0 }}>
         <Layout.Header className="abes-header">
           <Breadcrumb items={crumbs} />
-          <span style={{ fontSize: "var(--fs-meta)", color: "var(--ink-muted)", fontFamily: "var(--font-mono)" }}>
-            ABES Demo
-          </span>
         </Layout.Header>
 
         <Layout.Content className="abes-content">
