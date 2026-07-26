@@ -43,8 +43,8 @@ def test_verdict_nguon_doc_backward_compat():
     d = result_to_json(EvalResult(doc="A", criteria=[ce]))
     assert d["criteria"][0]["verdicts"][0]["nguon_doc"] == []
     v2 = _v("đạt")
-    v2.nguon_doc = ["don_du_thau", "tu_cach_phap_ly"]
-    assert v2.nguon_doc == ["don_du_thau", "tu_cach_phap_ly"]
+    v2.nguon_doc = ["don_du_thau", "dang_ky_kinh_doanh"]
+    assert v2.nguon_doc == ["don_du_thau", "dang_ky_kinh_doanh"]
 
 
 def test_vendor_context_defaults():

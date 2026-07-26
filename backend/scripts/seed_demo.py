@@ -181,10 +181,10 @@ def seed(reset: bool = False, with_error: bool = False) -> None:
           "Thành viên: Công ty TNHH Đại Việt (40%)"],
          vendor_id=v_ld.id, artifact_type="thoa_thuan_lien_danh")
     # Hòa Bình: 1 file nghi tải nhầm loại + 1 file OCR lỗi -> xem cảnh báo trên giao diện
-    _doc(db, pid, "HSDT", "tu_cach_phap_ly_hoa_binh.pdf", f"hsdt/{v_hb.id}",
+    _doc(db, pid, "HSDT", "dang_ky_kinh_doanh_hoa_binh.pdf", f"hsdt/{v_hb.id}",
          ["GIẤY CHỨNG NHẬN ĐĂNG KÝ DOANH NGHIỆP", "Công ty TNHH Thương mại Hòa Bình"],
          vendor_id=v_hb.id, artifact_type="bao_cao_tai_chinh",
-         validation={"match": False, "suggested_type": "tu_cach_phap_ly", "confidence": 0.88,
+         validation={"match": False, "suggested_type": "dang_ky_kinh_doanh", "confidence": 0.88,
                      "note": "Nội dung là giấy ĐKKD, không phải báo cáo tài chính"})
     _doc(db, pid, "HSDT", "catalogue_hoa_binh.pdf", f"hsdt/{v_hb.id}",
          ["(bản scan mờ)"], vendor_id=v_hb.id, artifact_type="catalogue_thong_so",
@@ -221,8 +221,8 @@ def seed(reset: bool = False, with_error: bool = False) -> None:
     _crit(db, pid, 3, "Tư cách hợp lệ của nhà thầu",
           "Nhà thầu có tên trên Hệ thống mạng đấu thầu quốc gia, hạch toán độc lập, "
           "không đang trong quá trình giải thể.",
-          ["tu_cach_phap_ly"], False,
-          [{"ten": "Đăng ký trên Hệ thống", "ho_so": "tu_cach_phap_ly",
+          ["dang_ky_kinh_doanh"], False,
+          [{"ten": "Đăng ký trên Hệ thống", "ho_so": "dang_ky_kinh_doanh",
             "yeu_cau": "Có tên trên hệ thống", "nguon": NG4, "can_review": True,
             "can_lam_ro": "Cần đối chiếu với dữ liệu hệ thống mạng đấu thầu quốc gia"}],
           loi_ai="Không tra được trạng thái trên hệ thống — cần chuyên gia xác nhận thủ công")
@@ -273,9 +273,9 @@ def seed(reset: bool = False, with_error: bool = False) -> None:
             "chuan": "≥ 120 ngày kể từ 15/03/2026", "bang_chung": "Trang 1: hiệu lực 120 ngày",
             "trang": [1], "do_tin": 0.88, "nguon": NG2}])
     _eval(db, pid, v_ap.id, 3, "Tư cách hợp lệ của nhà thầu", False, "Nhà thầu có tên trên Hệ thống",
-          [{"ten": "Đăng ký trên Hệ thống", "ho_so": "tu_cach_phap_ly", "ket_qua": KET_QUA_SOI,
+          [{"ten": "Đăng ký trên Hệ thống", "ho_so": "dang_ky_kinh_doanh", "ket_qua": KET_QUA_SOI,
             "bang_chung": "", "trang": [], "do_tin": 0.4, "nguon": NG4,
-            "ghi_chu": "Không có tài liệu tư cách pháp lý trong HSDT — cần chuyên gia tra cứu"}])
+            "ghi_chu": "Không có giấy đăng ký kinh doanh trong HSDT — cần chuyên gia tra cứu"}])
     _eval(db, pid, v_ap.id, 4, "Giá dự thầu khớp webform", False, "Giá bảng giá phải khớp webform",
           [{"ten": "Đối chiếu giá bảng giá vs webform", "ho_so": "bang_gia", "ket_qua": KET_QUA_DAT,
             "bang_chung": "Bảng giá 4.520.000.000 VND = webform 4.520.000.000 VND",
@@ -324,7 +324,7 @@ def seed(reset: bool = False, with_error: bool = False) -> None:
             "chuan": "≥ 120 ngày kể từ 15/03/2026", "bang_chung": "Trang 1: hiệu lực 130 ngày",
             "trang": [1], "do_tin": 0.9, "nguon": NG2}])
     _eval(db, pid, v_ld.id, 3, "Tư cách hợp lệ của nhà thầu", False, "Nhà thầu có tên trên Hệ thống",
-          [{"ten": "Đăng ký trên Hệ thống", "ho_so": "tu_cach_phap_ly", "ket_qua": KET_QUA_SOI,
+          [{"ten": "Đăng ký trên Hệ thống", "ho_so": "dang_ky_kinh_doanh", "ket_qua": KET_QUA_SOI,
             "trang": [], "do_tin": 0.4, "nguon": NG4,
             "ghi_chu": "Cần tra cứu hệ thống cho cả hai thành viên liên danh"}])
     _eval(db, pid, v_ld.id, 4, "Giá dự thầu khớp webform", False, "Giá bảng giá phải khớp webform",
@@ -371,7 +371,7 @@ def seed(reset: bool = False, with_error: bool = False) -> None:
             "ghi_chu": ("Proxy vision lỗi khi đọc trang này — chưa có kết luận"
                         if with_error else "Trang scan mờ, không đọc được thời hạn")}])
     _eval(db, pid, v_hb.id, 3, "Tư cách hợp lệ của nhà thầu", False, "Nhà thầu có tên trên Hệ thống",
-          [{"ten": "Đăng ký trên Hệ thống", "ho_so": "tu_cach_phap_ly", "ket_qua": KET_QUA_DAT,
+          [{"ten": "Đăng ký trên Hệ thống", "ho_so": "dang_ky_kinh_doanh", "ket_qua": KET_QUA_DAT,
             "bang_chung": "Giấy ĐKKD số 0301234567 (tải nhầm mục báo cáo tài chính)",
             "trang": [1], "do_tin": 0.7, "nguon": NG4}])
     _eval(db, pid, v_hb.id, 4, "Giá dự thầu khớp webform", False, "Giá bảng giá phải khớp webform",

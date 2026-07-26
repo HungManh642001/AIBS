@@ -31,7 +31,7 @@ async def test_core_returns_full_result_with_profile_and_standing():
                                     "dai_dien_phap_luat": "A", "bang_chung": "khớp", "trang": [1]},
     })
     files = [("don.pdf", "don_du_thau", _pdf("đơn")),
-             ("dkkd.pdf", "tu_cach_phap_ly", _pdf("dkkd"))]
+             ("dkkd.pdf", "dang_ky_kinh_doanh", _pdf("dkkd"))]
     r = await evaluate_hsdt([_crit_ttld()], files, doc="HSDT-A", vision_fn=vision,
                             vendor=VendorContext(ten="Công ty ABC", hinh_thuc="doc_lap"))
     assert r.doc == "HSDT-A"

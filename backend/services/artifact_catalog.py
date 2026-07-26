@@ -20,10 +20,11 @@ CATALOG: dict[str, dict] = {
         "mo_ta": "Thỏa thuận liên danh nếu nhà thầu dự thầu theo hình thức liên danh.",
         "aliases": ["thỏa thuận liên danh", "thoa thuan lien danh", "liên danh"],
     },
-    "tu_cach_phap_ly": {
-        "label": "Tài liệu tư cách hợp lệ", "nhom": "hop_le",
-        "mo_ta": "Giấy chứng nhận đăng ký doanh nghiệp, tư cách pháp lý.",
-        "aliases": ["đăng ký doanh nghiệp", "dkkd", "tư cách hợp lệ", "tư cách pháp lý", "giấy chứng nhận đăng ký"],
+    "dang_ky_kinh_doanh": {
+        "label": "Giấy đăng ký kinh doanh", "nhom": "hop_le",
+        "mo_ta": "Giấy chứng nhận đăng ký doanh nghiệp / đăng ký kinh doanh.",
+        "aliases": ["đăng ký kinh doanh", "dang ky kinh doanh", "đăng ký doanh nghiệp", "dkkd",
+                    "giấy chứng nhận đăng ký"],
     },
     "giay_uy_quyen": {
         "label": "Giấy ủy quyền", "nhom": "hop_le",

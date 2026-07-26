@@ -151,7 +151,7 @@ def _pv(ket_qua=KET_QUA_KHONG):
     return Verdict(noi_dung_kiem_tra="Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)",
                    hsdt_kiem_tra="don_du_thau", yeu_cau="Người ký phải là đại diện pháp luật",
                    thong_tin_bo_sung="", ket_qua=ket_qua, bang_chung="ký: A ≠ đại diện: B",
-                   trang=[1], do_tin=0.9, ghi_chu="", nguon_doc=["don_du_thau", "tu_cach_phap_ly"])
+                   trang=[1], do_tin=0.9, ghi_chu="", nguon_doc=["don_du_thau", "dang_ky_kinh_doanh"])
 
 
 def test_markdown_shows_standing_findings_section():

@@ -2,9 +2,22 @@ from services import artifact_catalog as cat
 
 
 def test_catalog_has_legality_codes():
-    for code in ["don_du_thau", "bao_dam_du_thau", "thoa_thuan_lien_danh", "tu_cach_phap_ly"]:
+    for code in ["don_du_thau", "bao_dam_du_thau", "thoa_thuan_lien_danh", "dang_ky_kinh_doanh"]:
         a = cat.get_artifact(code)
         assert a is not None and a["nhom"] == "hop_le" and a["label"]
+
+
+def test_dang_ky_kinh_doanh_thay_the_tu_cach_phap_ly():
+    """Gọi đúng tên tài liệu thật (ĐKKD) — bỏ hẳn nhãn 'tư cách pháp lý/hợp lệ' mơ hồ."""
+    a = cat.get_artifact("dang_ky_kinh_doanh")
+    assert a is not None and a["label"] == "Giấy đăng ký kinh doanh"
+    assert "tư cách" not in a["label"] and "tư cách" not in a["mo_ta"]
+    assert not any("tư cách" in al for al in a["aliases"])
+    assert cat.get_artifact("tu_cach_phap_ly") is None
+    assert "tu_cach_phap_ly" not in cat.all_codes()
+    for raw in ["dang_ky_kinh_doanh", "dkkd", "Đăng ký doanh nghiệp",
+                "giấy chứng nhận đăng ký"]:
+        assert cat.resolve_code(raw) == "dang_ky_kinh_doanh"
 
 
 def test_all_codes_includes_other_groups():
@@ -57,14 +70,14 @@ def test_catalog_has_webform():
 def test_webform_is_marked_shared_across_vendors():
     """webform chứa dữ liệu MỌI nhà thầu -> phải đánh dấu để evaluate lọc trước khi đưa vào prompt."""
     assert cat.la_dung_chung("webform") is True
-    for code in ["don_du_thau", "bang_gia", "tu_cach_phap_ly", "bao_dam_du_thau"]:
+    for code in ["don_du_thau", "bang_gia", "dang_ky_kinh_doanh", "bao_dam_du_thau"]:
         assert cat.la_dung_chung(code) is False      # hồ sơ riêng của nhà thầu
     assert cat.la_dung_chung("khong_ton_tai") is False
 
 
 def test_webform_aliases_do_not_swallow_existing_codes():
     """resolve_code có fallback substring 2 chiều -> alias mới có thể NUỐT mã cũ. Khoá lại."""
-    for code in ["don_du_thau", "bao_dam_du_thau", "thoa_thuan_lien_danh", "tu_cach_phap_ly",
+    for code in ["don_du_thau", "bao_dam_du_thau", "thoa_thuan_lien_danh", "dang_ky_kinh_doanh",
                  "bao_cao_tai_chinh", "hop_dong_tuong_tu", "ke_khai_nhan_su", "ke_khai_thiet_bi",
                  "de_xuat_ky_thuat", "catalogue_thong_so", "bang_gia"]:
         assert cat.resolve_code(code) == code

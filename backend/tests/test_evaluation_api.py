@@ -34,7 +34,7 @@ def _fake_eval(ket_qua: str = "đạt", *, phat_hien: bool = False):
             r.phat_hien_bo_sung = [Verdict(
                 noi_dung_kiem_tra="Người ký khớp ĐKKD", hsdt_kiem_tra="don_du_thau", yeu_cau="",
                 thong_tin_bo_sung="", ket_qua="đạt", bang_chung="khớp", trang=[1], do_tin=0.9,
-                ghi_chu="", nguon_doc=["don_du_thau", "tu_cach_phap_ly"])]
+                ghi_chu="", nguon_doc=["don_du_thau", "dang_ky_kinh_doanh"])]
         return r
     return fake
 

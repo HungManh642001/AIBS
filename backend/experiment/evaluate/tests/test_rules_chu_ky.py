@@ -30,7 +30,7 @@ def test_skill_is_standing_not_attached_to_criterion():
     from experiment.evaluate.rules.registry import PHAM_VI_GOI, RuleRegistry
 
     assert SKILL.id == "chu_ky_khop_dkkd" and SKILL.can_vendor is False
-    assert SKILL.ho_so_can == ["don_du_thau", "tu_cach_phap_ly"]
+    assert SKILL.ho_so_can == ["don_du_thau", "dang_ky_kinh_doanh"]
     assert SKILL.pham_vi == PHAM_VI_GOI
 
     reg = RuleRegistry()
@@ -38,12 +38,12 @@ def test_skill_is_standing_not_attached_to_criterion():
     assert [s.id for s in reg.standing()] == ["chu_ky_khop_dkkd"]
     # dù tiêu chí khai đủ cả 2 hồ sơ, luật standing vẫn KHÔNG gắn vào tiêu chí
     assert reg.matching({"ten": "Đơn dự thầu",
-                         "hsdt_can_kiem_tra": ["don_du_thau", "tu_cach_phap_ly"]}) == []
+                         "hsdt_can_kiem_tra": ["don_du_thau", "dang_ky_kinh_doanh"]}) == []
 
 
 _BY_TYPE = {
     "don_du_thau": [_p(1, "don_du_thau", "Đơn dự thầu... Người ký: Nguyễn Văn A (Giám đốc)")],
-    "tu_cach_phap_ly": [_p(1, "tu_cach_phap_ly", "ĐKKD... Người đại diện theo pháp luật: Nguyễn Văn A")],
+    "dang_ky_kinh_doanh": [_p(1, "dang_ky_kinh_doanh", "ĐKKD... Người đại diện theo pháp luật: Nguyễn Văn A")],
 }
 
 
@@ -53,7 +53,7 @@ async def test_handler_dat_khong_dat_soi():
         "bang_chung": "đơn ký A; ĐKKD đại diện A", "trang": [1], "do_tin": 0.9}})
     v = await SKILL.handler(_BY_TYPE, None, {}, ok)
     assert v.ket_qua == KET_QUA_DAT
-    assert v.nguon_doc == ["don_du_thau", "tu_cach_phap_ly"]
+    assert v.nguon_doc == ["don_du_thau", "dang_ky_kinh_doanh"]
     assert v.bang_chung == "đơn ký A; ĐKKD đại diện A"
     assert ok.calls[-1][1] == 0                             # text-only, không đính ảnh
 
@@ -121,14 +121,70 @@ async def test_handler_guq_call_error_becomes_loi():
     assert v.ket_qua == KET_QUA_LOI
 
 
+async def test_handler_bang_chung_luon_neu_ai_uy_quyen_cho_ai():
+    """Chuyên gia phải đọc được AI ỦY QUYỀN CHO AI ngay trên bằng chứng, kể cả khi LLM không nêu."""
+    vision = ScriptedVision({**_LECH, "[RULE:chu_ky_uy_quyen]": {
+        "ket_qua": "đạt", "nguoi_uy_quyen": "Nguyễn Văn A", "nguoi_duoc_uy_quyen": "Trần Văn B",
+        "bang_chung": "trích GUQ: phạm vi gồm ký đơn dự thầu", "trang": [1]}})
+    v = await SKILL.handler(_BY_TYPE_GUQ, None, {}, vision)
+    assert "Nguyễn Văn A ủy quyền cho Trần Văn B" in v.bang_chung
+    assert "phạm vi gồm ký đơn dự thầu" in v.bang_chung      # KHÔNG nuốt trích dẫn của LLM
+
+
+# HSDT thiếu ĐKKD nhưng có GUQ — thực tế hay gặp, không được bỏ qua kiểm tra chữ ký.
+_BY_TYPE_KHONG_DKKD = {
+    "don_du_thau": _BY_TYPE["don_du_thau"],
+    "giay_uy_quyen": _BY_TYPE_GUQ["giay_uy_quyen"],
+}
+
+
+async def test_handler_khong_co_dkkd_guq_hop_le_dat():
+    """Không có ĐKKD + có GUQ -> thẩm định GUQ độc lập (đúng người ký + đúng phạm vi) -> 'đạt'."""
+    vision = ScriptedVision({"[RULE:chu_ky_uy_quyen_khong_dkkd]": {
+        "ket_qua": "đạt", "nguoi_uy_quyen": "Nguyễn Văn A", "nguoi_duoc_uy_quyen": "Trần Văn B",
+        "bang_chung": "GUQ: phạm vi gồm ký đơn dự thầu", "trang": [1], "do_tin": 0.85}})
+    v = await SKILL.handler(_BY_TYPE_KHONG_DKKD, None, {}, vision)
+    assert v.ket_qua == KET_QUA_DAT
+    assert v.nguon_doc == ["don_du_thau", "giay_uy_quyen"]   # audit: KHÔNG có ĐKKD trong nguồn
+    assert "Nguyễn Văn A ủy quyền cho Trần Văn B" in v.bang_chung
+    assert "ĐKKD" in v.ghi_chu                              # nêu rõ chưa đối chiếu được ĐKKD
+    assert len(vision.calls) == 1                           # KHÔNG gọi bước đối chiếu ĐKKD
+    hay = vision.calls[-1][0]
+    assert "Người ký: Nguyễn Văn A" in hay                  # đơn dự thầu vào prompt (chưa bóc tên)
+    assert "GIẤY ỦY QUYỀN" in hay
+
+
+async def test_handler_khong_co_dkkd_guq_sai_nguoi_khong_dat():
+    vision = ScriptedVision({"[RULE:chu_ky_uy_quyen_khong_dkkd]": {
+        "ket_qua": "không đạt", "nguoi_uy_quyen": "Nguyễn Văn A", "nguoi_duoc_uy_quyen": "Lê C",
+        "bang_chung": "GUQ ủy quyền cho Lê C, không phải người ký đơn", "trang": [1]}})
+    v = await SKILL.handler(_BY_TYPE_KHONG_DKKD, None, {}, vision)
+    assert v.ket_qua == KET_QUA_KHONG
+    assert "Nguyễn Văn A ủy quyền cho Lê C" in v.bang_chung
+
+
+async def test_handler_khong_co_dkkd_guq_call_error_becomes_loi():
+    vision = ScriptedVision({})                             # không kịch bản -> proxy lỗi
+    v = await SKILL.handler(_BY_TYPE_KHONG_DKKD, None, {}, vision)
+    assert v.ket_qua == KET_QUA_LOI
+
+
 async def test_handler_missing_doc_thieu_no_llm():
     vision = ScriptedVision({})
     v = await SKILL.handler({"don_du_thau": _BY_TYPE["don_du_thau"]}, None, {}, vision)
-    assert v.ket_qua == KET_QUA_THIEU and "tu_cach_phap_ly" in v.bang_chung
+    assert v.ket_qua == KET_QUA_THIEU and "dang_ky_kinh_doanh" in v.bang_chung
     assert vision.calls == []                               # thiếu hồ sơ -> KHÔNG gọi LLM
 
     v2 = await SKILL.handler({}, None, {}, vision)
     assert v2.ket_qua == KET_QUA_THIEU and "don_du_thau" in v2.bang_chung
+
+
+async def test_handler_missing_don_du_thau_thieu_du_co_guq():
+    """Thiếu ĐƠN DỰ THẦU thì GUQ cũng vô nghĩa (không có chữ ký để đối chiếu) -> 'thiếu hồ sơ'."""
+    vision = ScriptedVision({})
+    v = await SKILL.handler({"giay_uy_quyen": _BY_TYPE_GUQ["giay_uy_quyen"]}, None, {}, vision)
+    assert v.ket_qua == KET_QUA_THIEU and "don_du_thau" in v.bang_chung
+    assert vision.calls == []
 
 
 async def test_handler_ai_error_becomes_loi_via_dispatch():

@@ -114,7 +114,7 @@ def _decomp_don(tmp_path):
     return str(dp)
 
 
-_FILES = [("don.pdf", "don_du_thau", None), ("dkkd.pdf", "tu_cach_phap_ly", None),
+_FILES = [("don.pdf", "don_du_thau", None), ("dkkd.pdf", "dang_ky_kinh_doanh", None),
           ("bg.pdf", "bang_gia", None), ("webform.pdf", "webform", None)]
 
 
