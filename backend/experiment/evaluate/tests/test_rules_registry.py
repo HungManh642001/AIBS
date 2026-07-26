@@ -59,9 +59,10 @@ def test_matching_excludes_standing_skills():
 
 def test_default_registry_scopes():
     reg = default_registry()
-    # 3 kiểm tra thường trực: chữ ký đơn, tên gói thầu, thẩm quyền ký bảo đảm
+    # 4 kiểm tra thường trực: chữ ký đơn, tên gói thầu, thẩm quyền ký bảo đảm, phân công liên danh
     assert [s.id for s in reg.standing()] == \
-        ["chu_ky_khop_dkkd", "ten_goi_thau_khop", "chu_ky_bao_dam_uy_quyen"]
+        ["chu_ky_khop_dkkd", "ten_goi_thau_khop", "chu_ky_bao_dam_uy_quyen",
+         "lien_danh_phan_cong_khop_bang_gia"]
     assert [s.id for s in reg.matching(_crit("bang_gia", "webform"))] == ["bang_gia_khop_webform"]
     assert reg.matching(_crit("don_du_thau")) == []                     # chữ ký không gắn tiêu chí
     assert reg.matching(_crit("bang_gia")) == []

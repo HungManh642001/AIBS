@@ -38,8 +38,9 @@ async def test_core_returns_full_result_with_profile_and_standing():
     assert r.vendor is not None and r.vendor_profile is not None
     assert r.vendor_profile.hinh_thuc == HINH_THUC_DOC_LAP
     assert [h.loai_ho_so for h in r.ho_so_nhan_duoc]          # có danh mục hồ sơ
-    # 3 standing check, mỗi cái 1 lần: chữ ký đạt; tên gói SOI (không pkg); bảo đảm thiếu hồ sơ
-    assert len(r.phat_hien_bo_sung) == 3
+    # 4 standing check, mỗi cái 1 lần: chữ ký đạt; tên gói SOI (không pkg); bảo đảm thiếu hồ sơ;
+    # phân công liên danh 'không áp dụng' (HSDT không có thỏa thuận liên danh)
+    assert len(r.phat_hien_bo_sung) == 4
 
 
 async def test_core_passes_pkg_to_standing_rules():

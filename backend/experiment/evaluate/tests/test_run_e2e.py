@@ -146,7 +146,8 @@ async def test_run_e2e_rules_with_vendor(tmp_path):
                         vision_fn=vision, vendor=VendorContext(ten="Công ty TNHH ABC"))
     assert metrics["n_tieu_chi"] == 3 and metrics["n_dat"] == 3
     assert metrics["n_can_lam_ro"] == 0                       # KHÔNG còn SOI giả
-    assert metrics["n_phat_hien_bo_sung"] == 3    # chữ ký + tên gói (SOI, không pkg) + bảo đảm (thiếu)
+    # chữ ký + tên gói (SOI, không pkg) + bảo đảm (thiếu) + liên danh (không áp dụng)
+    assert metrics["n_phat_hien_bo_sung"] == 4
 
     data = json.loads((out / "evaluation.json").read_text(encoding="utf-8"))
     tc = {c["ten"]: c for c in data["criteria"]}
@@ -163,6 +164,7 @@ async def test_run_e2e_rules_with_vendor(tmp_path):
         "Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)",
         "Tên gói thầu ghi trong tài liệu khớp gói thầu đang xét",
         "Người ký bảo đảm dự thầu có thẩm quyền (đứng đầu hoặc ủy quyền hợp lệ)",
+        "Phân công liên danh nêu rõ hạng mục và khớp tỷ lệ trong bảng giá",
     ]
     assert not any(v["noi_dung_kiem_tra"].startswith("Người ký")
                    for c in data["criteria"] for v in c["verdicts"])

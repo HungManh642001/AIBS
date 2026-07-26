@@ -67,12 +67,14 @@ def default_registry() -> RuleRegistry:
     from experiment.evaluate.rules.bang_gia_khop_webform import SKILL as bang_gia
     from experiment.evaluate.rules.bao_dam_uy_quyen import SKILL as bao_dam
     from experiment.evaluate.rules.chu_ky_khop_dkkd import SKILL as chu_ky
+    from experiment.evaluate.rules.lien_danh_phan_cong import SKILL as lien_danh
     from experiment.evaluate.rules.ten_goi_thau_khop import SKILL as ten_goi
 
     reg = RuleRegistry()
     reg.register(chu_ky)
     reg.register(ten_goi)
     reg.register(bao_dam)
+    reg.register(lien_danh)
     reg.register(bang_gia)
     return reg
 
