@@ -28,6 +28,7 @@ _COLUMNS: dict[str, dict[str, str]] = {
     "rubric_noi_dung": {"ap_dung": "VARCHAR(16) DEFAULT ''"},
     "hsdt_criterion_eval": {"yeu_cau_goc": "TEXT DEFAULT ''"},
     "hsdt_verdict": {"nguon_hsmt": "TEXT DEFAULT ''", "nguon_doc": "JSON DEFAULT '[]'"},
+    "tender_document": {"ocr_key": "VARCHAR(96) DEFAULT ''", "ocr_pages": "JSON DEFAULT '[]'"},
 }
 
 # {bảng: {cột đã bỏ khỏi model}}. Khai báo khi XÓA/ĐỔI TÊN một cột, kèm cột thay thế ở _COLUMNS.

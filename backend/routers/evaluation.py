@@ -15,6 +15,8 @@ import storage
 from database import get_db
 from responses import ok, fail
 from services.hsdt_pipeline import evaluate_vendor  # tests monkeypatch tên này
+from services.ocr_cache import DocumentOcrCache, xoa_cache
+from experiment.evaluate.ingest import DPI_MAC_DINH, ingest_cache_key
 from experiment.evaluate.schema import (
     KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_KHONG_AP_DUNG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU,
     PackageContext, VendorContext,
@@ -58,11 +60,22 @@ def _thieu_loai_ho_so(pkg: models.ProcurementPackage, vendor_id: int) -> list[st
             for d in _ho_so_cua_vendor(pkg, vendor_id) if not d.artifact_type]
 
 
-def _hsdt_files(pkg: models.ProcurementPackage, vendor_id: int) -> list[tuple[str, str, bytes]]:
-    """Gom hồ sơ đã sẵn sàng chấm. Vision chỉ đọc PDF (Excel bị chặn từ bước upload)."""
-    return [(Path(d.file_path).name, d.artifact_type, storage.read_bytes(d.file_path))
-            for d in _ho_so_cua_vendor(pkg, vendor_id)
-            if d.artifact_type and d.file_kind.startswith("pdf")]
+def _hsdt_files(pkg: models.ProcurementPackage,
+                vendor_id: int) -> tuple[list[tuple[str, str, bytes]], dict[str, int]]:
+    """Gom hồ sơ đã sẵn sàng chấm + bản đồ {khóa cache OCR: doc_id}.
+
+    Vision chỉ đọc PDF (Excel bị chặn từ bước upload). Băm khóa NGAY tại đây vì đây là chỗ duy
+    nhất có cả bytes lẫn id tài liệu — adapter cache khỏi phải đọc lại file.
+    """
+    files: list[tuple[str, str, bytes]] = []
+    khoa: dict[str, int] = {}
+    for d in _ho_so_cua_vendor(pkg, vendor_id):
+        if not (d.artifact_type and d.file_kind.startswith("pdf")):
+            continue
+        data = storage.read_bytes(d.file_path)
+        files.append((Path(d.file_path).name, d.artifact_type, data))
+        khoa[ingest_cache_key(data, DPI_MAC_DINH)] = d.id
+    return files, khoa
 
 
 def _rollup(kqs: set[str]) -> str:
@@ -105,13 +118,15 @@ async def _eval_and_save_vendor(db: Session, pkg: models.ProcurementPackage,
         db.delete(ve)
     db.flush()
 
-    files = _hsdt_files(pkg, vendor.id)
+    files, khoa_ocr = _hsdt_files(pkg, vendor.id)
     log.info("[eval] gói %s nhà thầu %s: %d file HSDT", pkg.id, vendor.ten, len(files))
     # Tên viết tắt -> alias: webform có lúc ghi tên đầy đủ, có lúc tên tắt -> khớp cả hai.
     aliases = [vendor.ten_viet_tat.strip()] if (vendor.ten_viet_tat or "").strip() else []
     ctx = VendorContext(ten=vendor.ten, aliases=aliases, hinh_thuc=vendor.hinh_thuc or "")
     pkg_ctx = PackageContext(ten=pkg.ten, ma_so=pkg.ma_so or "")
-    result = await evaluate_vendor(crits, files, doc=vendor.ten, vendor_ctx=ctx, pkg_ctx=pkg_ctx)
+    # Cache OCR: tài liệu không đổi -> tái dùng text đã bóc, KHÔNG gọi lại vision (bước đắt nhất).
+    result = await evaluate_vendor(crits, files, doc=vendor.ten, vendor_ctx=ctx, pkg_ctx=pkg_ctx,
+                                   cache=DocumentOcrCache(db, khoa_ocr))
 
     prof = result.vendor_profile
     if prof is not None:
@@ -159,6 +174,20 @@ async def evaluate_one(package_id: int, vendor_id: int, db: Session = Depends(ge
     pkg.trang_thai = "cho_review"
     db.commit()
     return ok({"vendor": vendor_out})
+
+
+@router.delete("/packages/{package_id}/ocr-cache")
+async def clear_ocr_cache(package_id: int, vendor_id: int | None = None,
+                          doc_id: int | None = None, db: Session = Depends(get_db)):
+    """Xóa cache OCR để lần chấm sau đọc lại ảnh bằng AI (nghi OCR sai, vừa đổi model...).
+
+    Không truyền gì -> cả gói; `vendor_id` -> 1 nhà thầu; `doc_id` -> 1 tài liệu. Tài liệu đổi nội
+    dung KHÔNG cần gọi endpoint này — khóa cache theo nội dung file nên tự hết hiệu lực.
+    """
+    if not db.get(models.ProcurementPackage, package_id):
+        return fail("Không tìm thấy gói thầu", 404)
+    n = xoa_cache(db, package_id, vendor_id=vendor_id, doc_id=doc_id)
+    return ok({"n_tai_lieu": n})
 
 
 @router.post("/packages/{package_id}/evaluate")

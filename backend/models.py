@@ -52,6 +52,10 @@ class TenderDocument(Base):
     extracted_text: Mapped[str] = mapped_column(Text, default="")
     artifact_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     artifact_validation: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # Cache text vision-OCR (bước đắt nhất khi chấm): khóa theo NỘI DUNG file + dpi + prompt,
+    # xem experiment/evaluate/ingest.ingest_cache_key. Khóa lệch -> OCR lại.
+    ocr_key: Mapped[str] = mapped_column(String(96), default="")
+    ocr_pages: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     package: Mapped[ProcurementPackage] = relationship(back_populates="documents")
 
 

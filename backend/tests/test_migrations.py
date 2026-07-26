@@ -30,6 +30,26 @@ def test_ensure_columns_adds_missing_and_preserves_data(tmp_path):
     assert row == (1, "Cty A")
 
 
+def test_ensure_columns_them_cot_cache_ocr_giu_nguyen_tai_lieu(tmp_path):
+    """DB cũ (trước tính năng cache OCR) phải được vá cột, tài liệu đã tải KHÔNG mất dữ liệu."""
+    engine = create_engine(f"sqlite:///{tmp_path / 'old.db'}")
+    with engine.begin() as c:
+        c.exec_driver_sql(
+            "CREATE TABLE tender_document (id INTEGER PRIMARY KEY, file_path VARCHAR, "
+            "artifact_type VARCHAR)")
+        c.exec_driver_sql(
+            "INSERT INTO tender_document (id, file_path, artifact_type) "
+            "VALUES (1, '1/hsdt/1/don.pdf', 'don_du_thau')")
+
+    ensure_columns(engine)
+
+    assert {"ocr_key", "ocr_pages"} <= _cols(engine, "tender_document")
+    with engine.connect() as c:
+        row = c.exec_driver_sql(
+            "SELECT file_path, artifact_type, ocr_key, ocr_pages FROM tender_document").fetchone()
+    assert row == ("1/hsdt/1/don.pdf", "don_du_thau", "", "[]")   # cache rỗng -> OCR lần chấm tới
+
+
 def test_ensure_columns_idempotent(tmp_path):
     db = tmp_path / "x.db"
     engine = create_engine(f"sqlite:///{db}")

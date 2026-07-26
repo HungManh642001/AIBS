@@ -43,6 +43,28 @@ async def test_core_returns_full_result_with_profile_and_standing():
     assert len(r.phat_hien_bo_sung) == 4
 
 
+async def test_core_forwards_cache_to_ingest():
+    """Cache xuống tới ingest -> chấm lại nhà thầu không OCR lại (chỗ tốn thời gian nhất)."""
+    from experiment.evaluate.ingest import ingest_cache_key
+
+    data = _pdf("đơn")
+    cache = {ingest_cache_key(data, 200): [
+        {"trang": 1, "text": "đã OCR trước đó", "co_chu_ky": True, "co_dau": False}]}
+
+    class _Cache:
+        def get(self, key):
+            return cache.get(key)
+
+        def put(self, key, pages):
+            cache[key] = pages
+
+    vision = ScriptedVision({})          # KHÔNG kịch bản [IN] -> gọi vision là lỗi ngay
+    r = await evaluate_hsdt([], [("don.pdf", "don_du_thau", data)], doc="A",
+                            vision_fn=vision, cache=_Cache())
+    assert [h.n_trang for h in r.ho_so_nhan_duoc] == [1]
+    assert not any("[IN]" in c[0] for c in vision.calls)   # 0 call ingest
+
+
 async def test_core_passes_pkg_to_standing_rules():
     """Ngữ cảnh gói thầu (tên/mã) phải xuống tới luật standing — luật tên gói thầu cần."""
     seen = {}

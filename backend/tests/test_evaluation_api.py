@@ -14,7 +14,7 @@ def _fake_eval(ket_qua: str = "đạt", *, phat_hien: bool = False):
     ho_so_nhan_duoc, phat_hien_bo_sung) — chứng minh router lưu đủ chuỗi audit + hình thức.
     """
     async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
-                   registry=None, pkg_ctx=None):
+                   registry=None, pkg_ctx=None, cache=None):
         r = EvalResult(doc=doc, vendor=vendor_ctx,
                        vendor_profile=VendorProfile(hinh_thuc="độc lập", nguon="khai báo",
                                                     bang_chung="dự thầu độc lập", do_tin=0.9),
@@ -50,6 +50,109 @@ def _seed(client, tien_quyet: bool = True) -> int:
             "yeu_cau": "có chữ ký", "can_lam_ro": "", "can_tra_cuu": False,
             "thong_tin_bo_sung": "", "nguon": "E-CDNT 1.1", "can_review": False}]}]})
     return pid
+
+
+def _upload_pdf(client, pid: int, vendor_id: int, name: str = "don.pdf",
+                text: str = "Đơn dự thầu") -> int:
+    """Tải 1 PDF thật cho nhà thầu -> trả doc_id (cache OCR gắn vào tài liệu này)."""
+    import fitz
+    d = fitz.open(); d.new_page().insert_text((72, 72), text)
+    r = client.post(f"/api/v1/packages/{pid}/documents",
+                    files={"file": (name, d.tobytes(), "application/pdf")},
+                    data={"loai": "HSDT", "vendor_id": str(vendor_id),
+                          "artifact_type": "don_du_thau"})
+    return r.json()["data"]["id"]
+
+
+def test_evaluate_passes_ocr_cache_bound_to_documents(client, monkeypatch):
+    """Router phải cấp cache gắn ĐÚNG tài liệu -> chấm lại không OCR lại (chỗ tốn nhất)."""
+    from experiment.evaluate.ingest import ingest_cache_key
+
+    seen = {}
+    base = _fake_eval("đạt")
+
+    async def fake(criteria, hsdt_files, *, cache=None, **kw):
+        seen["cache"] = cache
+        seen["files"] = hsdt_files
+        return await base(criteria, hsdt_files, **kw)
+
+    monkeypatch.setattr("routers.evaluation.evaluate_vendor", fake)
+    pid = _seed(client)
+    vid = client.get(f"/api/v1/packages/{pid}").json()["data"]["vendors"][0]["id"]
+    _upload_pdf(client, pid, vid)
+    client.post(f"/api/v1/packages/{pid}/evaluate")
+
+    cache = seen["cache"]
+    assert cache is not None
+    key = ingest_cache_key(seen["files"][0][2], 200)
+    assert cache.get(key) is None                       # lần đầu: chưa có gì
+    cache.put(key, [{"trang": 1, "text": "đã OCR", "co_chu_ky": False, "co_dau": False}])
+    assert cache.get(key)[0]["text"] == "đã OCR"        # lưu được và đọc lại đúng
+
+
+def test_clear_ocr_cache_endpoint(client, monkeypatch):
+    from experiment.evaluate.ingest import ingest_cache_key
+
+    seen = {}
+    base = _fake_eval("đạt")
+
+    async def fake(criteria, hsdt_files, *, cache=None, **kw):
+        seen["cache"] = cache
+        seen["files"] = hsdt_files
+        return await base(criteria, hsdt_files, **kw)
+
+    monkeypatch.setattr("routers.evaluation.evaluate_vendor", fake)
+    pid = _seed(client)
+    vid = client.get(f"/api/v1/packages/{pid}").json()["data"]["vendors"][0]["id"]
+    doc_id = _upload_pdf(client, pid, vid)
+    client.post(f"/api/v1/packages/{pid}/evaluate")
+    key = ingest_cache_key(seen["files"][0][2], 200)
+    seen["cache"].put(key, [{"trang": 1, "text": "đã OCR", "co_chu_ky": False, "co_dau": False}])
+
+    r = client.delete(f"/api/v1/packages/{pid}/ocr-cache?doc_id={doc_id}")
+    assert r.status_code == 200 and r.json()["data"]["n_tai_lieu"] == 1
+
+    client.post(f"/api/v1/packages/{pid}/evaluate")     # chấm lại -> cache phải trống
+    assert seen["cache"].get(key) is None
+
+
+def test_cham_lai_khong_ocr_lai_qua_toan_bo_stack(client, monkeypatch):
+    """E2E (evaluate_vendor THẬT): chấm lần 2 không phát sinh call vision ingest nào.
+
+    Đây là test duy nhất bắt được lỗi lệch tham số giữa nơi băm khóa (router) và nơi dùng khóa
+    (ingest) — lệch thì cache không bao giờ hit mà chẳng có lỗi nào báo ra.
+    """
+    from experiment.evaluate.vision import ScriptedVision
+
+    vision = ScriptedVision({"[IN]": {"text": "Đơn dự thầu", "co_chu_ky": True, "co_dau": True},
+                             "[VENDOR_FORM]": {"hinh_thuc": "độc lập", "bang_chung": "độc lập",
+                                               "trang": [1], "do_tin": 0.9},
+                             "[EV:": {"ket_qua": "đạt", "bang_chung": "ok", "trang": [1]},
+                             "[RULE:": {"ket_qua": "đạt", "bang_chung": "ok", "trang": [1]}})
+    monkeypatch.setattr("experiment.evaluate.pipeline.default_vision_fn", vision)
+
+    pid = _seed(client)
+    vid = client.get(f"/api/v1/packages/{pid}").json()["data"]["vendors"][0]["id"]
+    _upload_pdf(client, pid, vid)
+
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    lan_1 = sum(1 for c in vision.calls if "[IN]" in c[0])
+    assert lan_1 > 0                                    # lần đầu: có OCR thật
+
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    lan_2 = sum(1 for c in vision.calls if "[IN]" in c[0]) - lan_1
+    assert lan_2 == 0                                   # lần sau: 0 call OCR
+
+    # Xóa cache -> chấm lại phải OCR lại đúng số trang như lần đầu
+    client.delete(f"/api/v1/packages/{pid}/ocr-cache")
+    client.post(f"/api/v1/packages/{pid}/evaluate")
+    lan_3 = sum(1 for c in vision.calls if "[IN]" in c[0]) - lan_1
+    assert lan_3 == lan_1
+
+
+def test_clear_ocr_cache_package_not_found(client):
+    r = client.delete("/api/v1/packages/9999/ocr-cache")
+    assert r.status_code == 404
 
 
 def test_evaluate_passes_pkg_ctx_to_pipeline(client, monkeypatch):
@@ -91,7 +194,7 @@ def test_evaluate_builds_vendor_context_with_abbreviation(client, monkeypatch):
     seen = {}
 
     async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
-                   registry=None, pkg_ctx=None):
+                   registry=None, pkg_ctx=None, cache=None):
         seen["ctx"] = vendor_ctx
         from experiment.evaluate.schema import EvalResult
         return EvalResult(doc=doc, vendor=vendor_ctx)
@@ -219,7 +322,7 @@ def test_evaluate_batch_mot_nha_thau_loi_van_giu_ket_qua_con_lai(client, monkeyp
     ok_eval = _fake_eval("đạt")
 
     async def flaky(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
-                    registry=None, pkg_ctx=None):
+                    registry=None, pkg_ctx=None, cache=None):
         if vendor_ctx and vendor_ctx.ten == "B":
             raise RuntimeError("proxy vision sập")
         return await ok_eval(criteria, hsdt_files, doc=doc, vision_fn=vision_fn,
