@@ -45,7 +45,8 @@ def _content(prompt: str, images: list[bytes]) -> Any:
 
 
 async def default_vision_fn(
-    system: str, prompt: str, images: list[bytes] = (), validate=None, max_tokens: int | None = None,
+    system: str, prompt: str, images: list[bytes] = (), validate=None,
+    max_tokens: int | None = None, seed: int | None = None,
 ) -> AiOutcome:
     """Gọi Qwen VL qua LiteLLM proxy (text + ảnh base64). Lỗi -> status='error'."""
     settings = get_settings()
@@ -72,7 +73,7 @@ async def default_vision_fn(
                     {"role": "user", "content": _content(prompt, list(images))},
                 ],
                 temperature=settings.ai_temperature,
-                seed=settings.ai_seed,      # tái lập: xem chú thích ai_seed trong config
+                seed=settings.ai_seed if seed is None else seed,   # xem chú thích ai_seed (config)
                 top_p=1.0,
                 max_tokens=max_tokens or settings.ai_max_tokens,
                 timeout=300,
@@ -80,7 +81,8 @@ async def default_vision_fn(
             data = extract_json(resp["choices"][0]["message"]["content"])
             if validate is not None:
                 data = validate(data)
-            return AiOutcome(status="ok", data=data, model=settings.ai_model)
+            return AiOutcome(status="ok", data=data, model=settings.ai_model,
+                             finish_reason=str(resp["choices"][0].get("finish_reason") or ""))
         except Exception as exc:  # noqa: BLE001
             last_err = f"{type(exc).__name__}: {exc}"
     return AiOutcome(status="error", data=None, model=settings.ai_model, error=last_err)

@@ -79,6 +79,7 @@ class PageRecord:
     co_dau: bool = False
     image: bytes = b""            # PNG bytes — CHỈ trong RAM, không serialize
     nguon_trich: str = NGUON_VISION   # audit: text trang này đến từ đâu
+    canh_bao: str = ""            # nghi bóc thiếu/lệch cột — luật và báo cáo phải thấy
 
 
 @dataclass
@@ -152,6 +153,8 @@ class EvalResult:
     ho_so_nhan_duoc: list[HoSoNhanDuoc] = field(default_factory=list)
     # Kiểm tra thường trực của hệ thống (ngoài checklist HSMT) — NGOÀI roll-up, không kéo 'loại'.
     phat_hien_bo_sung: list[Verdict] = field(default_factory=list)
+    # Trang nghi ĐỌC THIẾU (vision bóc bảng scan) — phải nói ra, con số trên trang đó không chắc.
+    canh_bao_doc: list[str] = field(default_factory=list)
 
     @property
     def summary(self) -> dict[str, int]:
@@ -174,6 +177,7 @@ def result_to_json(r: EvalResult) -> dict[str, Any]:
         "vendor_profile": asdict(r.vendor_profile) if r.vendor_profile is not None else None,
         "ho_so_nhan_duoc": [asdict(h) for h in r.ho_so_nhan_duoc],
         "phat_hien_bo_sung": [asdict(v) for v in r.phat_hien_bo_sung],
+        "canh_bao_doc": list(r.canh_bao_doc),
         "criteria": [asdict(c) for c in r.criteria],
         "summary": r.summary,
     }

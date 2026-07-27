@@ -90,3 +90,11 @@ def test_page_record_holds_image_bytes():
     p = PageRecord(file="a.pdf", trang=1, loai_ho_so="don_du_thau", text="x",
                    co_chu_ky=True, co_dau=False, image=b"\x89PNG")
     assert p.image == b"\x89PNG"
+
+
+def test_result_to_json_mang_canh_bao_doc():
+    """Cảnh báo đọc phải ra tới API/JSON — không chỉ nằm trong báo cáo Markdown."""
+    from experiment.evaluate.schema import EvalResult, result_to_json
+
+    d = result_to_json(EvalResult(doc="A", canh_bao_doc=["bg.pdf trang 3: số cột không đều"]))
+    assert d["canh_bao_doc"] == ["bg.pdf trang 3: số cột không đều"]

@@ -78,4 +78,9 @@ def _flags(p: PageRecord) -> str:
 
 
 def pages_text(pages: list[PageRecord]) -> str:
-    return "\n".join(f"[Trang {p.trang}]{_flags(p)} {p.text}" for p in pages)
+    """Text các trang cho prompt. Trang nghi bóc thiếu được nêu THẲNG trong text: luật phải biết
+    dữ liệu có thể khuyết để hạ kết luận xuống 'cần làm rõ' thay vì chấm trên bảng thiếu hàng."""
+    def _dong(p: PageRecord) -> str:
+        cb = f" [CẢNH BÁO đọc trang này: {p.canh_bao}]" if p.canh_bao else ""
+        return f"[Trang {p.trang}]{_flags(p)}{cb} {p.text}"
+    return "\n".join(_dong(p) for p in pages)

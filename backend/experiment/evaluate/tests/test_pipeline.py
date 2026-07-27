@@ -43,6 +43,30 @@ async def test_core_returns_full_result_with_profile_and_standing():
     assert len(r.phat_hien_bo_sung) == 4
 
 
+async def test_core_gom_canh_bao_doc_tu_cac_trang():
+    """Trang nghi bóc thiếu phải nổi lên tận EvalResult — báo cáo mới nêu được cho chuyên gia."""
+    from services.ai_client import AiOutcome
+
+    async def vision(system, prompt, images=(), validate=None, max_tokens=None, seed=None, **kw):
+        if images:      # ingest: trả bảng lệch cột ở mọi lần thử
+            d = {"text": "STT | Ten | Tien\n1 | May chu | 100\n2 | UPS", "co_chu_ky": False,
+                 "co_dau": False}
+            return AiOutcome("ok", validate(d) if validate else d, "fake", finish_reason="stop")
+        return AiOutcome("error", None, "fake", error="không dùng tới")
+
+    r = await evaluate_hsdt([], [("bg.pdf", "bang_gia", _pdf("scan"))], doc="A", vision_fn=vision)
+    assert len(r.canh_bao_doc) == 1
+    assert "bg.pdf" in r.canh_bao_doc[0] and "trang 1" in r.canh_bao_doc[0]
+    assert "cột" in r.canh_bao_doc[0]
+
+
+async def test_core_khong_canh_bao_khi_doc_on():
+    vision = ScriptedVision({"[IN]": {"text": "đơn dự thầu bình thường"}})
+    r = await evaluate_hsdt([], [("don.pdf", "don_du_thau", _pdf("đơn"))], doc="A",
+                            vision_fn=vision)
+    assert r.canh_bao_doc == []
+
+
 async def test_core_forwards_cache_to_ingest():
     """Cache xuống tới ingest -> chấm lại nhà thầu không OCR lại (chỗ tốn thời gian nhất)."""
     from experiment.evaluate.ingest import DPI_MAC_DINH, ingest_cache_key

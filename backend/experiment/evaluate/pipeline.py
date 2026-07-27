@@ -52,8 +52,14 @@ async def evaluate_hsdt(criteria: list[dict[str, Any]], hsdt_files: list[tuple[s
 
     # Kiểm tra thường trực: 1 lần/nhà thầu, KHÔNG gắn tiêu chí, không vào roll-up.
     phat_hien = await dispatch_standing(registry, by_type, vendor, vision_fn, pkg=pkg)
+    # Trang nghi bóc thiếu nổi lên tận đây để báo cáo nêu được — mọi con số phía dưới phụ thuộc
+    # vào việc trang đó có đọc đủ hay không.
+    canh_bao = [f"{p.file} trang {p.trang}: {p.canh_bao}" for p in pages if p.canh_bao]
+    if canh_bao:
+        log.warning("[eval] %s: %d trang nghi đọc thiếu", doc, len(canh_bao))
     result = EvalResult(doc=doc, vendor=vendor, vendor_profile=profile,
-                        ho_so_nhan_duoc=inventory_pages(pages), phat_hien_bo_sung=phat_hien)
+                        ho_so_nhan_duoc=inventory_pages(pages), phat_hien_bo_sung=phat_hien,
+                        canh_bao_doc=canh_bao)
     for c in criteria:
         result.criteria.append(await evaluate_criterion(
             c, pages, vision_fn, registry=registry, vendor_ctx=vendor, profile=profile,

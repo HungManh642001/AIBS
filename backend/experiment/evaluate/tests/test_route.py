@@ -43,3 +43,15 @@ def test_pages_text_joins_with_page_markers():
 def test_pages_text_surfaces_visual_flags():
     txt = pages_text([_p(1, "bao_dam_du_thau", "thư bảo lãnh", co_chu_ky=True, co_dau=True)])
     assert "có chữ ký" in txt and "có đóng dấu" in txt   # eval biết có chữ ký/dấu dù không đính ảnh
+
+
+def test_pages_text_hien_canh_bao_boc_thieu():
+    """Trang nghi bóc thiếu phải nói ra trong text — luật đọc thấy mới thận trọng được."""
+    from experiment.evaluate.route import pages_text
+    from experiment.evaluate.schema import PageRecord
+
+    p = PageRecord(file="bg.pdf", trang=3, loai_ho_so="bang_gia", text="1 | May chu | 100",
+                   canh_bao="số cột không đều: 2/5 hàng lệch")
+    got = pages_text([p])
+    assert "CẢNH BÁO" in got and "số cột không đều" in got
+    assert "1 | May chu | 100" in got            # vẫn giữ nguyên nội dung đọc được

@@ -153,12 +153,22 @@ def _khong_ap_dung(criteria: list[CriterionEval], files: dict[str, list[str]]) -
     return out + [""]
 
 
+def _canh_bao_doc(r: EvalResult) -> list[str]:
+    """Trang nghi đọc thiếu — đặt NGAY sau danh mục hồ sơ: mọi con số phía dưới phụ thuộc vào việc
+    đọc có đủ hay không, chuyên gia cần biết trước khi đọc kết luận."""
+    if not r.canh_bao_doc:
+        return []
+    return ["## ⚠️ CẢNH BÁO ĐỌC HỒ SƠ (bản scan, có thể bóc thiếu)", ""] \
+        + [f"- {c}" for c in r.canh_bao_doc] \
+        + ["", "_Số liệu trên các trang này chưa chắc đầy đủ — nên đối chiếu tay với bản gốc._", ""]
+
+
 def to_markdown(r: EvalResult) -> str:
-    """Báo cáo: nhà thầu -> hồ sơ -> tổng kết -> phát hiện hệ thống -> CẦN XỬ LÝ -> chi tiết -> N/A."""
+    """Báo cáo: nhà thầu -> hồ sơ -> cảnh báo đọc -> tổng kết -> phát hiện -> CẦN XỬ LÝ -> chi tiết."""
     files = _files_map(r)
     # N/A tách khỏi phần chi tiết: máy đã bỏ qua có chủ đích, đọc ở mục riêng kèm lý do.
     xet = [c for c in r.criteria if c.ket_qua != KET_QUA_KHONG_AP_DUNG]
-    lines = _header(r) + _ho_so(r) + _tong_ket(r) + _phat_hien(r, files) \
+    lines = _header(r) + _ho_so(r) + _canh_bao_doc(r) + _tong_ket(r) + _phat_hien(r, files) \
         + _can_xu_ly(xet, files, r.phat_hien_bo_sung) \
         + _chi_tiet(xet, files) + _khong_ap_dung(r.criteria, files)
     return "\n".join(lines)

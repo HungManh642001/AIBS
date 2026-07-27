@@ -199,3 +199,21 @@ def test_markdown_minimal_result_no_vendor():
     """EvalResult trần (không vendor/profile/hồ sơ) vẫn render được — không crash."""
     md = to_markdown(EvalResult(doc="HSDT-B"))
     assert "HSDT-B" in md
+
+
+def test_bao_cao_neu_trang_nghi_doc_thieu():
+    """Chuyên gia phải thấy trang nào đọc không chắc — nếu không, con số trong bảng giá vô nghĩa."""
+    from experiment.evaluate.report import to_markdown
+    from experiment.evaluate.schema import EvalResult
+
+    r = EvalResult(doc="HSDT-A",
+                   canh_bao_doc=["bg.pdf trang 3: số cột không đều: 2/5 hàng lệch"])
+    md = to_markdown(r)
+    assert "bg.pdf trang 3" in md and "số cột không đều" in md
+
+
+def test_bao_cao_khong_nhac_khi_moi_trang_doc_on():
+    from experiment.evaluate.report import to_markdown
+    from experiment.evaluate.schema import EvalResult
+
+    assert "CẢNH BÁO ĐỌC" not in to_markdown(EvalResult(doc="HSDT-A"))

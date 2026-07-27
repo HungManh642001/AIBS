@@ -64,6 +64,10 @@ class AiOutcome:
     data: dict[str, Any] | None
     model: str             # tên model thật | "mock"
     error: str | None = None
+    # "length" = model CHẠM TRẦN token và bị cắt giữa chừng: JSON vẫn có thể hợp lệ nhưng nội dung
+    # thiếu (model tự kết thúc sớm). Bỏ qua field này là bỏ qua bằng chứng chắc chắn nhất về việc
+    # bóc thiếu.
+    finish_reason: str = ""
 
 
 async def ai_call(
