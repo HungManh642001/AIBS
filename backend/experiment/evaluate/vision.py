@@ -72,6 +72,8 @@ async def default_vision_fn(
                     {"role": "user", "content": _content(prompt, list(images))},
                 ],
                 temperature=settings.ai_temperature,
+                seed=settings.ai_seed,      # tái lập: xem chú thích ai_seed trong config
+                top_p=1.0,
                 max_tokens=max_tokens or settings.ai_max_tokens,
                 timeout=300,
             )

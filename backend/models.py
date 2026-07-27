@@ -28,6 +28,7 @@ class ProcurementPackage(Base):
     rubric_criteria: Mapped[list[RubricCriterion]] = relationship(cascade="all, delete-orphan")
     hsdt_evals: Mapped[list[HsdtCriterionEval]] = relationship(cascade="all, delete-orphan")
     hsdt_vendor_evals: Mapped[list[HsdtVendorEval]] = relationship(cascade="all, delete-orphan")
+    ai_caches: Mapped[list[AiCallCache]] = relationship(cascade="all, delete-orphan")
 
 
 class Vendor(Base):
@@ -167,3 +168,18 @@ class HsdtVendorEval(Base):
     mau_thuan: Mapped[bool] = mapped_column(default=False)          # khai báo ≠ hồ sơ (cảnh báo)
     ghi_chu: Mapped[str] = mapped_column(Text, default="")
     ho_so_nhan_duoc: Mapped[list[dict]] = mapped_column(JSON, default=list)
+
+
+class AiCallCache(Base):
+    """Cache kết quả CHẤM theo hash đầu vào — chấm lại cùng hồ sơ + tiêu chí ra y hệt, 0 call.
+
+    Khóa do `experiment/evaluate/cached_vision.khoa_call` băm từ system+prompt+model+tham số sinh;
+    gắn thêm gói/nhà thầu để xóa có chọn lọc khi muốn ép AI chấm lại từ đầu.
+    """
+    __tablename__ = "ai_call_cache"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    package_id: Mapped[int] = mapped_column(ForeignKey("procurement_package.id"), index=True)
+    vendor_id: Mapped[int | None] = mapped_column(ForeignKey("vendor.id"), nullable=True)
+    khoa: Mapped[str] = mapped_column(String(64), index=True)
+    data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    ngay_tao: Mapped[datetime] = mapped_column(DateTime, default=_now)

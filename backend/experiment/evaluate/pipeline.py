@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from experiment.evaluate.cached_vision import CachedVision, CallCache
 from experiment.evaluate.evaluate import evaluate_criterion
 from experiment.evaluate.ingest import PageCache, ingest_hsdt
 from experiment.evaluate.route import inventory_pages, pages_by_type
@@ -24,15 +25,20 @@ async def evaluate_hsdt(criteria: list[dict[str, Any]], hsdt_files: list[tuple[s
                         vendor: VendorContext | None = None,
                         registry: RuleRegistry | None = None,
                         pkg: PackageContext | None = None,
-                        cache: PageCache | None = None) -> EvalResult:
+                        cache: PageCache | None = None,
+                        call_cache: CallCache | None = None) -> EvalResult:
     """HSDT (pdf scan) + tiêu chí -> EvalResult đầy đủ (verdict + hình thức + hồ sơ + phát hiện).
 
     hsdt_files: (tên_file, loai_ho_so [mã catalog], data pdf). vendor: danh tính nhà thầu (gate N/A,
     lọc tài liệu dùng chung, luật can_vendor). registry: mặc định = default_registry().
     pkg: ngữ cảnh gói thầu đang xét (tên/mã số) — luật can_pkg cần.
     cache: kho text đã OCR (xem ingest.PageCache) — None = luôn OCR lại như trước.
+    call_cache: kho kết quả CHẤM (xem cached_vision.CallCache) — có thì chấm lại ra y hệt, 0 call.
     """
     vision_fn = vision_fn or default_vision_fn
+    if call_cache is not None:
+        # Bọc MỘT lần ở đây là phủ mọi call chấm (eval, dò hình thức, mọi luật).
+        vision_fn = CachedVision(vision_fn, call_cache)
     registry = registry if registry is not None else default_registry()
 
     pages = await ingest_hsdt(hsdt_files, vision_fn, cache=cache)

@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     ai_embed_model: str = "bge-m3"                  # model embedding qua LiteLLM proxy (bước index)
     ai_mock: bool = False                          # True -> luôn dùng mock
     ai_temperature: float = 0.0                    # 0 -> tái lập kết quả
+    # temperature=0 KHÔNG đủ để tái lập: vLLM gộp batch động nên thứ tự cộng số thực đổi theo tải.
+    # seed cố định là điều kiện tối thiểu; đổi seed = xin model một "góc nhìn" khác.
+    ai_seed: int = 20260101
     ai_max_tokens: int = 4096                       # giới hạn token sinh (đánh giá/sub-check)
 
 

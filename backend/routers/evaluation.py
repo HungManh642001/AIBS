@@ -15,6 +15,7 @@ import storage
 from database import get_db
 from responses import ok, fail
 from services.hsdt_pipeline import evaluate_vendor  # tests monkeypatch tên này
+from services.ai_cache import DbCallCache, xoa_ai_cache
 from services.ocr_cache import DocumentOcrCache, xoa_cache
 from experiment.evaluate.ingest import DPI_MAC_DINH, ingest_cache_key
 from experiment.evaluate.schema import (
@@ -124,9 +125,11 @@ async def _eval_and_save_vendor(db: Session, pkg: models.ProcurementPackage,
     aliases = [vendor.ten_viet_tat.strip()] if (vendor.ten_viet_tat or "").strip() else []
     ctx = VendorContext(ten=vendor.ten, aliases=aliases, hinh_thuc=vendor.hinh_thuc or "")
     pkg_ctx = PackageContext(ten=pkg.ten, ma_so=pkg.ma_so or "")
-    # Cache OCR: tài liệu không đổi -> tái dùng text đã bóc, KHÔNG gọi lại vision (bước đắt nhất).
+    # Hai lớp cache: OCR (text đã bóc) + kết quả chấm. Hồ sơ và tiêu chí không đổi -> chấm lại ra
+    # Y HỆT lần trước và gần như 0 call; muốn AI làm lại thì xóa cache (DELETE .../cache).
     result = await evaluate_vendor(crits, files, doc=vendor.ten, vendor_ctx=ctx, pkg_ctx=pkg_ctx,
-                                   cache=DocumentOcrCache(db, khoa_ocr))
+                                   cache=DocumentOcrCache(db, khoa_ocr),
+                                   call_cache=DbCallCache(db, pkg.id, vendor.id))
 
     prof = result.vendor_profile
     if prof is not None:
@@ -176,18 +179,25 @@ async def evaluate_one(package_id: int, vendor_id: int, db: Session = Depends(ge
     return ok({"vendor": vendor_out})
 
 
-@router.delete("/packages/{package_id}/ocr-cache")
-async def clear_ocr_cache(package_id: int, vendor_id: int | None = None,
-                          doc_id: int | None = None, db: Session = Depends(get_db)):
-    """Xóa cache OCR để lần chấm sau đọc lại ảnh bằng AI (nghi OCR sai, vừa đổi model...).
+@router.delete("/packages/{package_id}/cache")
+async def clear_cache(package_id: int, loai: str = "tat_ca", vendor_id: int | None = None,
+                      doc_id: int | None = None, db: Session = Depends(get_db)):
+    """Xóa cache để ép AI làm lại từ đầu (nghi đọc/chấm sai, vừa đổi model...).
 
-    Không truyền gì -> cả gói; `vendor_id` -> 1 nhà thầu; `doc_id` -> 1 tài liệu. Tài liệu đổi nội
-    dung KHÔNG cần gọi endpoint này — khóa cache theo nội dung file nên tự hết hiệu lực.
+    `loai`: 'ocr' (text đã bóc) | 'ai' (kết quả chấm) | 'tat_ca' (mặc định). Thu hẹp phạm vi bằng
+    `vendor_id` / `doc_id` (doc_id chỉ áp cho cache OCR).
+
+    KHÔNG cần gọi khi tài liệu đổi nội dung hoặc tiêu chí đổi: cả hai khóa cache đều băm từ đầu
+    vào nên tự hết hiệu lực.
     """
     if not db.get(models.ProcurementPackage, package_id):
         return fail("Không tìm thấy gói thầu", 404)
-    n = xoa_cache(db, package_id, vendor_id=vendor_id, doc_id=doc_id)
-    return ok({"n_tai_lieu": n})
+    n_ocr = n_ai = 0
+    if loai in ("ocr", "tat_ca"):
+        n_ocr = xoa_cache(db, package_id, vendor_id=vendor_id, doc_id=doc_id)
+    if loai in ("ai", "tat_ca"):
+        n_ai = xoa_ai_cache(db, package_id, vendor_id=vendor_id)
+    return ok({"n_tai_lieu": n_ocr, "n_ket_qua_cham": n_ai})
 
 
 @router.post("/packages/{package_id}/evaluate")

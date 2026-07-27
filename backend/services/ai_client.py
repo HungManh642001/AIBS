@@ -49,6 +49,8 @@ def _litellm_completion(system: str, prompt: str, max_tokens: int | None = None)
             {"role": "user", "content": prompt},
         ],
         temperature=settings.ai_temperature,
+        seed=settings.ai_seed,      # tái lập: xem chú thích ai_seed trong config
+        top_p=1.0,
         max_tokens=max_tokens or settings.ai_max_tokens,
         timeout=300,
     )

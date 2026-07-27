@@ -14,7 +14,7 @@ def _fake_eval(ket_qua: str = "đạt", *, phat_hien: bool = False):
     ho_so_nhan_duoc, phat_hien_bo_sung) — chứng minh router lưu đủ chuỗi audit + hình thức.
     """
     async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
-                   registry=None, pkg_ctx=None, cache=None):
+                   registry=None, pkg_ctx=None, cache=None, call_cache=None):
         r = EvalResult(doc=doc, vendor=vendor_ctx,
                        vendor_profile=VendorProfile(hinh_thuc="độc lập", nguon="khai báo",
                                                     bang_chung="dự thầu độc lập", do_tin=0.9),
@@ -109,7 +109,7 @@ def test_clear_ocr_cache_endpoint(client, monkeypatch):
     key = ingest_cache_key(seen["files"][0][2], DPI_MAC_DINH)
     seen["cache"].put(key, [{"trang": 1, "text": "đã OCR", "co_chu_ky": False, "co_dau": False}])
 
-    r = client.delete(f"/api/v1/packages/{pid}/ocr-cache?doc_id={doc_id}")
+    r = client.delete(f"/api/v1/packages/{pid}/cache?loai=ocr&doc_id={doc_id}")
     assert r.status_code == 200 and r.json()["data"]["n_tai_lieu"] == 1
 
     client.post(f"/api/v1/packages/{pid}/evaluate")     # chấm lại -> cache phải trống
@@ -144,14 +144,85 @@ def test_cham_lai_khong_ocr_lai_qua_toan_bo_stack(client, monkeypatch):
     assert lan_2 == 0                                   # lần sau: 0 call OCR
 
     # Xóa cache -> chấm lại phải OCR lại đúng số trang như lần đầu
-    client.delete(f"/api/v1/packages/{pid}/ocr-cache")
+    client.delete(f"/api/v1/packages/{pid}/cache")
     client.post(f"/api/v1/packages/{pid}/evaluate")
     lan_3 = sum(1 for c in vision.calls if "[IN]" in c[0]) - lan_1
     assert lan_3 == lan_1
 
 
-def test_clear_ocr_cache_package_not_found(client):
-    r = client.delete("/api/v1/packages/9999/ocr-cache")
+def test_cham_lai_cho_ket_qua_giong_het(client, monkeypatch):
+    """Chấm lại cùng hồ sơ + cùng tiêu chí -> verdict Y HỆT, dù model có đổi ý.
+
+    Đây là thứ người dùng thấy trực tiếp: mỗi lần chấm lại một bảng kết quả khác nhau thì không
+    đối chứng được với biên bản đã in.
+    """
+    from experiment.evaluate.vision import ScriptedVision
+
+    def _vision(ket_qua: str, bang_chung: str):
+        return ScriptedVision({
+            "[IN]": {"text": "Đơn dự thầu", "co_chu_ky": True, "co_dau": True},
+            "[VENDOR_FORM]": {"hinh_thuc": "độc lập", "bang_chung": "độc lập", "trang": [1],
+                              "do_tin": 0.9},
+            "[EV:": {"ket_qua": ket_qua, "bang_chung": bang_chung, "trang": [1]},
+            "[RULE:": {"ket_qua": ket_qua, "bang_chung": bang_chung, "trang": [1]},
+        })
+
+    pid = _seed(client)
+    vid = client.get(f"/api/v1/packages/{pid}").json()["data"]["vendors"][0]["id"]
+    _upload_pdf(client, pid, vid)
+
+    monkeypatch.setattr("experiment.evaluate.pipeline.default_vision_fn", _vision("đạt", "ok"))
+    client.post(f"/api/v1/packages/{pid}/evaluate")
+    lan_1 = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+
+    # Model "đổi ý" hoàn toàn ở lần chấm sau — cache phải giữ kết quả cũ.
+    doi_y = _vision("không đạt", "khác hẳn")
+    monkeypatch.setattr("experiment.evaluate.pipeline.default_vision_fn", doi_y)
+    client.post(f"/api/v1/packages/{pid}/evaluate")
+    lan_2 = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+
+    assert lan_2["criteria"] == lan_1["criteria"]           # verdict giống HỆT
+    assert not any("[EV:" in c[0] for c in doi_y.calls)     # không hỏi lại model
+
+
+def test_xoa_cache_thi_cham_lai_hoi_lai_model(client, monkeypatch):
+    """Xóa cache = ép AI làm lại từ đầu (dùng khi nghi verdict sai)."""
+    from experiment.evaluate.vision import ScriptedVision
+
+    def _vision(ket_qua: str):
+        return ScriptedVision({
+            "[IN]": {"text": "Đơn", "co_chu_ky": True, "co_dau": True},
+            "[VENDOR_FORM]": {"hinh_thuc": "độc lập", "bang_chung": "x", "trang": [1],
+                              "do_tin": 0.9},
+            "[EV:": {"ket_qua": ket_qua, "bang_chung": "bc", "trang": [1]},
+            "[RULE:": {"ket_qua": ket_qua, "bang_chung": "bc", "trang": [1]},
+        })
+
+    pid = _seed(client)
+    vid = client.get(f"/api/v1/packages/{pid}").json()["data"]["vendors"][0]["id"]
+    _upload_pdf(client, pid, vid)
+    monkeypatch.setattr("experiment.evaluate.pipeline.default_vision_fn", _vision("đạt"))
+    client.post(f"/api/v1/packages/{pid}/evaluate")
+
+    r = client.delete(f"/api/v1/packages/{pid}/cache?loai=ai")
+    assert r.status_code == 200 and r.json()["data"]["n_ket_qua_cham"] >= 1
+
+    moi = _vision("không đạt")
+    monkeypatch.setattr("experiment.evaluate.pipeline.default_vision_fn", moi)
+    client.post(f"/api/v1/packages/{pid}/evaluate")
+    res = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+    assert res["criteria"][0]["ket_qua"] == "không đạt"     # đã hỏi lại model
+
+
+def test_endpoint_cache_xoa_ca_hai_loai(client):
+    pid = _seed(client)
+    r = client.delete(f"/api/v1/packages/{pid}/cache")
+    assert r.status_code == 200
+    assert {"n_tai_lieu", "n_ket_qua_cham"} <= set(r.json()["data"])
+
+
+def test_clear_cache_package_not_found(client):
+    r = client.delete("/api/v1/packages/9999/cache")
     assert r.status_code == 404
 
 
@@ -194,7 +265,7 @@ def test_evaluate_builds_vendor_context_with_abbreviation(client, monkeypatch):
     seen = {}
 
     async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
-                   registry=None, pkg_ctx=None, cache=None):
+                   registry=None, pkg_ctx=None, cache=None, call_cache=None):
         seen["ctx"] = vendor_ctx
         from experiment.evaluate.schema import EvalResult
         return EvalResult(doc=doc, vendor=vendor_ctx)
@@ -322,7 +393,7 @@ def test_evaluate_batch_mot_nha_thau_loi_van_giu_ket_qua_con_lai(client, monkeyp
     ok_eval = _fake_eval("đạt")
 
     async def flaky(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
-                    registry=None, pkg_ctx=None, cache=None):
+                    registry=None, pkg_ctx=None, cache=None, call_cache=None):
         if vendor_ctx and vendor_ctx.ten == "B":
             raise RuntimeError("proxy vision sập")
         return await ok_eval(criteria, hsdt_files, doc=doc, vision_fn=vision_fn,
