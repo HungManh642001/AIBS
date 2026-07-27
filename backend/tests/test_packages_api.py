@@ -137,3 +137,22 @@ def test_delete_package_removes_hsdt_verdicts(client):
         assert check.query(models.HsdtVerdict).count() == 0
     finally:
         check.close()
+
+
+def test_delete_vendor_don_ca_cache_cham(client):
+    """Xóa nhà thầu phải dọn cả cache kết quả chấm của họ — nếu không sẽ để rác trong DB."""
+    import database as _db, models
+    p = client.post("/api/v1/packages",
+                    json={"ma_so": "G-DVC", "ten": "g", "vendors": ["A", "B"]}).json()["data"]
+    pid, va, vb = p["id"], p["vendors"][0]["id"], p["vendors"][1]["id"]
+    sess = _db.SessionLocal()
+    sess.add(models.AiCallCache(package_id=pid, vendor_id=va, khoa="k1", data={"v": 1}))
+    sess.add(models.AiCallCache(package_id=pid, vendor_id=vb, khoa="k2", data={"v": 2}))
+    sess.commit(); sess.close()
+
+    assert client.delete(f"/api/v1/packages/{pid}/vendors/{va}").status_code == 200
+
+    sess = _db.SessionLocal()
+    con_lai = sess.query(models.AiCallCache).all()
+    assert [c.vendor_id for c in con_lai] == [vb]      # chỉ còn cache của nhà thầu B
+    sess.close()

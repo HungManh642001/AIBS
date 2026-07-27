@@ -114,6 +114,9 @@ async def delete_vendor(package_id: int, vendor_id: int, db: Session = Depends(g
     for ve in db.scalars(select(models.HsdtVendorEval).where(
             models.HsdtVendorEval.vendor_id == vendor_id)).all():
         db.delete(ve)
+    for c in db.scalars(select(models.AiCallCache).where(
+            models.AiCallCache.vendor_id == vendor_id)).all():
+        db.delete(c)   # cache kết quả chấm của riêng nhà thầu này
     pkg = vendor.package
     db.delete(vendor)
     db.commit()
