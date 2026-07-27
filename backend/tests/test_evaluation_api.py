@@ -33,7 +33,7 @@ def _fake_eval(ket_qua: str = "đạt", *, phat_hien: bool = False):
         if phat_hien:   # kiểm tra thường trực nay là TIÊU CHÍ như mọi tiêu chí khác
             from experiment.evaluate.schema import NHOM_PHAT_HIEN
             r.criteria.append(CriterionEval(
-                nhom=NHOM_PHAT_HIEN, ten="Người ký khớp ĐKKD", tien_quyet=True, ket_qua="đạt",
+                nhom=NHOM_PHAT_HIEN, ten="Người ký khớp ĐKKD", tien_quyet=False, ket_qua="đạt",
                 loai=False, yeu_cau_goc="",
                 verdicts=[Verdict(
                     noi_dung_kiem_tra="Người ký khớp ĐKKD", hsdt_kiem_tra="don_du_thau",
@@ -257,7 +257,7 @@ def test_kiem_tra_thuong_truc_la_tieu_chi_binh_thuong(client, monkeypatch):
         r = await base(criteria, hsdt_files, **kw)
         r.criteria.append(CriterionEval(
             nhom=NHOM_PHAT_HIEN, ten="Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)",
-            tien_quyet=True, ket_qua="không đạt", loai=True, yeu_cau_goc="",
+            tien_quyet=False, ket_qua="không đạt", loai=False, yeu_cau_goc="",
             verdicts=[Verdict(noi_dung_kiem_tra="Người ký đơn dự thầu khớp đại diện pháp luật",
                               hsdt_kiem_tra="don_du_thau", yeu_cau="", thong_tin_bo_sung="",
                               ket_qua="không đạt", bang_chung="ký A ≠ đại diện B", trang=[1],
@@ -273,10 +273,10 @@ def test_kiem_tra_thuong_truc_la_tieu_chi_binh_thuong(client, monkeypatch):
     assert "Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)" in ten   # nằm chung danh sách
     assert "phat_hien_bo_sung" not in v                                    # không còn đường riêng
     assert v["summary"]["n_tieu_chi"] == 2                                 # đếm chung
-    assert v["summary"]["n_loai"] == 1                                     # kéo được 'loại'
+    assert v["summary"]["n_loai"] == 0                                     # nhưng KHÔNG tự loại
 
     tt = next(c for c in v["criteria"] if c["nhom"] == NHOM_PHAT_HIEN)
-    assert tt["tien_quyet"] is True and tt["loai"] is True
+    assert tt["tien_quyet"] is False and tt["loai"] is False
     assert tt["verdicts"][0]["bang_chung"] == "ký A ≠ đại diện B"
 
 

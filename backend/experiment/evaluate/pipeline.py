@@ -24,16 +24,17 @@ log = logging.getLogger("experiment.evaluate")
 
 
 def _thanh_tieu_chi(v: Verdict) -> CriterionEval:
-    """Kiểm tra thường trực -> TIÊU CHÍ đầy đủ, trọng số ngang tiêu chí HSMT.
+    """Kiểm tra thường trực -> TIÊU CHÍ: vào danh sách chung, vào summary, hiện ở 'cần xử lý'.
 
-    Các lỗi này (sai pháp nhân, sai thẩm quyền ký, sai tên gói) đều là căn cứ loại theo luật, nên
-    tien_quyet=True và 'không đạt' kéo 'loại' — chuyên gia vẫn ghi đè verdict được. `nhom` giữ
-    nhãn nguồn gốc: chuyên gia phải phân biệt được tiêu chí HSMT yêu cầu với tiêu chí hệ thống tự
-    kiểm, nhất là khi nó vừa loại nhà thầu. `yeu_cau_goc` rỗng vì không trích từ HSMT.
+    KHÔNG tiên quyết, KHÔNG tự kéo 'loại': các lỗi này đúng là căn cứ loại theo luật, nhưng chúng
+    do AI đọc ra — một verdict sai mà loại thẳng nhà thầu thì thiệt hại lớn hơn nhiều so với việc
+    để chuyên gia tự quyết. Kết quả vẫn hiện đầy đủ kèm bằng chứng để họ quyết.
+
+    `nhom` giữ nhãn nguồn gốc (HSMT yêu cầu vs hệ thống tự kiểm); `yeu_cau_goc` rỗng vì không
+    trích từ HSMT.
     """
-    return CriterionEval(nhom=NHOM_PHAT_HIEN, ten=v.noi_dung_kiem_tra, tien_quyet=True,
-                         ket_qua=v.ket_qua, loai=v.ket_qua == KET_QUA_KHONG, verdicts=[v],
-                         yeu_cau_goc="")
+    return CriterionEval(nhom=NHOM_PHAT_HIEN, ten=v.noi_dung_kiem_tra, tien_quyet=False,
+                         ket_qua=v.ket_qua, loai=False, verdicts=[v], yeu_cau_goc="")
 
 
 async def evaluate_hsdt(criteria: list[dict[str, Any]], hsdt_files: list[tuple[str, str, bytes]],

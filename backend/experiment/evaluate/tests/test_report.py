@@ -157,11 +157,10 @@ def _pv(ket_qua=KET_QUA_KHONG):
 
 
 def _ce_tt(ket_qua=KET_QUA_KHONG):
-    """Kiểm tra thường trực nay là TIÊU CHÍ (nhóm phat_hien_bo_sung, tiên quyết)."""
+    """Kiểm tra thường trực là TIÊU CHÍ (nhóm phat_hien_bo_sung) nhưng KHÔNG tiên quyết."""
     from experiment.evaluate.schema import NHOM_PHAT_HIEN
     return _ce(ten="Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)", ket_qua=ket_qua,
-               loai=ket_qua == KET_QUA_KHONG, verdicts=[_pv(ket_qua)], nhom=NHOM_PHAT_HIEN,
-               tien_quyet=True)
+               loai=False, verdicts=[_pv(ket_qua)], nhom=NHOM_PHAT_HIEN, tien_quyet=False)
 
 
 def test_kiem_tra_thuong_truc_khong_con_muc_rieng():
@@ -177,7 +176,7 @@ def test_kiem_tra_thuong_truc_vao_can_xu_ly_kem_nhan_nguon():
     block = md[md.index("CẦN XỬ LÝ"):md.index("Chi tiết theo tiêu chí")]
     assert "Người ký đơn dự thầu" in block
     assert "hệ thống tự kiểm" in block
-    assert "LOẠI" in block                      # tiên quyết + không đạt -> loại
+    assert "LOẠI" not in block                  # KHÔNG tiên quyết -> không tự loại
 
 
 def test_kiem_tra_thuong_truc_dat_khong_vao_can_xu_ly():
@@ -186,12 +185,12 @@ def test_kiem_tra_thuong_truc_dat_khong_vao_can_xu_ly():
     assert "Người ký đơn dự thầu" not in block
 
 
-def test_kiem_tra_thuong_truc_vao_summary_va_keo_loai():
-    """Đối xử NHƯ NHAU: đếm chung trong tổng kết và kéo được 'loại'."""
+def test_kiem_tra_thuong_truc_vao_summary_nhung_khong_tu_loai():
+    """Đếm chung trong tổng kết, nhưng quyết định loại vẫn thuộc về chuyên gia."""
     r = _result(criteria=[_ce(ten="Đạt tuốt", ket_qua=KET_QUA_DAT, loai=False,
                               verdicts=[_v(ket_qua=KET_QUA_DAT)]),
                           _ce_tt(KET_QUA_KHONG)])
-    assert r.summary["n_tieu_chi"] == 2 and r.summary["n_loai"] == 1
+    assert r.summary["n_tieu_chi"] == 2 and r.summary["n_loai"] == 0
     assert "| Tổng tiêu chí | 2 |" in to_markdown(r)
 
 

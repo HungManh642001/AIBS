@@ -167,7 +167,8 @@ async def test_run_e2e_rules_with_vendor(tmp_path):
         "Người ký bảo đảm dự thầu có thẩm quyền (đứng đầu hoặc ủy quyền hợp lệ)",
         "Phân công liên danh nêu rõ hạng mục và khớp tỷ lệ trong bảng giá",
     ]
-    assert all(c["tien_quyet"] for c in tt)
+    # KHÔNG tiên quyết -> không tự loại nhà thầu; chuyên gia đọc bằng chứng rồi quyết
+    assert not any(c["tien_quyet"] or c["loai"] for c in tt)
     assert "phat_hien_bo_sung" not in data
 
 
