@@ -68,7 +68,7 @@ async def run(decomposition_path: str, hsdt_files: list[tuple[str, str, bytes]],
     prof = result.vendor_profile
     return {"doc": result.doc, "hinh_thuc": prof.hinh_thuc if prof else "",
             "mau_thuan": prof.mau_thuan if prof else False,
-            "n_phat_hien_bo_sung": len(result.phat_hien_bo_sung), **result.summary}
+            **result.summary}
 
 
 def main(argv: list[str] | None = None) -> int:

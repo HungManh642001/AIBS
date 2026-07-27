@@ -65,6 +65,10 @@ def validate_eval_verdict(d: dict[str, Any]) -> dict[str, Any]:
     return EvalVerdictModel(**d).model_dump()
 
 
+# Nhóm của tiêu chí do HỆ THỐNG tự kiểm (không đến từ checklist HSMT). Trọng số ngang tiêu chí
+# HSMT — vào summary, kéo được 'loại' — nhưng vẫn giữ nhãn nguồn gốc để chuyên gia biết căn cứ.
+NHOM_PHAT_HIEN = "phat_hien_bo_sung"
+
 NGUON_VISION = "vision"       # text do model đọc ảnh (bản scan) — có cờ chữ ký/dấu
 NGUON_PDF_TEXT = "pdf_text"   # text nhúng sẵn trong PDF — chính xác 100%, tái lập, 0 call
 
@@ -151,8 +155,6 @@ class EvalResult:
     vendor: VendorContext | None = None
     vendor_profile: VendorProfile | None = None
     ho_so_nhan_duoc: list[HoSoNhanDuoc] = field(default_factory=list)
-    # Kiểm tra thường trực của hệ thống (ngoài checklist HSMT) — NGOÀI roll-up, không kéo 'loại'.
-    phat_hien_bo_sung: list[Verdict] = field(default_factory=list)
     # Trang nghi ĐỌC THIẾU (vision bóc bảng scan) — phải nói ra, con số trên trang đó không chắc.
     canh_bao_doc: list[str] = field(default_factory=list)
 
@@ -176,7 +178,6 @@ def result_to_json(r: EvalResult) -> dict[str, Any]:
         "vendor": asdict(r.vendor) if r.vendor is not None else None,
         "vendor_profile": asdict(r.vendor_profile) if r.vendor_profile is not None else None,
         "ho_so_nhan_duoc": [asdict(h) for h in r.ho_so_nhan_duoc],
-        "phat_hien_bo_sung": [asdict(v) for v in r.phat_hien_bo_sung],
         "canh_bao_doc": list(r.canh_bao_doc),
         "criteria": [asdict(c) for c in r.criteria],
         "summary": r.summary,

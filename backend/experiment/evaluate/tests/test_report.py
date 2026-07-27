@@ -15,10 +15,12 @@ def _v(noi_dung="Giá trị bảo lãnh", hsdt="bao_dam_du_thau", ket_qua=KET_QU
                    do_tin=0.9, ghi_chu=ghi_chu, nguon_doc=nguon_doc or [], nguon_hsmt=nguon_hsmt)
 
 
-def _ce(ten="Bảo đảm dự thầu", ket_qua=KET_QUA_KHONG, loai=True, verdicts=None, tien_quyet=True):
-    return CriterionEval(nhom="hop_le", ten=ten, tien_quyet=tien_quyet, ket_qua=ket_qua, loai=loai,
+def _ce(ten="Bảo đảm dự thầu", ket_qua=KET_QUA_KHONG, loai=True, verdicts=None, tien_quyet=True,
+        nhom="hop_le"):
+    return CriterionEval(nhom=nhom, ten=ten, tien_quyet=tien_quyet, ket_qua=ket_qua, loai=loai,
                          verdicts=verdicts if verdicts is not None else [_v()],
-                         yeu_cau_goc="Nhà thầu phải nộp bảo đảm dự thầu 6.100.000 VNĐ")
+                         yeu_cau_goc="" if nhom != "hop_le"
+                         else "Nhà thầu phải nộp bảo đảm dự thầu 6.100.000 VNĐ")
 
 
 def _result(profile=None, criteria=None):
@@ -154,45 +156,43 @@ def _pv(ket_qua=KET_QUA_KHONG):
                    trang=[1], do_tin=0.9, ghi_chu="", nguon_doc=["don_du_thau", "dang_ky_kinh_doanh"])
 
 
-def test_markdown_shows_standing_findings_section():
-    """Kiểm tra thường trực có mục RIÊNG, ghi rõ ngoài checklist — không giả làm tiêu chí HSMT."""
-    r = _result()
-    r.phat_hien_bo_sung = [_pv()]
-    md = to_markdown(r)
-    assert "ngoài checklist HSMT" in md
+def _ce_tt(ket_qua=KET_QUA_KHONG):
+    """Kiểm tra thường trực nay là TIÊU CHÍ (nhóm phat_hien_bo_sung, tiên quyết)."""
+    from experiment.evaluate.schema import NHOM_PHAT_HIEN
+    return _ce(ten="Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)", ket_qua=ket_qua,
+               loai=ket_qua == KET_QUA_KHONG, verdicts=[_pv(ket_qua)], nhom=NHOM_PHAT_HIEN,
+               tien_quyet=True)
+
+
+def test_kiem_tra_thuong_truc_khong_con_muc_rieng():
+    """Không còn mục 'ngoài checklist HSMT' — nó là tiêu chí, nằm chung với tiêu chí HSMT."""
+    md = to_markdown(_result(criteria=[_ce_tt()]))
+    assert "ngoài checklist HSMT" not in md
     assert "ký: A ≠ đại diện: B" in md
-    assert md.index("ngoài checklist HSMT") < md.index("CẦN XỬ LÝ")
 
 
-def test_markdown_standing_finding_surfaces_in_can_xu_ly_with_label():
-    r = _result()
-    r.phat_hien_bo_sung = [_pv(KET_QUA_KHONG)]
-    md = to_markdown(r)
+def test_kiem_tra_thuong_truc_vao_can_xu_ly_kem_nhan_nguon():
+    """Vào CẦN XỬ LÝ như tiêu chí thường, nhưng vẫn nêu rõ xuất xứ là hệ thống tự kiểm."""
+    md = to_markdown(_result(criteria=[_ce_tt(KET_QUA_KHONG)]))
     block = md[md.index("CẦN XỬ LÝ"):md.index("Chi tiết theo tiêu chí")]
-    assert "Người ký đơn dự thầu" in block and "ngoài checklist" in block
+    assert "Người ký đơn dự thầu" in block
+    assert "hệ thống tự kiểm" in block
+    assert "LOẠI" in block                      # tiên quyết + không đạt -> loại
 
 
-def test_markdown_standing_dat_not_in_can_xu_ly():
-    r = _result()
-    r.phat_hien_bo_sung = [_pv(KET_QUA_DAT)]
-    md = to_markdown(r)
+def test_kiem_tra_thuong_truc_dat_khong_vao_can_xu_ly():
+    md = to_markdown(_result(criteria=[_ce_tt(KET_QUA_DAT)]))
     block = md[md.index("CẦN XỬ LÝ"):md.index("Chi tiết theo tiêu chí")]
     assert "Người ký đơn dự thầu" not in block
 
 
-def test_standing_findings_stay_out_of_rollup():
-    """Phát hiện bổ sung KHÔNG đụng summary/n_loai — chuyên gia tự quyết, máy không tự loại."""
+def test_kiem_tra_thuong_truc_vao_summary_va_keo_loai():
+    """Đối xử NHƯ NHAU: đếm chung trong tổng kết và kéo được 'loại'."""
     r = _result(criteria=[_ce(ten="Đạt tuốt", ket_qua=KET_QUA_DAT, loai=False,
-                              verdicts=[_v(ket_qua=KET_QUA_DAT)])])
-    truoc = dict(r.summary)
-    r.phat_hien_bo_sung = [_pv(KET_QUA_KHONG)]
-    assert r.summary == truoc and r.summary["n_loai"] == 0
-    to_markdown(r)
-
-
-def test_markdown_no_standing_findings_section_empty():
-    md = to_markdown(_result())
-    assert "ngoài checklist HSMT" in md and "_Không có._" in md
+                              verdicts=[_v(ket_qua=KET_QUA_DAT)]),
+                          _ce_tt(KET_QUA_KHONG)])
+    assert r.summary["n_tieu_chi"] == 2 and r.summary["n_loai"] == 1
+    assert "| Tổng tiêu chí | 2 |" in to_markdown(r)
 
 
 def test_markdown_minimal_result_no_vendor():

@@ -38,9 +38,47 @@ async def test_core_returns_full_result_with_profile_and_standing():
     assert r.vendor is not None and r.vendor_profile is not None
     assert r.vendor_profile.hinh_thuc == HINH_THUC_DOC_LAP
     assert [h.loai_ho_so for h in r.ho_so_nhan_duoc]          # có danh mục hồ sơ
-    # 4 standing check, mỗi cái 1 lần: chữ ký đạt; tên gói SOI (không pkg); bảo đảm thiếu hồ sơ;
-    # phân công liên danh 'không áp dụng' (HSDT không có thỏa thuận liên danh)
-    assert len(r.phat_hien_bo_sung) == 4
+    # 4 standing check, mỗi cái 1 lần -> 4 TIÊU CHÍ (chữ ký đạt; tên gói SOI vì không pkg; bảo đảm
+    # thiếu hồ sơ; phân công liên danh 'không áp dụng'), cộng 1 tiêu chí HSMT.
+    from experiment.evaluate.schema import NHOM_PHAT_HIEN
+    assert len([c for c in r.criteria if c.nhom == NHOM_PHAT_HIEN]) == 4
+    assert r.summary["n_tieu_chi"] == 5
+
+
+async def test_kiem_tra_thuong_truc_thanh_tieu_chi_nhu_moi_tieu_chi_khac():
+    """Kiểm tra thường trực nay là TIÊU CHÍ đầy đủ: vào criteria, vào summary, kéo được 'loại'."""
+    from experiment.evaluate.schema import NHOM_PHAT_HIEN
+
+    vision = ScriptedVision({
+        "[IN]": {"text": "Công ty ABC", "co_chu_ky": True, "co_dau": True},
+        "[RULE:chu_ky_khop_dkkd]": {
+            "ket_qua": "không đạt", "nguoi_ky": "A", "dai_dien_phap_luat": "B",
+            "nha_thau_don": "Cty ABC", "doanh_nghiep_dkkd": "Cty ABC", "phap_nhan_khop": True,
+            "bang_chung": "ký A ≠ đại diện B", "trang": [1]},
+    })
+    files = [("don.pdf", "don_du_thau", _pdf("đơn")),
+             ("dkkd.pdf", "dang_ky_kinh_doanh", _pdf("dkkd"))]
+    r = await evaluate_hsdt([], files, doc="A", vision_fn=vision,
+                            vendor=VendorContext(ten="Cty ABC"))
+
+    tt = [c for c in r.criteria if c.nhom == NHOM_PHAT_HIEN]
+    assert len(tt) == 4                       # 4 kiểm tra -> 4 tiêu chí RIÊNG, không gộp 1 dòng
+    assert all(c.tien_quyet for c in tt)      # đối xử như tiêu chí tiên quyết
+    assert all(len(c.verdicts) == 1 for c in tt)
+    assert all(c.yeu_cau_goc == "" for c in tt)   # không đến từ HSMT
+
+    chu_ky = next(c for c in tt if "đại diện pháp luật" in c.ten)
+    assert chu_ky.ket_qua == "không đạt" and chu_ky.loai is True
+
+    assert r.summary["n_tieu_chi"] == 4        # đếm chung, không lọc ra ngoài nữa
+    assert r.summary["n_loai"] == 1
+
+
+async def test_khong_con_field_phat_hien_bo_sung():
+    """Bỏ hẳn đường tách riêng — mọi tầng phía sau chỉ còn MỘT danh sách tiêu chí để xử lý."""
+    from experiment.evaluate.schema import EvalResult
+
+    assert not hasattr(EvalResult(doc="A"), "phat_hien_bo_sung")
 
 
 async def test_core_gom_canh_bao_doc_tu_cac_trang():

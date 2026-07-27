@@ -30,11 +30,16 @@ def _fake_eval(ket_qua: str = "đạt", *, phat_hien: bool = False):
             r.criteria.append(CriterionEval(
                 nhom=c["nhom"], ten=c["ten"], tien_quyet=c["tien_quyet"], ket_qua=ket_qua,
                 loai=loai, verdicts=verds, yeu_cau_goc=c.get("yeu_cau_goc", "")))
-        if phat_hien:
-            r.phat_hien_bo_sung = [Verdict(
-                noi_dung_kiem_tra="Người ký khớp ĐKKD", hsdt_kiem_tra="don_du_thau", yeu_cau="",
-                thong_tin_bo_sung="", ket_qua="đạt", bang_chung="khớp", trang=[1], do_tin=0.9,
-                ghi_chu="", nguon_doc=["don_du_thau", "dang_ky_kinh_doanh"])]
+        if phat_hien:   # kiểm tra thường trực nay là TIÊU CHÍ như mọi tiêu chí khác
+            from experiment.evaluate.schema import NHOM_PHAT_HIEN
+            r.criteria.append(CriterionEval(
+                nhom=NHOM_PHAT_HIEN, ten="Người ký khớp ĐKKD", tien_quyet=True, ket_qua="đạt",
+                loai=False, yeu_cau_goc="",
+                verdicts=[Verdict(
+                    noi_dung_kiem_tra="Người ký khớp ĐKKD", hsdt_kiem_tra="don_du_thau",
+                    yeu_cau="", thong_tin_bo_sung="", ket_qua="đạt", bang_chung="khớp",
+                    trang=[1], do_tin=0.9, ghi_chu="",
+                    nguon_doc=["don_du_thau", "dang_ky_kinh_doanh"])]))
         return r
     return fake
 
@@ -242,8 +247,41 @@ def test_evaluate_passes_pkg_ctx_to_pipeline(client, monkeypatch):
     assert seen["pkg_ctx"].ten == "g" and seen["pkg_ctx"].ma_so == "G-EV"
 
 
+def test_kiem_tra_thuong_truc_la_tieu_chi_binh_thuong(client, monkeypatch):
+    """Trên API: kiểm tra thường trực nằm CHUNG trong criteria, đếm vào summary, kéo được 'loại'."""
+    from experiment.evaluate.schema import CriterionEval, NHOM_PHAT_HIEN
+
+    base = _fake_eval("đạt")
+
+    async def fake(criteria, hsdt_files, **kw):
+        r = await base(criteria, hsdt_files, **kw)
+        r.criteria.append(CriterionEval(
+            nhom=NHOM_PHAT_HIEN, ten="Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)",
+            tien_quyet=True, ket_qua="không đạt", loai=True, yeu_cau_goc="",
+            verdicts=[Verdict(noi_dung_kiem_tra="Người ký đơn dự thầu khớp đại diện pháp luật",
+                              hsdt_kiem_tra="don_du_thau", yeu_cau="", thong_tin_bo_sung="",
+                              ket_qua="không đạt", bang_chung="ký A ≠ đại diện B", trang=[1],
+                              do_tin=0.9, ghi_chu="", nguon_doc=["don_du_thau"])]))
+        return r
+
+    monkeypatch.setattr("routers.evaluation.evaluate_vendor", fake)
+    pid = _seed(client)
+    client.post(f"/api/v1/packages/{pid}/evaluate")
+    v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+
+    ten = [c["ten"] for c in v["criteria"]]
+    assert "Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)" in ten   # nằm chung danh sách
+    assert "phat_hien_bo_sung" not in v                                    # không còn đường riêng
+    assert v["summary"]["n_tieu_chi"] == 2                                 # đếm chung
+    assert v["summary"]["n_loai"] == 1                                     # kéo được 'loại'
+
+    tt = next(c for c in v["criteria"] if c["nhom"] == NHOM_PHAT_HIEN)
+    assert tt["tien_quyet"] is True and tt["loai"] is True
+    assert tt["verdicts"][0]["bang_chung"] == "ký A ≠ đại diện B"
+
+
 def test_evaluate_persists_audit_and_profile(client, monkeypatch):
-    """Wiring: điều khoản nguồn + yêu cầu gốc + hình thức nhà thầu + phát hiện bổ sung được lưu & trả."""
+    """Wiring: điều khoản nguồn + yêu cầu gốc + hình thức nhà thầu + kiểm tra thường trực."""
     monkeypatch.setattr("routers.evaluation.evaluate_vendor", _fake_eval("đạt", phat_hien=True))
     pid = _seed(client)
     client.post(f"/api/v1/packages/{pid}/evaluate")
@@ -254,10 +292,10 @@ def test_evaluate_persists_audit_and_profile(client, monkeypatch):
     assert crit["yeu_cau_goc"] == "Có đơn dự thầu hợp lệ"
     assert crit["verdicts"][0]["nguon_hsmt"] == "E-CDNT 1.1"
     assert v["vendor_profile"]["hinh_thuc"] == "độc lập"
-    # phát hiện bổ sung TÁCH riêng, KHÔNG lẫn vào tiêu chí thường
-    assert [p["noi_dung_kiem_tra"] for p in v["phat_hien_bo_sung"]] == ["Người ký khớp ĐKKD"]
-    assert all(c["nhom"] != "phat_hien_bo_sung" for c in v["criteria"])
-    assert v["summary"]["n_tieu_chi"] == 1                    # phát hiện KHÔNG vào summary
+    # kiểm tra thường trực nằm CHUNG danh sách tiêu chí và đếm vào summary
+    assert [c["ten"] for c in v["criteria"] if c["nhom"] == "phat_hien_bo_sung"] == \
+        ["Người ký khớp ĐKKD"]
+    assert v["summary"]["n_tieu_chi"] == 2
 
 
 def test_evaluate_builds_vendor_context_with_abbreviation(client, monkeypatch):

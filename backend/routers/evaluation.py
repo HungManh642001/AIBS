@@ -26,9 +26,6 @@ from experiment.evaluate.schema import (
 router = APIRouter(prefix="/api/v1", tags=["evaluation"])
 log = logging.getLogger("abes.evaluate")
 
-_NHOM_PHAT_HIEN = "phat_hien_bo_sung"   # nhóm synthetic: kiểm tra thường trực, NGOÀI roll-up/summary
-
-
 def _criteria_dicts(db: Session, package_id: int) -> list[dict[str, Any]]:
     """RubricCriterion (+noi_dung) -> dict cho evaluate_criterion (order_by thu_tu)."""
     crits = db.scalars(select(models.RubricCriterion).where(
@@ -94,8 +91,8 @@ def _rollup(kqs: set[str]) -> str:
 
 
 def _summary(evals: list[models.HsdtCriterionEval]) -> dict[str, int]:
-    """Đếm theo tiêu chí THẬT — LỌC BỎ nhóm phát hiện bổ sung (ngoài checklist HSMT)."""
-    tc = [e for e in evals if e.nhom != _NHOM_PHAT_HIEN]
+    """Đếm MỌI tiêu chí — kiểm tra thường trực của hệ thống có trọng số ngang tiêu chí HSMT."""
+    tc = list(evals)
 
     def cnt(k: str) -> int:
         return sum(1 for e in tc if e.ket_qua == k)
@@ -142,15 +139,10 @@ async def _eval_and_save_vendor(db: Session, pkg: models.ProcurementPackage,
     for i, c in enumerate(result.criteria):
         _save_eval(db, pkg.id, vendor.id, i, c.nhom, c.ten, c.tien_quyet, c.ket_qua,
                    c.loai, c.yeu_cau_goc, c.verdicts)
-    if result.phat_hien_bo_sung:   # kiểm tra thường trực -> nhóm synthetic (ngoài roll-up/summary)
-        _save_eval(db, pkg.id, vendor.id, 0, _NHOM_PHAT_HIEN,
-                   "Phát hiện của hệ thống (ngoài checklist HSMT)", False,
-                   _rollup({v.ket_qua for v in result.phat_hien_bo_sung}), False, "",
-                   result.phat_hien_bo_sung)
 
     return {"vendor_id": vendor.id, "ten": vendor.ten, "summary": result.summary,
-            "hinh_thuc": prof.hinh_thuc if prof else "", "mau_thuan": prof.mau_thuan if prof else False,
-            "n_phat_hien_bo_sung": len(result.phat_hien_bo_sung)}
+            "hinh_thuc": prof.hinh_thuc if prof else "",
+            "mau_thuan": prof.mau_thuan if prof else False}
 
 
 @router.post("/packages/{package_id}/vendors/{vendor_id}/evaluate")
@@ -267,16 +259,14 @@ async def results(package_id: int, db: Session = Depends(get_db)):
             models.HsdtCriterionEval.package_id == package_id,
             models.HsdtCriterionEval.vendor_id == v.id)
             .order_by(models.HsdtCriterionEval.thu_tu)).all()
-        crit_out = [_eval_out(e) for e in evals if e.nhom != _NHOM_PHAT_HIEN]
-        phat_hien = [pv for e in evals if e.nhom == _NHOM_PHAT_HIEN
-                     for pv in _eval_out(e)["verdicts"]]
+        crit_out = [_eval_out(e) for e in evals]
         ve = db.scalar(select(models.HsdtVendorEval).where(
             models.HsdtVendorEval.package_id == package_id,
             models.HsdtVendorEval.vendor_id == v.id))
         vendors_out.append({
             "vendor_id": v.id, "ten": v.ten, "ten_viet_tat": v.ten_viet_tat, "hinh_thuc": v.hinh_thuc,
             "summary": _summary(evals), "criteria": crit_out,
-            "phat_hien_bo_sung": phat_hien, "vendor_profile": _profile_out(ve),
+            "vendor_profile": _profile_out(ve),
             "ho_so_nhan_duoc": ve.ho_so_nhan_duoc if ve else []})
     return ok({"vendors": vendors_out})
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from experiment.evaluate.schema import (
     KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_KHONG_AP_DUNG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU,
-    CriterionEval, EvalResult, Verdict,
+    NHOM_PHAT_HIEN, CriterionEval, EvalResult, Verdict,
 )
 
 _CAN_XU_LY = {KET_QUA_KHONG, KET_QUA_SOI, KET_QUA_THIEU, KET_QUA_LOI}
@@ -89,40 +89,22 @@ def _tong_ket(r: EvalResult) -> list[str]:
            [f"| {ten} | {s[k]} |" for ten, k in nhan] + [""]
 
 
-def _phat_hien(r: EvalResult, files: dict[str, list[str]]) -> list[str]:
-    """Kiểm tra thường trực của hệ thống — trung thực về xuất xứ: HSMT KHÔNG yêu cầu cái này.
-
-    Ngoài roll-up nên không tự kéo 'loại'; chuyên gia đọc rồi tự quyết.
-    """
-    out = [f"## 🔎 Phát hiện của hệ thống (ngoài checklist HSMT) ({len(r.phat_hien_bo_sung)})", ""]
-    if not r.phat_hien_bo_sung:
-        return out + ["_Không có._", ""]
-    for v in r.phat_hien_bo_sung:
-        out.append(f"- **{v.noi_dung_kiem_tra}** — *{v.ket_qua}* (độ tin {v.do_tin})")
-        out.append(f"    · bằng chứng [{_nguon_hsdt(v, files)}]: {v.bang_chung or '—'}")
-        if v.ghi_chu:
-            out.append(f"    · ghi chú: {v.ghi_chu}")
-    return out + [""]
-
-
-def _can_xu_ly(criteria: list[CriterionEval], files: dict[str, list[str]],
-               phat_hien: list[Verdict]) -> list[str]:
+def _can_xu_ly(criteria: list[CriterionEval], files: dict[str, list[str]]) -> list[str]:
     can = [c for c in criteria if c.ket_qua in _CAN_XU_LY]
-    pv = [v for v in phat_hien if v.ket_qua in _CAN_XU_LY]
-    out = [f"## ⚠️ CẦN XỬ LÝ ({len(can) + len(pv)})", ""]
-    if not can and not pv:
+    out = [f"## ⚠️ CẦN XỬ LÝ ({len(can)})", ""]
+    if not can:
         return out + ["_Không có tiêu chí nào cần xử lý._", ""]
     for c in sorted(can, key=_rank):
         flag = "⛔ **LOẠI** · " if c.loai else ""
+        # Nêu xuất xứ: tiêu chí này do hệ thống tự kiểm, HSMT không yêu cầu — trọng số ngang nhau
+        # nhưng chuyên gia phải biết căn cứ đến từ đâu.
+        nguon = "🔎 *(hệ thống tự kiểm)* " if c.nhom == NHOM_PHAT_HIEN else ""
         for v in c.verdicts:
             if v.ket_qua not in _CAN_XU_LY:
                 continue
             ly_do = v.bang_chung or v.ghi_chu or "—"
-            out.append(f"- {flag}{c.ten} · *{v.ket_qua}* — {v.noi_dung_kiem_tra}: {ly_do} "
+            out.append(f"- {flag}{nguon}{c.ten} · *{v.ket_qua}* — {v.noi_dung_kiem_tra}: {ly_do} "
                        f"[{_nguon_hsdt(v, files)}]")
-    for v in pv:   # nêu rõ xuất xứ: máy phát hiện, HSMT không yêu cầu -> KHÔNG tự loại
-        out.append(f"- 🔎 *(ngoài checklist HSMT)* {v.noi_dung_kiem_tra} · *{v.ket_qua}* — "
-                   f"{v.bang_chung or v.ghi_chu or '—'} [{_nguon_hsdt(v, files)}]")
     return out + [""]
 
 
@@ -164,11 +146,15 @@ def _canh_bao_doc(r: EvalResult) -> list[str]:
 
 
 def to_markdown(r: EvalResult) -> str:
-    """Báo cáo: nhà thầu -> hồ sơ -> cảnh báo đọc -> tổng kết -> phát hiện -> CẦN XỬ LÝ -> chi tiết."""
+    """Báo cáo: nhà thầu -> hồ sơ -> cảnh báo đọc -> tổng kết -> CẦN XỬ LÝ -> chi tiết -> N/A.
+
+    Kiểm tra thường trực của hệ thống nay là TIÊU CHÍ như mọi tiêu chí HSMT (không còn mục riêng);
+    xuất xứ được nêu bằng nhãn 🔎 ngay trên dòng cần xử lý.
+    """
     files = _files_map(r)
     # N/A tách khỏi phần chi tiết: máy đã bỏ qua có chủ đích, đọc ở mục riêng kèm lý do.
     xet = [c for c in r.criteria if c.ket_qua != KET_QUA_KHONG_AP_DUNG]
-    lines = _header(r) + _ho_so(r) + _canh_bao_doc(r) + _tong_ket(r) + _phat_hien(r, files) \
-        + _can_xu_ly(xet, files, r.phat_hien_bo_sung) \
+    lines = _header(r) + _ho_so(r) + _canh_bao_doc(r) + _tong_ket(r) \
+        + _can_xu_ly(xet, files) \
         + _chi_tiet(xet, files) + _khong_ap_dung(r.criteria, files)
     return "\n".join(lines)

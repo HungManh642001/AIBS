@@ -171,7 +171,6 @@ function VendorSection({ v, onOverride }: {
 }) {
   const biLoai = v.criteria.some((c) => c.loai);
   const files = filesOf(v);
-  const phatHien = v.phat_hien_bo_sung ?? [];
   return (
     <div style={{ background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 8,
                   overflow: "hidden", marginBottom: "var(--sp-5)" }}>
@@ -202,6 +201,9 @@ function VendorSection({ v, onOverride }: {
                   <ResultPill kq={c.ket_qua} />
                   <span style={{ fontWeight: 600 }}>{c.ten}</span>
                   {c.tien_quyet && <Tag>Tiên quyết</Tag>}
+                  {/* Trọng số ngang tiêu chí HSMT, nhưng phải thấy được căn cứ đến từ đâu:
+                      HSMT yêu cầu hay hệ thống tự kiểm — nhất là khi nó kéo "bị loại". */}
+                  {c.nhom === "phat_hien_bo_sung" && <Tag color="blue">Hệ thống tự kiểm</Tag>}
                   {c.loai && <Tag color="volcano">Bị loại</Tag>}
                 </div>
               ),
@@ -217,15 +219,6 @@ function VendorSection({ v, onOverride }: {
               ),
             }))}
           />
-        )}
-
-        {phatHien.length > 0 && (
-          <div style={{ marginTop: "var(--sp-4)" }}>
-            <div style={{ fontSize: "var(--fs-body)", fontWeight: 700, color: "var(--ink)", marginBottom: "var(--sp-1)" }}>
-              Phát hiện thêm của hệ thống
-            </div>
-            <VerdictTable verdicts={phatHien} files={files} onOverride={onOverride} />
-          </div>
         )}
       </div>
     </div>
@@ -276,7 +269,7 @@ export default function Evaluation() {
 
   const isErr = (s: Verdict) => s.ket_qua === "lỗi" && !s.overridden;
   const hasError = data.vendors.some((v) =>
-    v.criteria.some((c) => c.verdicts.some(isErr)) || (v.phat_hien_bo_sung ?? []).some(isErr));
+    v.criteria.some((c) => c.verdicts.some(isErr)));
 
   const vendors = data.vendors;
   const active = vendors.some((v) => String(v.vendor_id) === sp.get("vendor"))

@@ -54,7 +54,6 @@ export interface VendorEval {
   ten_viet_tat?: string; hinh_thuc?: string;
   vendor_profile?: VendorProfile | null;
   ho_so_nhan_duoc?: HoSoNhanDuoc[];
-  phat_hien_bo_sung?: Verdict[];   // kiểm tra thường trực (ngoài checklist HSMT)
 }
 export interface EvalResultsPayload { vendors: VendorEval[]; }
 // Danh mục loại hồ sơ giờ lấy động từ backend — dùng hook useArtifactTypes() (api/artifacts.ts).

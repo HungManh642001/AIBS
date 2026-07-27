@@ -28,11 +28,14 @@ async def test_evaluate_vendor_dat(monkeypatch):
 
     result = await evaluate_vendor(criteria, files, doc="Công ty A", vision_fn=vision)
 
-    assert len(result.criteria) == 1
-    c = result.criteria[0]
+    # 1 tiêu chí HSMT + 4 kiểm tra thường trực (nay là tiêu chí, đếm chung)
+    from experiment.evaluate.schema import NHOM_PHAT_HIEN
+    hsmt = [c for c in result.criteria if c.nhom != NHOM_PHAT_HIEN]
+    assert len(hsmt) == 1 and len(result.criteria) == 5
+    c = hsmt[0]
     assert c.ket_qua == "đạt" and c.loai is False
     assert c.verdicts[0].bang_chung and c.verdicts[0].trang == [1]
-    assert result.summary["n_dat"] == 1
+    assert result.summary["n_tieu_chi"] == 5
 
 
 async def test_evaluate_vendor_forwards_pkg_ctx_to_standing_rules():

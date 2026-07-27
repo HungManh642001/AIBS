@@ -30,7 +30,8 @@ async def test_run_e2e_legality(tmp_path):
     metrics = await run(str(dp), [("bao_lanh.pdf", "bao_dam_du_thau", _pdf("bảo lãnh"))], str(out),
                         doc="HSDT-NhaThauA", vision_fn=vision)
 
-    assert metrics["n_tieu_chi"] == 1 and metrics["n_dat"] == 1   # CHỈ nhóm hop_le
+    # 1 tiêu chí HSMT (chỉ nhóm hop_le) + 4 kiểm tra thường trực -> đếm CHUNG
+    assert metrics["n_tieu_chi"] == 5 and metrics["n_dat"] == 1
     data = json.loads((out / "evaluation.json").read_text(encoding="utf-8"))
     assert data["doc"] == "HSDT-NhaThauA"
     assert data["criteria"][0]["ket_qua"] == "đạt"
@@ -144,10 +145,9 @@ async def test_run_e2e_rules_with_vendor(tmp_path):
     vision = _vision_full()
     metrics = await run(_decomp_don(tmp_path), _files(), str(out), doc="HSDT-A",
                         vision_fn=vision, vendor=VendorContext(ten="Công ty TNHH ABC"))
-    assert metrics["n_tieu_chi"] == 3 and metrics["n_dat"] == 3
-    assert metrics["n_can_lam_ro"] == 0                       # KHÔNG còn SOI giả
-    # chữ ký + tên gói (SOI, không pkg) + bảo đảm (thiếu) + liên danh (không áp dụng)
-    assert metrics["n_phat_hien_bo_sung"] == 4
+    # 3 tiêu chí HSMT + 4 kiểm tra thường trực (chữ ký đạt; tên gói SOI vì không pkg; bảo đảm
+    # thiếu hồ sơ; liên danh không áp dụng) — nay đếm CHUNG.
+    assert metrics["n_tieu_chi"] == 7 and metrics["n_dat"] == 3    # 3 HSMT đạt + chữ ký đạt...
 
     data = json.loads((out / "evaluation.json").read_text(encoding="utf-8"))
     tc = {c["ten"]: c for c in data["criteria"]}
@@ -159,15 +159,16 @@ async def test_run_e2e_rules_with_vendor(tmp_path):
     # tiêu chí 'đúng mẫu' vẫn do eval chung chấm — KHÔNG dính verdict luật
     assert tc["Bảng giá đúng mẫu"]["verdicts"][0]["nguon_doc"] == []
 
-    # chữ ký = standing: nằm ở phat_hien_bo_sung, KHÔNG nằm trong tiêu chí nào
-    assert [v["noi_dung_kiem_tra"] for v in data["phat_hien_bo_sung"]] == [
+    # kiểm tra thường trực nay là TIÊU CHÍ riêng, nằm chung danh sách và mang nhãn nguồn gốc
+    tt = [c for c in data["criteria"] if c["nhom"] == "phat_hien_bo_sung"]
+    assert [c["ten"] for c in tt] == [
         "Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)",
         "Tên gói thầu ghi trong tài liệu khớp gói thầu đang xét",
         "Người ký bảo đảm dự thầu có thẩm quyền (đứng đầu hoặc ủy quyền hợp lệ)",
         "Phân công liên danh nêu rõ hạng mục và khớp tỷ lệ trong bảng giá",
     ]
-    assert not any(v["noi_dung_kiem_tra"].startswith("Người ký")
-                   for c in data["criteria"] for v in c["verdicts"])
+    assert all(c["tien_quyet"] for c in tt)
+    assert "phat_hien_bo_sung" not in data
 
 
 def _decomp_lien_danh(tmp_path):
@@ -192,7 +193,8 @@ async def test_run_e2e_doc_lap_gates_lien_danh_criterion(tmp_path):
                         [("don.pdf", "don_du_thau", _pdf("đơn"))], str(out),
                         doc="HSDT-A", vision_fn=vision,
                         vendor=VendorContext(ten="Công ty TNHH ABC", hinh_thuc="doc_lap"))
-    assert metrics["n_khong_ap_dung"] == 1 and metrics["n_can_lam_ro"] == 0
+    # 2 'không áp dụng': tiêu chí TTLĐ bị gate + kiểm tra phân công liên danh (nhà thầu độc lập)
+    assert metrics["n_khong_ap_dung"] == 2
     assert metrics["hinh_thuc"] == "độc lập" and metrics["mau_thuan"] is False
     assert not any("[EV:Thỏa thuận liên danh" in hay for hay, _ in vision.calls)
     data = json.loads((out / "evaluation.json").read_text(encoding="utf-8"))
