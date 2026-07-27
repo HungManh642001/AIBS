@@ -32,7 +32,7 @@ def _criteria_dicts(db: Session, package_id: int) -> list[dict[str, Any]]:
         models.RubricCriterion.package_id == package_id)
         .order_by(models.RubricCriterion.thu_tu)).all()
     return [{
-        "nhom": c.nhom, "ten": c.ten, "tien_quyet": c.tien_quyet,
+        "nhom": c.nhom, "ten": c.ten,
         "yeu_cau_goc": c.yeu_cau_goc, "hsdt_can_kiem_tra": c.hsdt_can_kiem_tra,
         "noi_dung_can_kiem_tra": [
             {"noi_dung_kiem_tra": n.noi_dung_kiem_tra, "hsdt_kiem_tra": n.hsdt_kiem_tra,
@@ -99,7 +99,6 @@ def _summary(evals: list[models.HsdtCriterionEval]) -> dict[str, int]:
     return {
         "n_tieu_chi": len(tc), "n_dat": cnt(KET_QUA_DAT), "n_khong_dat": cnt(KET_QUA_KHONG),
         "n_can_lam_ro": cnt(KET_QUA_SOI), "n_khong_ap_dung": cnt(KET_QUA_KHONG_AP_DUNG),
-        "n_loai": sum(1 for e in tc if e.loai),
     }
 
 
@@ -137,8 +136,8 @@ async def _eval_and_save_vendor(db: Session, pkg: models.ProcurementPackage,
             ho_so_nhan_duoc=[_hsnd(h) for h in result.ho_so_nhan_duoc]))
 
     for i, c in enumerate(result.criteria):
-        _save_eval(db, pkg.id, vendor.id, i, c.nhom, c.ten, c.tien_quyet, c.ket_qua,
-                   c.loai, c.yeu_cau_goc, c.verdicts)
+        _save_eval(db, pkg.id, vendor.id, i, c.nhom, c.ten, c.ket_qua, c.yeu_cau_goc,
+                   c.verdicts)
 
     return {"vendor_id": vendor.id, "ten": vendor.ten, "summary": result.summary,
             "hinh_thuc": prof.hinh_thuc if prof else "",
@@ -231,11 +230,11 @@ def _hsnd(h) -> dict[str, Any]:
 
 
 def _save_eval(db: Session, package_id: int, vendor_id: int, thu_tu: int, nhom: str, ten: str,
-               tien_quyet: bool, ket_qua: str, loai: bool, yeu_cau_goc: str, verdicts) -> None:
+               ket_qua: str, yeu_cau_goc: str, verdicts) -> None:
     """Ghi 1 HsdtCriterionEval + verdict con (đủ chuỗi audit: nguon_hsmt, nguon_doc, yeu_cau_goc)."""
     ev = models.HsdtCriterionEval(
         package_id=package_id, vendor_id=vendor_id, thu_tu=thu_tu, nhom=nhom, ten=ten,
-        tien_quyet=tien_quyet, ket_qua=ket_qua, loai=loai, yeu_cau_goc=yeu_cau_goc)
+        ket_qua=ket_qua, yeu_cau_goc=yeu_cau_goc)
     db.add(ev)
     db.flush()
     for j, v in enumerate(verdicts):
@@ -273,8 +272,8 @@ async def results(package_id: int, db: Session = Depends(get_db)):
 
 def _eval_out(e: models.HsdtCriterionEval) -> dict[str, Any]:
     return {
-        "eval_id": e.id, "ten": e.ten, "nhom": e.nhom, "tien_quyet": e.tien_quyet,
-        "ket_qua": e.ket_qua, "loai": e.loai, "yeu_cau_goc": e.yeu_cau_goc,
+        "eval_id": e.id, "ten": e.ten, "nhom": e.nhom,
+        "ket_qua": e.ket_qua, "yeu_cau_goc": e.yeu_cau_goc,
         "verdicts": [{
             "id": v2.id, "noi_dung_kiem_tra": v2.noi_dung_kiem_tra, "hsdt_kiem_tra": v2.hsdt_kiem_tra,
             "yeu_cau": v2.yeu_cau, "thong_tin_bo_sung": v2.thong_tin_bo_sung, "ket_qua": v2.ket_qua,
@@ -308,7 +307,6 @@ async def override_verdict(verdict_id: int, payload: dict[str, Any], db: Session
     ev = db.get(models.HsdtCriterionEval, row.eval_id)
     kqs = {v.ket_qua for v in ev.verdicts}
     ev.ket_qua = _rollup(kqs)
-    ev.loai = ev.ket_qua == KET_QUA_KHONG and ev.tien_quyet
 
     db.add(models.AuditLog(
         action="override_verdict", entity_type="hsdt_verdict", entity_id=verdict_id,
@@ -317,5 +315,5 @@ async def override_verdict(verdict_id: int, payload: dict[str, Any], db: Session
     db.refresh(row)
     return ok({
         "id": row.id, "ket_qua": row.ket_qua, "ghi_chu": row.ghi_chu, "overridden": row.overridden,
-        "criterion": {"eval_id": ev.id, "ket_qua": ev.ket_qua, "loai": ev.loai},
+        "criterion": {"eval_id": ev.id, "ket_qua": ev.ket_qua},
     })

@@ -33,7 +33,7 @@ def _persist_decomp(db: Session, package_id: int, decomp: dict) -> None:
                 nhom=c.get("nhom", "hop_le"), ten=c.get("ten", ""),
                 yeu_cau_goc=c.get("yeu_cau_goc", ""),
                 hsdt_can_kiem_tra=c.get("hsdt_can_kiem_tra", []),
-                tien_quyet=bool(c.get("tien_quyet")), loi_ai=c.get("loi_ai", ""),
+                loi_ai=c.get("loi_ai", ""),
             )
             db.add(crit)
             db.flush()
@@ -61,7 +61,7 @@ def _read_decomp(db: Session, package_id: int) -> dict:
     for c in crits:
         out.append({
             "id": c.id, "nhom": c.nhom, "ten": c.ten, "yeu_cau_goc": c.yeu_cau_goc,
-            "hsdt_can_kiem_tra": c.hsdt_can_kiem_tra, "tien_quyet": c.tien_quyet,
+            "hsdt_can_kiem_tra": c.hsdt_can_kiem_tra,
             # Phải trả về: PUT ghi lại nguyên payload, thiếu trường nào là trường đó bị xóa trắng.
             "loi_ai": c.loi_ai,
             "noi_dung_can_kiem_tra": [

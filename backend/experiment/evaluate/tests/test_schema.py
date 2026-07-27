@@ -24,8 +24,8 @@ def test_validate_eval_verdict_defaults():
 
 
 def test_result_to_json_omits_image_and_summary():
-    ce = CriterionEval(nhom="hop_le", ten="Bảo đảm dự thầu", tien_quyet=True,
-                       ket_qua="đạt", loai=False, verdicts=[_v("đạt")])
+    ce = CriterionEval(nhom="hop_le", ten="Bảo đảm dự thầu",
+                       ket_qua="đạt", verdicts=[_v("đạt")])
     r = EvalResult(doc="HSDT-A", criteria=[ce])
     d = result_to_json(r)
     assert d["doc"] == "HSDT-A"
@@ -38,8 +38,8 @@ def test_verdict_nguon_doc_backward_compat():
     """Verdict dựng kiểu cũ (không nguon_doc) vẫn OK; JSON chứa nguon_doc; luật đặt được đa nguồn."""
     v = _v("đạt")                                     # positional cũ — không nguon_doc
     assert v.nguon_doc == []
-    ce = CriterionEval(nhom="hop_le", ten="Đơn dự thầu", tien_quyet=False,
-                       ket_qua="đạt", loai=False, verdicts=[v])
+    ce = CriterionEval(nhom="hop_le", ten="Đơn dự thầu",
+                       ket_qua="đạt", verdicts=[v])
     d = result_to_json(EvalResult(doc="A", criteria=[ce]))
     assert d["criteria"][0]["verdicts"][0]["nguon_doc"] == []
     v2 = _v("đạt")
@@ -57,15 +57,14 @@ def test_vendor_context_defaults():
 def test_summary_counts_khong_ap_dung_separately():
     """'không áp dụng' có counter RIÊNG — không lẫn vào đạt/không đạt/cần làm rõ."""
     def _ce(ket_qua):
-        return CriterionEval(nhom="hop_le", ten=ket_qua, tien_quyet=False,
-                             ket_qua=ket_qua, loai=False, verdicts=[_v(ket_qua)])
+        return CriterionEval(nhom="hop_le", ten=ket_qua,
+                             ket_qua=ket_qua, verdicts=[_v(ket_qua)])
     r = EvalResult(doc="A", criteria=[_ce(KET_QUA_DAT), _ce(KET_QUA_KHONG),
                                       _ce(KET_QUA_SOI), _ce(KET_QUA_KHONG_AP_DUNG)])
     s = r.summary
     assert s["n_tieu_chi"] == 4
     assert s["n_dat"] == 1 and s["n_khong_dat"] == 1 and s["n_can_lam_ro"] == 1
     assert s["n_khong_ap_dung"] == 1
-    assert s["n_loai"] == 0
 
 
 def test_result_to_json_carries_vendor_and_inventory():
@@ -98,3 +97,12 @@ def test_result_to_json_mang_canh_bao_doc():
 
     d = result_to_json(EvalResult(doc="A", canh_bao_doc=["bg.pdf trang 3: số cột không đều"]))
     assert d["canh_bao_doc"] == ["bg.pdf trang 3: số cột không đều"]
+
+
+def test_khong_con_tien_quyet_va_loai():
+    """Bỏ hẳn hai trường: máy KHÔNG kết luận loại/không loại — chuyên gia đọc kết quả rồi tự quyết."""
+    from experiment.evaluate.schema import CriterionEval, EvalResult
+
+    c = CriterionEval(nhom="hop_le", ten="X", ket_qua="không đạt")
+    assert not hasattr(c, "tien_quyet") and not hasattr(c, "loai")
+    assert "n_loai" not in EvalResult(doc="A", criteria=[c]).summary

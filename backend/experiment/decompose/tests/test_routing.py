@@ -155,7 +155,7 @@ def _nd(noi_dung, can_lam_ro=""):
 
 def _crit(ten, contents):
     return {"nhom": "hop_le", "ten": ten, "yeu_cau_goc": f"{ten} theo HSMT",
-            "hsdt_can_kiem_tra": ["don_du_thau"], "tien_quyet": False,
+            "hsdt_can_kiem_tra": ["don_du_thau"],
             "noi_dung_can_kiem_tra": contents}
 
 

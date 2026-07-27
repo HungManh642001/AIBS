@@ -13,7 +13,7 @@ def _pdf(text):
 
 async def test_run_e2e_legality(tmp_path):
     decomp = {"doc": "E-HSMT", "groups": [{"group": "hop_le", "muc": "Mục 1", "criteria": [{
-        "nhom": "hop_le", "ten": "Bảo đảm dự thầu", "tien_quyet": True,
+        "nhom": "hop_le", "ten": "Bảo đảm dự thầu",
         "noi_dung_can_kiem_tra": [{"noi_dung_kiem_tra": "Giá trị bảo lãnh",
             "hsdt_kiem_tra": "bao_dam_du_thau", "yeu_cau": "theo HSMT",
             "thong_tin_bo_sung": "6.100.000 VNĐ"}]}]},
@@ -94,17 +94,17 @@ def _decomp_don(tmp_path):
     -> tiêu chí 3 ra "cần làm rõ".
     """
     decomp = {"doc": "E-HSMT", "groups": [{"group": "hop_le", "muc": "Mục 1", "criteria": [
-        {"nhom": "hop_le", "ten": "Đơn dự thầu", "tien_quyet": True,
+        {"nhom": "hop_le", "ten": "Đơn dự thầu",
          "hsdt_can_kiem_tra": ["don_du_thau"],
          "noi_dung_can_kiem_tra": [
              {"noi_dung_kiem_tra": "Có đơn dự thầu", "hsdt_kiem_tra": "don_du_thau",
               "yeu_cau": "phải có", "thong_tin_bo_sung": ""}]},
-        {"nhom": "hop_le", "ten": "Bảng giá đúng mẫu", "tien_quyet": False,
+        {"nhom": "hop_le", "ten": "Bảng giá đúng mẫu",
          "hsdt_can_kiem_tra": ["bang_gia"],
          "noi_dung_can_kiem_tra": [
              {"noi_dung_kiem_tra": "Bảng giá đúng mẫu", "hsdt_kiem_tra": "bang_gia",
               "yeu_cau": "đúng mẫu 05C.1", "thong_tin_bo_sung": ""}]},
-        {"nhom": "hop_le", "ten": "Giá khớp webform", "tien_quyet": True,
+        {"nhom": "hop_le", "ten": "Giá khớp webform",
          "hsdt_can_kiem_tra": ["bang_gia", "webform"],
          "noi_dung_can_kiem_tra": [
              {"noi_dung_kiem_tra": "Giá phải phù hợp với webform", "hsdt_kiem_tra": "bang_gia",
@@ -167,15 +167,15 @@ async def test_run_e2e_rules_with_vendor(tmp_path):
         "Người ký bảo đảm dự thầu có thẩm quyền (đứng đầu hoặc ủy quyền hợp lệ)",
         "Phân công liên danh nêu rõ hạng mục và khớp tỷ lệ trong bảng giá",
     ]
-    # KHÔNG tiên quyết -> không tự loại nhà thầu; chuyên gia đọc bằng chứng rồi quyết
-    assert not any(c["tien_quyet"] or c["loai"] for c in tt)
+    # Máy không kết luận loại: hai trường tien_quyet/loai đã bỏ khỏi hệ thống
+    assert all("tien_quyet" not in c and "loai" not in c for c in tt)
     assert "phat_hien_bo_sung" not in data
 
 
 def _decomp_lien_danh(tmp_path):
     """Tiêu chí hop_le về thỏa thuận liên danh — nhà thầu độc lập lẽ ra KHÔNG phải đối chiếu."""
     decomp = {"doc": "E-HSMT", "groups": [{"group": "hop_le", "muc": "Mục 1", "criteria": [{
-        "nhom": "hop_le", "ten": "Thỏa thuận liên danh", "tien_quyet": True,
+        "nhom": "hop_le", "ten": "Thỏa thuận liên danh",
         "yeu_cau_goc": "Trường hợp liên danh, phải có thỏa thuận liên danh hợp lệ",
         "noi_dung_can_kiem_tra": [
             {"noi_dung_kiem_tra": "Thỏa thuận liên danh hợp lệ",

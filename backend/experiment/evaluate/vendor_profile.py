@@ -8,7 +8,7 @@ Thứ tự nhánh BẮT BUỘC (mỗi nhánh dừng luôn):
   (e) còn lại                        -> "" không đủ căn cứ 0 call
 
 "" (không rõ) KHÔNG BAO GIỜ gate — nội dung liên danh vẫn được chấm đủ như khi chưa có tính năng
-này. Sai một lần ở đây là bỏ sót cả tiêu chí tiên quyết, nên mọi đường mơ hồ/lỗi đều trả "".
+này. Sai một lần ở đây là bỏ sót cả một tiêu chí, nên mọi đường mơ hồ/lỗi đều trả "".
 """
 from __future__ import annotations
 

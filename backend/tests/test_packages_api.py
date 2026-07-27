@@ -96,7 +96,7 @@ def test_delete_vendor_cascades(client):
     # seed 1 kết quả đánh giá cho nhà thầu A
     sess = _db.SessionLocal()
     sess.add(models.HsdtCriterionEval(package_id=pid, vendor_id=va, thu_tu=0, nhom="hop_le",
-                                      ten="X", ket_qua="đạt", loai=False))
+                                      ten="X", ket_qua="đạt"))
     sess.add(models.HsdtVendorEval(package_id=pid, vendor_id=va, hinh_thuc="độc lập"))
     sess.commit(); sess.close()
 

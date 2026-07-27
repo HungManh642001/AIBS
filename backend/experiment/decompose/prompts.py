@@ -65,7 +65,7 @@ SYS_STRUCT = (
     "MỘT yêu cầu gốc có thể CHỨA cả mệnh đề CHUNG (ap_dung='') lẫn mệnh đề điều kiện liên danh "
     "(ap_dung='lien_danh') -> TÁCH thành nội dung riêng, gắn ap_dung đúng cho từng cái. KHI KHÔNG "
     "CHẮC -> để '' (chấm cho mọi nhà thầu, không bỏ sót).\n"
-    "TUYỆT ĐỐI KHÔNG bịa số/nội dung. Đặt tien_quyet=true nếu là tiêu chí loại/cổng."
+    "TUYỆT ĐỐI KHÔNG bịa số/nội dung."
 )
 SYS_QUERY = (
     "Bạn tạo MỘT câu truy vấn tìm kiếm tiếng Việt NGẮN, giàu từ khoá để tra trong HSMT (E-BDL / "
@@ -121,7 +121,7 @@ def anchors_prompt(body: str) -> str:
 
 # Schema step structure — noi_dung_can_kiem_tra là ô hạng nhất.
 _CRIT_SCHEMA = (
-    '{"nhom","ten","yeu_cau_goc","hsdt_can_kiem_tra":[...],"tien_quyet":false,'
+    '{"nhom","ten","yeu_cau_goc","hsdt_can_kiem_tra":[...],'
     '"noi_dung_can_kiem_tra":[{"noi_dung_kiem_tra","hsdt_kiem_tra","yeu_cau","can_lam_ro",'
     '"can_tra_cuu":false,"ap_dung":""}]}'
 )

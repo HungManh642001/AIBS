@@ -22,7 +22,7 @@ def _pkg_with_hsmt(client):
 _FAKE_DECOMP = {
     "doc": "HSMT", "groups": [{"group": "hop_le", "criteria": [{
         "nhom": "hop_le", "ten": "Bảo đảm dự thầu", "yeu_cau_goc": "Giá trị, hiệu lực theo E-HSMT",
-        "hsdt_can_kiem_tra": ["bao_dam_du_thau"], "tien_quyet": True,
+        "hsdt_can_kiem_tra": ["bao_dam_du_thau"],
         "noi_dung_can_kiem_tra": [
             {"noi_dung_kiem_tra": "Giá trị bảo lãnh", "hsdt_kiem_tra": "bao_dam_du_thau",
              "yeu_cau": "Thỏa mãn giá trị bảo lãnh", "can_lam_ro": "Giá trị bảo lãnh",
@@ -70,7 +70,7 @@ def test_rubric_persists_ap_dung(client, monkeypatch):
     """ap_dung (áp dụng độc lập/liên danh cấp nội dung) lưu & đọc lại được, qua cả PUT chuyên gia sửa."""
     decomp = {"doc": "HSMT", "groups": [{"group": "hop_le", "criteria": [{
         "nhom": "hop_le", "ten": "Đơn dự thầu hợp lệ", "yeu_cau_goc": "…",
-        "hsdt_can_kiem_tra": ["don_du_thau", "thoa_thuan_lien_danh"], "tien_quyet": True,
+        "hsdt_can_kiem_tra": ["don_du_thau", "thoa_thuan_lien_danh"],
         "noi_dung_can_kiem_tra": [
             {"noi_dung_kiem_tra": "Đơn ký hợp pháp", "hsdt_kiem_tra": "don_du_thau",
              "yeu_cau": "ký hợp pháp", "can_lam_ro": "", "can_tra_cuu": False,
@@ -98,7 +98,7 @@ def test_extract_edit_confirm_rubric(client, monkeypatch):
 
     ext = client.post(f"/api/v1/packages/{pid}/rubric").json()["data"]
     bdt = next(c for c in ext["criteria"] if c["ten"] == "Bảo đảm dự thầu")
-    assert bdt["tien_quyet"] is True and bdt["hsdt_can_kiem_tra"] == ["bao_dam_du_thau"]
+    assert bdt["hsdt_can_kiem_tra"] == ["bao_dam_du_thau"]
     nd = bdt["noi_dung_can_kiem_tra"][0]
     assert nd["thong_tin_bo_sung"] == "6.100.000 VNĐ" and nd["nguon"] == "E-BDL 18.2"
 
@@ -145,7 +145,7 @@ def test_loi_ai_khong_mat_khi_chuyen_gia_luu(client):
     sess = _db.SessionLocal()
     sess.add(models.RubricCriterion(
         package_id=pid, thu_tu=0, nhom="hop_le", ten="Đơn dự thầu", yeu_cau_goc="Có đơn",
-        hsdt_can_kiem_tra=["don_du_thau"], tien_quyet=True, loi_ai="Không tra được mốc đóng thầu"))
+        hsdt_can_kiem_tra=["don_du_thau"], loi_ai="Không tra được mốc đóng thầu"))
     sess.commit()
     sess.close()
 

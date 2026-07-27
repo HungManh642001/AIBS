@@ -146,7 +146,6 @@ function SummaryChips({ v }: { v: VendorEval }) {
       <Tag color={s.n_khong_dat > 0 ? "red" : undefined}>{s.n_khong_dat} không đạt</Tag>
       <Tag color={s.n_can_lam_ro > 0 ? "orange" : undefined}>{s.n_can_lam_ro} cần làm rõ</Tag>
       {(s.n_khong_ap_dung ?? 0) > 0 && <Tag>{s.n_khong_ap_dung} không áp dụng</Tag>}
-      {s.n_loai > 0 && <Tag color="volcano">{s.n_loai} tiêu chí bị loại</Tag>}
     </div>
   );
 }
@@ -169,7 +168,6 @@ function VendorSection({ v, onOverride }: {
   v: VendorEval;
   onOverride: (id: number, payload: Record<string, unknown>) => void;
 }) {
-  const biLoai = v.criteria.some((c) => c.loai);
   const files = filesOf(v);
   return (
     <div style={{ background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 8,
@@ -181,7 +179,6 @@ function VendorSection({ v, onOverride }: {
         <div style={{ fontSize: "var(--fs-lead)", fontWeight: 700, color: "var(--ink)",
                       display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap" }}>
           {v.ten}
-          {biLoai && <Tag color="volcano">Bị loại — trượt tiêu chí tiên quyết</Tag>}
         </div>
         <div style={{ marginTop: "var(--sp-2)" }}><SummaryChips v={v} /></div>
         <HinhThucBanner v={v} />
@@ -200,11 +197,9 @@ function VendorSection({ v, onOverride }: {
                 <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)" }}>
                   <ResultPill kq={c.ket_qua} />
                   <span style={{ fontWeight: 600 }}>{c.ten}</span>
-                  {c.tien_quyet && <Tag>Tiên quyết</Tag>}
                   {/* Trọng số ngang tiêu chí HSMT, nhưng phải thấy được căn cứ đến từ đâu:
                       HSMT yêu cầu hay hệ thống tự kiểm — nhất là khi nó kéo "bị loại". */}
                   {c.nhom === "phat_hien_bo_sung" && <Tag color="blue">Hệ thống tự kiểm</Tag>}
-                  {c.loai && <Tag color="volcano">Bị loại</Tag>}
                 </div>
               ),
               children: (
@@ -309,7 +304,7 @@ export default function Evaluation() {
               key: String(v.vendor_id),
               label: (
                 <span>
-                  {v.criteria.some((c) => c.loai) && <Badge color="red" style={{ marginRight: "var(--sp-2)" }} />}
+                  {v.summary.n_khong_dat > 0 && <Badge color="red" style={{ marginRight: "var(--sp-2)" }} />}
                   {v.ten}
                 </span>
               ),
@@ -331,12 +326,15 @@ function SummaryTable({ vendors, onOpen }: { vendors: VendorEval[]; onOpen: (vid
         { title: "Nhà thầu", render: (_, v) => <span style={{ fontWeight: 600 }}>{v.ten}</span> },
         { title: "Hình thức", width: 120,
           render: (_, v) => <span style={{ color: "var(--ink-muted)" }}>{v.hinh_thuc || v.vendor_profile?.hinh_thuc || "—"}</span> },
-        { title: "Kết luận", width: 140, render: (_, v) =>
-            v.criteria.some((c) => c.loai)
-              ? <Tag color="volcano">Bị loại</Tag>
-              : v.criteria.length === 0
-                ? <Tag>Chưa chấm</Tag>
-                : <Tag color="green">Hợp lệ</Tag> },
+        /* Máy KHÔNG kết luận loại/không loại — chỉ nêu trạng thái để chuyên gia tự quyết. */
+        { title: "Trạng thái", width: 150, render: (_, v) =>
+            v.criteria.length === 0
+              ? <Tag>Chưa chấm</Tag>
+              : v.summary.n_khong_dat > 0
+                ? <Tag color="volcano">Có tiêu chí không đạt</Tag>
+                : v.summary.n_can_lam_ro > 0
+                  ? <Tag color="orange">Cần làm rõ</Tag>
+                  : <Tag color="green">Đạt toàn bộ</Tag> },
         { title: "Đạt", width: 70, align: "center", render: (_, v) => v.summary.n_dat },
         { title: "Không đạt", width: 100, align: "center",
           render: (_, v) => v.summary.n_khong_dat > 0

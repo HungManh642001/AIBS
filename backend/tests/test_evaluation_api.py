@@ -26,15 +26,12 @@ def _fake_eval(ket_qua: str = "đạt", *, phat_hien: bool = False):
                 ket_qua=ket_qua, bang_chung="bằng chứng", trang=[1], do_tin=0.9, ghi_chu="",
                 nguon_hsmt=nd.get("nguon", ""), nguon_doc=[])
                 for nd in c["noi_dung_can_kiem_tra"]]
-            loai = ket_qua == "không đạt" and c["tien_quyet"]
             r.criteria.append(CriterionEval(
-                nhom=c["nhom"], ten=c["ten"], tien_quyet=c["tien_quyet"], ket_qua=ket_qua,
-                loai=loai, verdicts=verds, yeu_cau_goc=c.get("yeu_cau_goc", "")))
+                nhom=c["nhom"], ten=c["ten"], ket_qua=ket_qua, verdicts=verds, yeu_cau_goc=c.get("yeu_cau_goc", "")))
         if phat_hien:   # kiểm tra thường trực nay là TIÊU CHÍ như mọi tiêu chí khác
             from experiment.evaluate.schema import NHOM_PHAT_HIEN
             r.criteria.append(CriterionEval(
-                nhom=NHOM_PHAT_HIEN, ten="Người ký khớp ĐKKD", tien_quyet=False, ket_qua="đạt",
-                loai=False, yeu_cau_goc="",
+                nhom=NHOM_PHAT_HIEN, ten="Người ký khớp ĐKKD", ket_qua="đạt", yeu_cau_goc="",
                 verdicts=[Verdict(
                     noi_dung_kiem_tra="Người ký khớp ĐKKD", hsdt_kiem_tra="don_du_thau",
                     yeu_cau="", thong_tin_bo_sung="", ket_qua="đạt", bang_chung="khớp",
@@ -44,12 +41,12 @@ def _fake_eval(ket_qua: str = "đạt", *, phat_hien: bool = False):
     return fake
 
 
-def _seed(client, tien_quyet: bool = True) -> int:
+def _seed(client) -> int:
     pid = client.post("/api/v1/packages",
                       json={"ma_so": "G-EV", "ten": "g", "vendors": ["A"]}).json()["data"]["id"]
     client.put(f"/api/v1/packages/{pid}/rubric", json={"criteria": [{
         "nhom": "hop_le", "ten": "Đơn dự thầu", "yeu_cau_goc": "Có đơn dự thầu hợp lệ",
-        "hsdt_can_kiem_tra": ["don_du_thau"], "tien_quyet": tien_quyet,
+        "hsdt_can_kiem_tra": ["don_du_thau"],
         "noi_dung_can_kiem_tra": [{
             "noi_dung_kiem_tra": "Chữ ký & con dấu", "hsdt_kiem_tra": "don_du_thau",
             "yeu_cau": "có chữ ký", "can_lam_ro": "", "can_tra_cuu": False,
@@ -256,8 +253,7 @@ def test_kiem_tra_thuong_truc_la_tieu_chi_binh_thuong(client, monkeypatch):
     async def fake(criteria, hsdt_files, **kw):
         r = await base(criteria, hsdt_files, **kw)
         r.criteria.append(CriterionEval(
-            nhom=NHOM_PHAT_HIEN, ten="Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)",
-            tien_quyet=False, ket_qua="không đạt", loai=False, yeu_cau_goc="",
+            nhom=NHOM_PHAT_HIEN, ten="Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)", ket_qua="không đạt", yeu_cau_goc="",
             verdicts=[Verdict(noi_dung_kiem_tra="Người ký đơn dự thầu khớp đại diện pháp luật",
                               hsdt_kiem_tra="don_du_thau", yeu_cau="", thong_tin_bo_sung="",
                               ket_qua="không đạt", bang_chung="ký A ≠ đại diện B", trang=[1],
@@ -273,10 +269,8 @@ def test_kiem_tra_thuong_truc_la_tieu_chi_binh_thuong(client, monkeypatch):
     assert "Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)" in ten   # nằm chung danh sách
     assert "phat_hien_bo_sung" not in v                                    # không còn đường riêng
     assert v["summary"]["n_tieu_chi"] == 2                                 # đếm chung
-    assert v["summary"]["n_loai"] == 0                                     # nhưng KHÔNG tự loại
 
     tt = next(c for c in v["criteria"] if c["nhom"] == NHOM_PHAT_HIEN)
-    assert tt["tien_quyet"] is False and tt["loai"] is False
     assert tt["verdicts"][0]["bang_chung"] == "ký A ≠ đại diện B"
 
 
@@ -313,8 +307,7 @@ def test_evaluate_builds_vendor_context_with_abbreviation(client, monkeypatch):
     client.post(f"/api/v1/packages/{p['id']}/vendors",
                 json={"ten": "Công ty TNHH Xây dựng ABC", "ten_viet_tat": "ABC"})
     client.put(f"/api/v1/packages/{p['id']}/rubric", json={"criteria": [{
-        "nhom": "hop_le", "ten": "X", "yeu_cau_goc": "", "hsdt_can_kiem_tra": ["don_du_thau"],
-        "tien_quyet": False, "noi_dung_can_kiem_tra": []}]})
+        "nhom": "hop_le", "ten": "X", "yeu_cau_goc": "", "hsdt_can_kiem_tra": ["don_du_thau"], "noi_dung_can_kiem_tra": []}]})
     client.post(f"/api/v1/packages/{p['id']}/evaluate")
 
     ctx = seen["ctx"]
@@ -328,8 +321,7 @@ def _seed_two_vendors(client) -> tuple[int, int, int]:
     pkg_id = pid["id"]
     va, vb = pid["vendors"][0]["id"], pid["vendors"][1]["id"]
     client.put(f"/api/v1/packages/{pkg_id}/rubric", json={"criteria": [{
-        "nhom": "hop_le", "ten": "Đơn dự thầu", "yeu_cau_goc": "", "hsdt_can_kiem_tra": ["don_du_thau"],
-        "tien_quyet": True, "noi_dung_can_kiem_tra": [{
+        "nhom": "hop_le", "ten": "Đơn dự thầu", "yeu_cau_goc": "", "hsdt_can_kiem_tra": ["don_du_thau"], "noi_dung_can_kiem_tra": [{
             "noi_dung_kiem_tra": "Chữ ký", "hsdt_kiem_tra": "don_du_thau", "yeu_cau": "có",
             "can_lam_ro": "", "can_tra_cuu": False, "thong_tin_bo_sung": "", "nguon": "",
             "can_review": False}]}]})
@@ -380,11 +372,11 @@ def test_evaluate_single_vendor_404(client):
 
 def test_summary_counts_khong_ap_dung(client, monkeypatch):
     monkeypatch.setattr("routers.evaluation.evaluate_vendor", _fake_eval("không áp dụng"))
-    pid = _seed(client, tien_quyet=True)
+    pid = _seed(client)
     client.post(f"/api/v1/packages/{pid}/evaluate")
     res = client.get(f"/api/v1/packages/{pid}/results").json()["data"]
     s = res["vendors"][0]["summary"]
-    assert s["n_khong_ap_dung"] == 1 and s["n_can_lam_ro"] == 0 and s["n_loai"] == 0
+    assert s["n_khong_ap_dung"] == 1 and s["n_can_lam_ro"] == 0
 
 
 def test_evaluate_persists_and_reads(client, monkeypatch):
@@ -409,11 +401,11 @@ def test_evaluate_no_criteria_400(client):
 
 def test_override_verdict_recomputes(client, monkeypatch):
     monkeypatch.setattr("routers.evaluation.evaluate_vendor", _fake_eval("đạt"))
-    pid = _seed(client, tien_quyet=True)
+    pid = _seed(client)
     client.post(f"/api/v1/packages/{pid}/evaluate")
     res = client.get(f"/api/v1/packages/{pid}/results").json()["data"]
     crit = res["vendors"][0]["criteria"][0]
-    assert crit["ket_qua"] == "đạt" and crit["loai"] is False
+    assert crit["ket_qua"] == "đạt"
     vid = crit["verdicts"][0]["id"]
 
     ov = client.put(f"/api/v1/evaluation/verdict/{vid}/override", json={"ket_qua": "không đạt"})
@@ -422,7 +414,7 @@ def test_override_verdict_recomputes(client, monkeypatch):
 
     res2 = client.get(f"/api/v1/packages/{pid}/results").json()["data"]
     crit2 = res2["vendors"][0]["criteria"][0]
-    assert crit2["ket_qua"] == "không đạt" and crit2["loai"] is True
+    assert crit2["ket_qua"] == "không đạt"
     assert crit2["verdicts"][0]["overridden"] is True
 
 
@@ -442,8 +434,7 @@ def test_evaluate_batch_mot_nha_thau_loi_van_giu_ket_qua_con_lai(client, monkeyp
                     json={"ma_so": "G-PF", "ten": "g", "vendors": ["A", "B", "C"]}).json()["data"]
     pid = p["id"]
     client.put(f"/api/v1/packages/{pid}/rubric", json={"criteria": [{
-        "nhom": "hop_le", "ten": "X", "yeu_cau_goc": "", "hsdt_can_kiem_tra": ["don_du_thau"],
-        "tien_quyet": False, "noi_dung_can_kiem_tra": []}]})
+        "nhom": "hop_le", "ten": "X", "yeu_cau_goc": "", "hsdt_can_kiem_tra": ["don_du_thau"], "noi_dung_can_kiem_tra": []}]})
 
     r = client.post(f"/api/v1/packages/{pid}/evaluate")
     assert r.status_code == 200

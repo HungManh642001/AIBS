@@ -339,7 +339,6 @@ class DecomposeWorkflow(Workflow):
                 "ten": ten,
                 "yeu_cau_goc": crit.get("yeu_cau_goc", ""),
                 "hsdt_can_kiem_tra": crit.get("hsdt_can_kiem_tra", []),
-                "tien_quyet": False,
                 "noi_dung_can_kiem_tra": [],
                 "loi_ai": out.error,
             }

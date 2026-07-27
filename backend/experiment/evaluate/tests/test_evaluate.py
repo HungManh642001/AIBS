@@ -39,18 +39,18 @@ async def test_eval_signature_check_from_ingest_text():
     assert vision.calls[-1][1] == 0                 # không đính ảnh
 
 
-async def test_criterion_rollup_blocking_fail_marks_loai():
-    crit = {"nhom": "hop_le", "ten": "Bảo đảm dự thầu", "tien_quyet": True,
+async def test_criterion_rollup_khong_dat():
+    crit = {"nhom": "hop_le", "ten": "Bảo đảm dự thầu",
             "noi_dung_can_kiem_tra": [_nd("Giá trị bảo lãnh", "bao_dam_du_thau")]}
     vision = ScriptedVision({"[EV:Giá trị bảo lãnh]":
                              {"ket_qua": "không đạt", "bang_chung": "3 triệu < 6.1tr", "trang": [1]}})
     ce = await evaluate_criterion(crit, [_page("bao_dam_du_thau", "bảo lãnh 3.000.000")], vision)
-    assert ce.ket_qua == KET_QUA_KHONG and ce.loai is True
+    assert ce.ket_qua == KET_QUA_KHONG
 
 
-def _crit_na(ten="Đơn dự thầu", tien_quyet=True, nds=None):
+def _crit_na(ten="Đơn dự thầu", nds=None):
     """Tiêu chí có nội dung TTLĐ -> nhà thầu độc lập sẽ gate thành N/A (đường N/A THẬT, 0 call)."""
-    return {"nhom": "hop_le", "ten": ten, "tien_quyet": tien_quyet,
+    return {"nhom": "hop_le", "ten": ten,
             "noi_dung_can_kiem_tra": nds if nds is not None else [_nd("TTLD", "thoa_thuan_lien_danh")]}
 
 
@@ -63,28 +63,28 @@ async def test_rollup_na_is_neutral():
     ce = await evaluate_criterion(crit, [_page("don_du_thau", "đơn")], vision,
                                   profile=_profile(HINH_THUC_DOC_LAP))
     assert [v.ket_qua for v in ce.verdicts] == [KET_QUA_DAT, KET_QUA_KHONG_AP_DUNG]
-    assert ce.ket_qua == KET_QUA_DAT and ce.loai is False
+    assert ce.ket_qua == KET_QUA_DAT
 
 
 async def test_rollup_all_na_criterion_is_na_not_loai():
-    """Toàn bộ verdict N/A -> tiêu chí 'không áp dụng', loai=False DÙ tien_quyet=True."""
+    """Toàn bộ verdict N/A -> tiêu chí 'không áp dụng'."""
     from experiment.evaluate.schema import HINH_THUC_DOC_LAP, KET_QUA_KHONG_AP_DUNG
 
     ce = await evaluate_criterion(_crit_na(ten="Thỏa thuận liên danh"),
                                   [_page("don_du_thau", "đơn")], ScriptedVision({}),
                                   profile=_profile(HINH_THUC_DOC_LAP))
-    assert ce.ket_qua == KET_QUA_KHONG_AP_DUNG and ce.loai is False
+    assert ce.ket_qua == KET_QUA_KHONG_AP_DUNG
 
 
 async def test_rollup_na_plus_khong_dat_still_loai():
-    """N/A KHÔNG che 'không đạt': tiên quyết -> vẫn loại."""
+    """N/A KHÔNG che 'không đạt': tiêu chí vẫn ra 'không đạt'."""
     from experiment.evaluate.schema import HINH_THUC_DOC_LAP
 
     crit = _crit_na(nds=[_nd("Có đơn dự thầu", "don_du_thau"), _nd("TTLD", "thoa_thuan_lien_danh")])
     vision = ScriptedVision({"[EV:Có đơn dự thầu]": {"ket_qua": "không đạt", "bang_chung": "x", "trang": [1]}})
     ce = await evaluate_criterion(crit, [_page("don_du_thau", "đơn")], vision,
                                   profile=_profile(HINH_THUC_DOC_LAP))
-    assert ce.ket_qua == KET_QUA_KHONG and ce.loai is True
+    assert ce.ket_qua == KET_QUA_KHONG
 
 
 async def test_rollup_empty_verdicts_still_soi():
@@ -93,7 +93,7 @@ async def test_rollup_empty_verdicts_still_soi():
 
     ce = await evaluate_criterion({"nhom": "hop_le", "ten": "X", "noi_dung_can_kiem_tra": []},
                                   [], ScriptedVision({}))
-    assert ce.ket_qua == KET_QUA_SOI and ce.loai is False
+    assert ce.ket_qua == KET_QUA_SOI
 
 
 def _profile(hinh_thuc, nguon="khai báo", **kw):
@@ -212,7 +212,7 @@ async def test_eval_prompt_gets_vendor_form_through_criterion():
     """evaluate_criterion truyền profile/vendor_ctx xuống tận prompt của mỗi nội dung."""
     from experiment.evaluate.schema import HINH_THUC_DOC_LAP, VendorContext
 
-    crit = {"nhom": "hop_le", "ten": "Đơn dự thầu", "tien_quyet": False,
+    crit = {"nhom": "hop_le", "ten": "Đơn dự thầu",
             "noi_dung_can_kiem_tra": [_nd("Có đơn dự thầu", "don_du_thau")]}
     v = ScriptedVision({"[EV:Có đơn dự thầu]": {"ket_qua": "đạt", "bang_chung": "có", "trang": [1]}})
     await evaluate_criterion(crit, [_page("don_du_thau", "đơn")], v,
@@ -223,7 +223,7 @@ async def test_eval_prompt_gets_vendor_form_through_criterion():
 
 async def test_criterion_passes_yeu_cau_goc_and_siblings_to_each_need():
     """1 yeu_cau_goc -> N yeu_cau: mỗi call thấy nguyên văn gốc + đúng tên anh em (không có tên nó)."""
-    crit = {"nhom": "hop_le", "ten": "Bảo đảm dự thầu", "tien_quyet": True,
+    crit = {"nhom": "hop_le", "ten": "Bảo đảm dự thầu",
             "yeu_cau_goc": "Nộp bảo đảm dự thầu 6.100.000 VNĐ, hiệu lực 120 ngày",
             "noi_dung_can_kiem_tra": [_nd("Giá trị bảo lãnh", "bao_dam_du_thau"),
                                       _nd("Thời gian hiệu lực", "bao_dam_du_thau"),
@@ -323,7 +323,7 @@ async def test_skill_serves_need_routed_to_reference_doc():
     """
     from experiment.evaluate.schema import VendorContext
 
-    crit = {"nhom": "hop_le", "ten": "Giá khớp webform", "tien_quyet": True,
+    crit = {"nhom": "hop_le", "ten": "Giá khớp webform",
             "hsdt_can_kiem_tra": ["bang_gia", "webform"],
             "noi_dung_can_kiem_tra": [_nd("Giá công bố webform", "webform")]}
     v = ScriptedVision({})     # KHÔNG kịch bản [EV:...] -> eval chung sẽ nổ thành 'lỗi'
@@ -346,7 +346,7 @@ async def test_gate_mixed_criterion_keeps_general_content():
     """
     from experiment.evaluate.schema import HINH_THUC_DOC_LAP, KET_QUA_KHONG_AP_DUNG
 
-    crit = {"nhom": "hop_le", "ten": "Đơn dự thầu hợp lệ", "tien_quyet": True,
+    crit = {"nhom": "hop_le", "ten": "Đơn dự thầu hợp lệ",
             "yeu_cau_goc": "Đơn ký bởi đại diện hợp pháp. Đối với liên danh, ký theo phân công.",
             "hsdt_can_kiem_tra": ["don_du_thau", "thoa_thuan_lien_danh"],
             "noi_dung_can_kiem_tra": [
@@ -358,7 +358,7 @@ async def test_gate_mixed_criterion_keeps_general_content():
     kq = {x.noi_dung_kiem_tra: x.ket_qua for x in ce.verdicts}
     assert kq["Đơn ký bởi đại diện hợp pháp"] == KET_QUA_DAT          # nội dung CHUNG được chấm
     assert kq["Liên danh: ký theo phân công"] == KET_QUA_KHONG_AP_DUNG  # nội dung liên danh -> N/A
-    assert ce.ket_qua == KET_QUA_DAT and ce.loai is False            # roll-up không mất nội dung chung
+    assert ce.ket_qua == KET_QUA_DAT            # roll-up không mất nội dung chung
     assert len(v.calls) == 1                                          # chỉ 1 call cho nội dung chung
 
 
@@ -411,7 +411,7 @@ async def test_cross_doc_when_criterion_declares_extra_docs():
     can_tra_cuu=false -> RESOLVE không chạy -> doi_chieu_hsdt KHÔNG BAO GIỜ bật. Nếu bám vào cờ đó
     thì model chỉ thấy đơn, không thấy thỏa thuận -> 'cần làm rõ' giả.
     """
-    crit = {"nhom": "hop_le", "ten": "Đơn ký theo phân công liên danh", "tien_quyet": True,
+    crit = {"nhom": "hop_le", "ten": "Đơn ký theo phân công liên danh",
             "hsdt_can_kiem_tra": ["don_du_thau", "thoa_thuan_lien_danh"],
             "noi_dung_can_kiem_tra": [
                 {"noi_dung_kiem_tra": "Ký đúng phân công", "hsdt_kiem_tra": "don_du_thau",
@@ -425,12 +425,12 @@ async def test_cross_doc_when_criterion_declares_extra_docs():
     prompt = vision.calls[-1][0]
     assert "Nguyễn Văn A" in prompt and "Trần Văn B" in prompt   # THẤY CẢ HAI phía
     assert "đối chiếu chéo" in prompt.lower()
-    assert ce.ket_qua == KET_QUA_KHONG and ce.loai is True
+    assert ce.ket_qua == KET_QUA_KHONG
 
 
 async def test_no_cross_when_criterion_declares_single_doc():
     """Chỉ khai 1 hồ sơ -> KHÔNG cross (giữ prompt gọn, hành vi như cũ)."""
-    crit = {"nhom": "hop_le", "ten": "Bảo đảm dự thầu", "tien_quyet": False,
+    crit = {"nhom": "hop_le", "ten": "Bảo đảm dự thầu",
             "hsdt_can_kiem_tra": ["bao_dam_du_thau"],
             "noi_dung_can_kiem_tra": [_nd("Giá trị bảo lãnh", "bao_dam_du_thau")]}
     vision = ScriptedVision({"[EV:Giá trị bảo lãnh]": {"ket_qua": "đạt", "bang_chung": "6tr"}})
@@ -490,7 +490,7 @@ async def test_rule_REPLACES_need_verdict_no_generic_eval():
     AiOutcome error -> verdict 'lỗi' -> roll-up ra 'cần làm rõ' -> test đỏ. Đây chính là bug user
     báo: eval chung chỉ đọc trang bang_gia (không có chữ nào nhắc webform) -> SOI thắng 'đạt'.
     """
-    crit = {"nhom": "hop_le", "ten": "Giá khớp webform", "tien_quyet": True,
+    crit = {"nhom": "hop_le", "ten": "Giá khớp webform",
             "hsdt_can_kiem_tra": ["bang_gia", "webform"],
             "noi_dung_can_kiem_tra": [_nd("Giá phải phù hợp webform", "bang_gia")]}
     vision = ScriptedVision({})          # KHÔNG có kịch bản [EV:...] -> eval chung sẽ nổ
@@ -499,14 +499,14 @@ async def test_rule_REPLACES_need_verdict_no_generic_eval():
                                   by_type={"bang_gia": [_page("bang_gia", "1.2 tỷ")],
                                            "webform": [_page("webform", "ABC 1.2 tỷ")]})
     assert [v.ket_qua for v in ce.verdicts] == [KET_QUA_DAT]
-    assert ce.ket_qua == KET_QUA_DAT and ce.loai is False
+    assert ce.ket_qua == KET_QUA_DAT
     assert not any("[EV:Giá phải phù hợp webform]" in hay for hay, _ in vision.calls)
     assert ce.verdicts[0].noi_dung_kiem_tra == "Giá phải phù hợp webform"   # mang danh tính nd
 
 
 async def test_rule_does_not_fire_when_criterion_lacks_doc_set():
     """Tiêu chí 'Bảng giá đúng mẫu' khai [bang_gia] -> luật KHÔNG bắn, eval chung chạy bình thường."""
-    crit = {"nhom": "hop_le", "ten": "Bảng giá đúng mẫu", "tien_quyet": False,
+    crit = {"nhom": "hop_le", "ten": "Bảng giá đúng mẫu",
             "hsdt_can_kiem_tra": ["bang_gia"],
             "noi_dung_can_kiem_tra": [_nd("Đúng mẫu 05C.1", "bang_gia")]}
     vision = ScriptedVision({"[EV:Đúng mẫu 05C.1]": {"ket_qua": "đạt", "bang_chung": "đúng mẫu"}})
@@ -518,7 +518,7 @@ async def test_rule_does_not_fire_when_criterion_lacks_doc_set():
 
 async def test_rule_fires_in_every_matching_criterion_no_fired():
     """Bỏ `fired`: 2 tiêu chí cùng khai đủ bộ hồ sơ -> luật bắn ở CẢ HAI (bug user báo)."""
-    crit = {"nhom": "hop_le", "ten": "Giá khớp webform", "tien_quyet": False,
+    crit = {"nhom": "hop_le", "ten": "Giá khớp webform",
             "hsdt_can_kiem_tra": ["bang_gia", "webform"],
             "noi_dung_can_kiem_tra": [_nd("Giá khớp webform", "bang_gia")]}
     reg = _reg_gia(KET_QUA_DAT)
@@ -530,7 +530,7 @@ async def test_rule_fires_in_every_matching_criterion_no_fired():
 
 async def test_rule_only_serves_needs_routed_to_its_primary_doc():
     """Nội dung route tới hồ sơ khác vẫn chạy eval chung (luật chỉ phục vụ ho_so_can[0])."""
-    crit = {"nhom": "hop_le", "ten": "Hỗn hợp", "tien_quyet": False,
+    crit = {"nhom": "hop_le", "ten": "Hỗn hợp",
             "hsdt_can_kiem_tra": ["bang_gia", "webform"],
             "noi_dung_can_kiem_tra": [_nd("Giá khớp webform", "bang_gia"),
                                       _nd("Có đơn dự thầu", "don_du_thau")]}
@@ -542,10 +542,10 @@ async def test_rule_only_serves_needs_routed_to_its_primary_doc():
 
 
 async def test_rule_verdict_khong_dat_marks_loai_on_its_own_criterion():
-    """Luật 'không đạt' + tiên quyết -> loại, ở ĐÚNG tiêu chí của nó."""
-    crit = {"nhom": "hop_le", "ten": "Giá khớp webform", "tien_quyet": True,
+    """Luật 'không đạt' -> tiêu chí ĐÚNG của nó ra 'không đạt'."""
+    crit = {"nhom": "hop_le", "ten": "Giá khớp webform",
             "hsdt_can_kiem_tra": ["bang_gia", "webform"],
             "noi_dung_can_kiem_tra": [_nd("Giá khớp webform", "bang_gia")]}
     ce = await evaluate_criterion(crit, [_page("bang_gia", "1.5 tỷ")], ScriptedVision({}),
                                   registry=_reg_gia(KET_QUA_KHONG))
-    assert ce.ket_qua == KET_QUA_KHONG and ce.loai is True
+    assert ce.ket_qua == KET_QUA_KHONG

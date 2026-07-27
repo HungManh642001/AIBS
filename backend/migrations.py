@@ -34,6 +34,10 @@ _COLUMNS: dict[str, dict[str, str]] = {
 # {bảng: {cột đã bỏ khỏi model}}. Khai báo khi XÓA/ĐỔI TÊN một cột, kèm cột thay thế ở _COLUMNS.
 _DROPPED: dict[str, set[str]] = {
     "vendor": {"ma_so_thue"},   # -> ten_viet_tat (mã số thuế không còn dùng để khớp webform)
+    # Bỏ hẳn khái niệm 'tiêu chí tiên quyết' và kết luận 'bị loại': verdict do AI đọc ra, máy
+    # không kết luận loại/không loại nữa — chuyên gia đọc kết quả rồi tự quyết.
+    "rubric_criterion": {"tien_quyet"},
+    "hsdt_criterion_eval": {"tien_quyet", "loai"},
 }
 
 

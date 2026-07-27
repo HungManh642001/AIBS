@@ -184,8 +184,8 @@ async def evaluate_criterion(crit: dict[str, Any], pages: list[PageRecord],
                              by_type: dict[str, list[PageRecord]] | None = None) -> CriterionEval:
     """Đánh giá mọi nội dung của 1 tiêu chí + roll-up.
 
-    tien_quyet + không đạt -> loại. Verdict 'không áp dụng' TRUNG TÍNH: không kéo tiêu chí xuống
-    'cần làm rõ', không tính là 'đạt'; toàn bộ N/A -> tiêu chí N/A (loai=False dù tiên quyết) —
+    Verdict 'không áp dụng' TRUNG TÍNH: không kéo tiêu chí xuống
+    'cần làm rõ', không tính là 'đạt'; toàn bộ N/A -> tiêu chí N/A —
     nhưng KHÔNG che 'không đạt'.
 
     Luật (registry): tiêu chí khai đủ `ho_so_can` của luật -> luật THAY THẾ kết luận của nội dung
@@ -227,7 +227,6 @@ async def evaluate_criterion(crit: dict[str, Any], pages: list[PageRecord],
         ket_qua = KET_QUA_KHONG_AP_DUNG
     else:                               # verdicts rỗng -> giữ hành vi cũ
         ket_qua = KET_QUA_SOI
-    loai = ket_qua == KET_QUA_KHONG and bool(crit.get("tien_quyet"))
-    return CriterionEval(nhom=crit.get("nhom", "hop_le"), ten=ten, tien_quyet=bool(crit.get("tien_quyet")),
-                         ket_qua=ket_qua, loai=loai, verdicts=verdicts,
+    return CriterionEval(nhom=crit.get("nhom", "hop_le"), ten=ten,
+                         ket_qua=ket_qua, verdicts=verdicts,
                          yeu_cau_goc=str(crit.get("yeu_cau_goc", "")))

@@ -15,7 +15,7 @@ def _pdf(text):
 
 
 def _crit_ttld():
-    return {"nhom": "hop_le", "ten": "Thỏa thuận liên danh", "tien_quyet": True,
+    return {"nhom": "hop_le", "ten": "Thỏa thuận liên danh",
             "hsdt_can_kiem_tra": ["thoa_thuan_lien_danh"],
             "noi_dung_can_kiem_tra": [
                 {"noi_dung_kiem_tra": "Có thỏa thuận liên danh",
@@ -66,14 +66,11 @@ async def test_kiem_tra_thuong_truc_thanh_tieu_chi_nhu_moi_tieu_chi_khac():
     assert all(len(c.verdicts) == 1 for c in tt)
     assert all(c.yeu_cau_goc == "" for c in tt)   # không đến từ HSMT
 
-    # KHÔNG tiên quyết: AI đọc sai một verdict mà loại thẳng nhà thầu là rủi ro lớn hơn lợi ích —
-    # kết quả vẫn hiện đầy đủ để chuyên gia tự quyết có loại hay không.
-    assert not any(c.tien_quyet for c in tt)
+    # Máy không kết luận loại/không loại — chuyên gia đọc bằng chứng rồi tự quyết.
     chu_ky = next(c for c in tt if "đại diện pháp luật" in c.ten)
-    assert chu_ky.ket_qua == "không đạt" and chu_ky.loai is False
+    assert chu_ky.ket_qua == "không đạt"
 
     assert r.summary["n_tieu_chi"] == 4        # vẫn đếm chung
-    assert r.summary["n_loai"] == 0            # nhưng không tự loại
 
 
 async def test_khong_con_field_phat_hien_bo_sung():

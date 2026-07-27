@@ -23,7 +23,7 @@ export interface NoiDungKiemTra {
 }
 export interface RubricCriteria {
   id?: number; nhom: string; ten: string; yeu_cau_goc: string;
-  hsdt_can_kiem_tra: string[]; tien_quyet: boolean; noi_dung_can_kiem_tra: NoiDungKiemTra[];
+  hsdt_can_kiem_tra: string[]; noi_dung_can_kiem_tra: NoiDungKiemTra[];
   loi_ai?: string;   // ghi chú AI không chắc — GET trả về để PUT không ghi đè mất
 }
 
@@ -36,13 +36,13 @@ export interface Verdict {
   nguon_doc?: string[];     // các hồ sơ luật đã đối chiếu (vd [bang_gia, webform])
 }
 export interface CriterionEval {
-  eval_id: number; ten: string; nhom: string; tien_quyet: boolean;
-  ket_qua: string; loai: boolean; verdicts: Verdict[];
+  eval_id: number; ten: string; nhom: string;
+  ket_qua: string; verdicts: Verdict[];
   yeu_cau_goc?: string;     // nguyên văn HSMT (cấp tiêu chí)
 }
 export interface EvalSummary {
   n_tieu_chi: number; n_dat: number; n_khong_dat: number; n_can_lam_ro: number;
-  n_loai: number; n_khong_ap_dung?: number;
+  n_khong_ap_dung?: number;
 }
 export interface VendorProfile {
   hinh_thuc: string; nguon: string; bang_chung: string; trang: number[];

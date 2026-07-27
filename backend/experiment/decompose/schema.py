@@ -1,7 +1,7 @@
 """Schema đầu ra bước phân rã (experiment-local, output phẳng).
 
 Bỏ CriterionDetailModel/sub_checks máy-so-sánh: Qwen3 tự đánh giá thông số, không cần code.
-Mỗi tiêu chí: nhom, ten (nhãn ngắn), yeu_cau_goc, hsdt_can_kiem_tra, tien_quyet,
+Mỗi tiêu chí: nhom, ten (nhãn ngắn), yeu_cau_goc, hsdt_can_kiem_tra,
 noi_dung_can_kiem_tra[{noi_dung_kiem_tra, hsdt_kiem_tra, yeu_cau, can_lam_ro, thong_tin_bo_sung, nguon, can_review}].
 """
 from __future__ import annotations
@@ -86,7 +86,6 @@ class CriterionModel(_Base):
     ten: str
     yeu_cau_goc: str = ""
     hsdt_can_kiem_tra: list[Any] = []
-    tien_quyet: bool = False
     noi_dung_can_kiem_tra: list[NoiDungKiemTra] = []
     loi_ai: str = ""            # != '' nếu lỗi AI cả tiêu chí
 

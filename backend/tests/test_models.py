@@ -31,7 +31,7 @@ def test_rubric_criterion_with_noi_dung_cascade(db):
     db.commit()
     crit = models.RubricCriterion(
         package_id=pkg.id, nhom="hop_le", ten="Bảo đảm dự thầu",
-        yeu_cau_goc="theo E-HSMT", hsdt_can_kiem_tra=["bao_dam_du_thau"], tien_quyet=True)
+        yeu_cau_goc="theo E-HSMT", hsdt_can_kiem_tra=["bao_dam_du_thau"])
     crit.noi_dung.append(models.RubricNoiDung(
         noi_dung_kiem_tra="Giá trị bảo lãnh", hsdt_kiem_tra="bao_dam_du_thau",
         can_tra_cuu=True, thong_tin_bo_sung="6.100.000 VNĐ", nguon="E-BDL 18.2"))
@@ -39,7 +39,7 @@ def test_rubric_criterion_with_noi_dung_cascade(db):
     db.commit()
 
     loaded = db.query(models.RubricCriterion).filter_by(package_id=pkg.id).one()
-    assert loaded.tien_quyet is True and loaded.hsdt_can_kiem_tra == ["bao_dam_du_thau"]
+    assert loaded.hsdt_can_kiem_tra == ["bao_dam_du_thau"]
     assert loaded.noi_dung[0].thong_tin_bo_sung == "6.100.000 VNĐ"
 
     db.delete(loaded)  # cascade -> xoá noi_dung
@@ -54,7 +54,7 @@ def test_hsdt_criterion_eval_with_verdicts_cascade(db):
     db.commit()
     ev = models.HsdtCriterionEval(
         package_id=pkg.id, vendor_id=pkg.vendors[0].id, thu_tu=0,
-        nhom="hop_le", ten="Bảo đảm dự thầu", tien_quyet=True, ket_qua="đạt", loai=False)
+        nhom="hop_le", ten="Bảo đảm dự thầu", ket_qua="đạt")
     ev.verdicts.append(models.HsdtVerdict(
         thu_tu=0, noi_dung_kiem_tra="Giá trị bảo lãnh", hsdt_kiem_tra="bao_dam_du_thau",
         ket_qua="đạt", bang_chung="200tr", trang=[1], do_tin=0.9))
@@ -85,8 +85,7 @@ def test_new_audit_columns_and_vendor_eval(db):
         bang_chung="Chúng tôi dự thầu độc lập", trang=[1], do_tin=0.9, mau_thuan=False,
         ghi_chu="", ho_so_nhan_duoc=[{"loai_ho_so": "don_du_thau", "files": ["don.pdf"], "n_trang": 2}])
     ev = models.HsdtCriterionEval(
-        package_id=pkg.id, vendor_id=vid, thu_tu=0, nhom="hop_le", ten="Bảo đảm dự thầu",
-        tien_quyet=True, ket_qua="đạt", loai=False, yeu_cau_goc="Nộp bảo đảm 6.100.000 VNĐ")
+        package_id=pkg.id, vendor_id=vid, thu_tu=0, nhom="hop_le", ten="Bảo đảm dự thầu", ket_qua="đạt", yeu_cau_goc="Nộp bảo đảm 6.100.000 VNĐ")
     ev.verdicts.append(models.HsdtVerdict(
         thu_tu=0, noi_dung_kiem_tra="Giá trị", hsdt_kiem_tra="bao_dam_du_thau", ket_qua="đạt",
         bang_chung="6.1tr", trang=[1], do_tin=0.9, nguon_hsmt="E-BDL 18.1",

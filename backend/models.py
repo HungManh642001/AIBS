@@ -90,7 +90,6 @@ class RubricCriterion(Base):
     ten: Mapped[str] = mapped_column(String(512), default="")
     yeu_cau_goc: Mapped[str] = mapped_column(Text, default="")
     hsdt_can_kiem_tra: Mapped[list[str]] = mapped_column(JSON, default=list)
-    tien_quyet: Mapped[bool] = mapped_column(default=False)
     loi_ai: Mapped[str] = mapped_column(Text, default="")
     noi_dung: Mapped[list[RubricNoiDung]] = relationship(
         back_populates="criterion", cascade="all, delete-orphan",
@@ -125,9 +124,7 @@ class HsdtCriterionEval(Base):
     thu_tu: Mapped[int] = mapped_column(Integer, default=0)
     nhom: Mapped[str] = mapped_column(String(16), default="hop_le")
     ten: Mapped[str] = mapped_column(String(512), default="")
-    tien_quyet: Mapped[bool] = mapped_column(default=False)
     ket_qua: Mapped[str] = mapped_column(String(16), default="cần làm rõ")
-    loai: Mapped[bool] = mapped_column(default=False)
     yeu_cau_goc: Mapped[str] = mapped_column(Text, default="")  # nguyên văn HSMT — audit chiều HSMT
     verdicts: Mapped[list[HsdtVerdict]] = relationship(
         back_populates="eval", cascade="all, delete-orphan", order_by="HsdtVerdict.thu_tu")

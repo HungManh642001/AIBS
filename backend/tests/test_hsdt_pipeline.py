@@ -19,7 +19,7 @@ async def test_evaluate_vendor_dat(monkeypatch):
                    "trang": [1], "do_tin": 0.9},
     })
     criteria = [{
-        "nhom": "hop_le", "ten": "Đơn dự thầu", "tien_quyet": True,
+        "nhom": "hop_le", "ten": "Đơn dự thầu",
         "noi_dung_can_kiem_tra": [
             {"noi_dung_kiem_tra": "Chữ ký & con dấu", "hsdt_kiem_tra": "don_du_thau",
              "yeu_cau": "có chữ ký hợp lệ", "thong_tin_bo_sung": "theo mẫu E-HSMT"}],
@@ -33,7 +33,7 @@ async def test_evaluate_vendor_dat(monkeypatch):
     hsmt = [c for c in result.criteria if c.nhom != NHOM_PHAT_HIEN]
     assert len(hsmt) == 1 and len(result.criteria) == 5
     c = hsmt[0]
-    assert c.ket_qua == "đạt" and c.loai is False
+    assert c.ket_qua == "đạt"
     assert c.verdicts[0].bang_chung and c.verdicts[0].trang == [1]
     assert result.summary["n_tieu_chi"] == 5
 
@@ -71,7 +71,7 @@ async def test_evaluate_vendor_runs_gate_in_production():
 
     vision = ScriptedVision({SYS_INGEST: {"text": "Đơn dự thầu"}})
     criteria = [{
-        "nhom": "hop_le", "ten": "Thỏa thuận liên danh", "tien_quyet": True,
+        "nhom": "hop_le", "ten": "Thỏa thuận liên danh",
         "hsdt_can_kiem_tra": ["thoa_thuan_lien_danh"],
         "noi_dung_can_kiem_tra": [
             {"noi_dung_kiem_tra": "Có thỏa thuận liên danh", "hsdt_kiem_tra": "thoa_thuan_lien_danh",

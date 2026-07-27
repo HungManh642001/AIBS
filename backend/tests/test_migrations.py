@@ -102,3 +102,20 @@ def test_ensure_columns_giu_cot_ngoai_model(tmp_path):
         c.exec_driver_sql("CREATE TABLE vendor (id INTEGER PRIMARY KEY, ten VARCHAR, ghi_chu_rieng VARCHAR)")
     ensure_columns(engine)
     assert "ghi_chu_rieng" in _cols(engine, "vendor")
+
+
+def test_ensure_columns_xoa_cot_tien_quyet_va_loai(tmp_path):
+    """DB cũ còn cột tien_quyet/loai NOT NULL -> phải DROP, nếu không mọi INSERT sẽ hỏng."""
+    engine = create_engine(f"sqlite:///{tmp_path / 'cu.db'}")
+    with engine.begin() as c:
+        c.exec_driver_sql(
+            "CREATE TABLE rubric_criterion (id INTEGER PRIMARY KEY, ten VARCHAR, "
+            "tien_quyet BOOLEAN NOT NULL DEFAULT 0)")
+        c.exec_driver_sql(
+            "CREATE TABLE hsdt_criterion_eval (id INTEGER PRIMARY KEY, ten VARCHAR, "
+            "tien_quyet BOOLEAN NOT NULL DEFAULT 0, loai BOOLEAN NOT NULL DEFAULT 0)")
+
+    ensure_columns(engine)
+
+    assert "tien_quyet" not in _cols(engine, "rubric_criterion")
+    assert not ({"tien_quyet", "loai"} & _cols(engine, "hsdt_criterion_eval"))

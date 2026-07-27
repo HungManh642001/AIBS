@@ -141,9 +141,7 @@ class HoSoNhanDuoc:
 class CriterionEval:
     nhom: str
     ten: str
-    tien_quyet: bool
     ket_qua: str
-    loai: bool
     verdicts: list[Verdict] = field(default_factory=list)
     yeu_cau_goc: str = ""      # nguyên văn HSMT (cấp tiêu chí) — audit chiều HSMT
 
@@ -168,7 +166,6 @@ class EvalResult:
             "n_khong_dat": cnt(KET_QUA_KHONG),
             "n_can_lam_ro": cnt(KET_QUA_SOI),
             "n_khong_ap_dung": cnt(KET_QUA_KHONG_AP_DUNG),
-            "n_loai": sum(1 for c in self.criteria if c.loai),
         }
 
 

@@ -87,7 +87,6 @@ export default function Rubric() {
         <Card key={ci} title={c.ten} style={{ marginBottom: "var(--sp-3)" }} extra={
           <span>
             <Tag color="blue">{NHOM_LABEL[c.nhom] ?? c.nhom}</Tag>
-            {c.tien_quyet && <Tag color="red">Tiên quyết</Tag>}
             {c.hsdt_can_kiem_tra?.map((a) => <Tag key={a}>{nhan(a)}</Tag>)}
           </span>}>
           <p style={{ color: "var(--ink-muted)", marginTop: 0 }}>

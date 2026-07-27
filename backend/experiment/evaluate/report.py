@@ -15,9 +15,9 @@ _CAN_XU_LY = {KET_QUA_KHONG, KET_QUA_SOI, KET_QUA_THIEU, KET_QUA_LOI}
 _THU_TU = {KET_QUA_KHONG: 1, KET_QUA_SOI: 2, KET_QUA_THIEU: 2, KET_QUA_LOI: 2, KET_QUA_DAT: 3}
 
 
-def _rank(c: CriterionEval) -> tuple[int, int]:
-    """Loại trước tiên, rồi không đạt > cần làm rõ > đạt — thứ tự người review muốn đọc."""
-    return (0 if c.loai else 1, _THU_TU.get(c.ket_qua, 4))
+def _rank(c: CriterionEval) -> int:
+    """Không đạt > cần làm rõ > đạt — thứ tự người review muốn đọc."""
+    return _THU_TU.get(c.ket_qua, 4)
 
 
 def _files_map(r: EvalResult) -> dict[str, list[str]]:
@@ -83,8 +83,7 @@ def _ho_so(r: EvalResult) -> list[str]:
 def _tong_ket(r: EvalResult) -> list[str]:
     s = r.summary
     nhan = [("Tổng tiêu chí", "n_tieu_chi"), ("Đạt", "n_dat"), ("Không đạt", "n_khong_dat"),
-            ("Cần làm rõ", "n_can_lam_ro"), ("Không áp dụng", "n_khong_ap_dung"),
-            ("⛔ Loại", "n_loai")]
+            ("Cần làm rõ", "n_can_lam_ro"), ("Không áp dụng", "n_khong_ap_dung")]
     return ["## Tổng kết", "", "| Chỉ số | SL |", "|---|---|"] + \
            [f"| {ten} | {s[k]} |" for ten, k in nhan] + [""]
 
@@ -95,7 +94,6 @@ def _can_xu_ly(criteria: list[CriterionEval], files: dict[str, list[str]]) -> li
     if not can:
         return out + ["_Không có tiêu chí nào cần xử lý._", ""]
     for c in sorted(can, key=_rank):
-        flag = "⛔ **LOẠI** · " if c.loai else ""
         # Nêu xuất xứ: tiêu chí này do hệ thống tự kiểm, HSMT không yêu cầu — trọng số ngang nhau
         # nhưng chuyên gia phải biết căn cứ đến từ đâu.
         nguon = "🔎 *(hệ thống tự kiểm)* " if c.nhom == NHOM_PHAT_HIEN else ""
@@ -103,7 +101,7 @@ def _can_xu_ly(criteria: list[CriterionEval], files: dict[str, list[str]]) -> li
             if v.ket_qua not in _CAN_XU_LY:
                 continue
             ly_do = v.bang_chung or v.ghi_chu or "—"
-            out.append(f"- {flag}{nguon}{c.ten} · *{v.ket_qua}* — {v.noi_dung_kiem_tra}: {ly_do} "
+            out.append(f"- {nguon}{c.ten} · *{v.ket_qua}* — {v.noi_dung_kiem_tra}: {ly_do} "
                        f"[{_nguon_hsdt(v, files)}]")
     return out + [""]
 
@@ -111,9 +109,7 @@ def _can_xu_ly(criteria: list[CriterionEval], files: dict[str, list[str]]) -> li
 def _chi_tiet(criteria: list[CriterionEval], files: dict[str, list[str]]) -> list[str]:
     out = ["## Chi tiết theo tiêu chí", ""]
     for i, c in enumerate(sorted(criteria, key=_rank), 1):
-        flag = " ⛔LOẠI" if c.loai else ""
-        tq = " `tiên quyết`" if c.tien_quyet else ""
-        out.append(f"### {i}. {c.ten} — **{c.ket_qua}**{flag}{tq}")
+        out.append(f"### {i}. {c.ten} — **{c.ket_qua}**")
         if c.yeu_cau_goc:
             out += ["", f"> **Yêu cầu gốc (HSMT)**: {c.yeu_cau_goc}"]
         out.append("")

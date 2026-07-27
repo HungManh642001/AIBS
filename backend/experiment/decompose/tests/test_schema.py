@@ -36,7 +36,7 @@ def test_validate_criterion_shape():
     crit = {
         "nhom": "hop_le", "ten": "Bảo đảm dự thầu",
         "yeu_cau_goc": "Giá trị, hiệu lực theo HSMT",
-        "hsdt_can_kiem_tra": ["bao_lanh_du_thau"], "tien_quyet": True,
+        "hsdt_can_kiem_tra": ["bao_lanh_du_thau"],
         "noi_dung_can_kiem_tra": [
             {"noi_dung_kiem_tra": "Giá trị bảo lãnh", "hsdt_kiem_tra": "bao_lanh_du_thau",
              "yeu_cau": "Thỏa mãn giá trị bảo lãnh", "can_lam_ro": "Giá trị bảo lãnh",
@@ -46,7 +46,6 @@ def test_validate_criterion_shape():
         "field_la": "bị bỏ",  # extra="ignore"
     }
     out = validate_criterion(crit)
-    assert out["tien_quyet"] is True
     assert out["hsdt_can_kiem_tra"] == ["bao_lanh_du_thau"]
     nd0 = out["noi_dung_can_kiem_tra"][0]
     assert nd0["yeu_cau"] == "Thỏa mãn giá trị bảo lãnh"
@@ -55,3 +54,10 @@ def test_validate_criterion_shape():
     assert out["noi_dung_can_kiem_tra"][1]["thong_tin_bo_sung"] == ""  # default
     assert out["noi_dung_can_kiem_tra"][1]["can_review"] is False
     assert "field_la" not in out
+
+
+def test_tieu_chi_khong_con_tien_quyet():
+    """Decompose không bóc 'tiên quyết' từ HSMT nữa — hệ thống không dùng thuộc tính này."""
+    from experiment.decompose.schema import CriterionModel
+
+    assert "tien_quyet" not in CriterionModel.model_fields

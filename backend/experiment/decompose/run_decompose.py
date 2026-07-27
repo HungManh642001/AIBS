@@ -119,8 +119,7 @@ def _to_markdown(r: DecomposeResult) -> str:
         for c in g.criteria:
             nds = c.get("noi_dung_can_kiem_tra", [])
             flag = " ⚠️cần soi" if (any(n.get("can_review") for n in nds) or c.get("loi_ai")) else ""
-            tq = " [tiên quyết]" if c.get("tien_quyet") else ""
-            lines.append(f"- **{c.get('ten')}** ({c.get('nhom')}){tq}{flag}")
+            lines.append(f"- **{c.get('ten')}** ({c.get('nhom')}){flag}")
             if c.get("yeu_cau_goc"):
                 lines.append(f"    - yêu cầu gốc: {c.get('yeu_cau_goc')}")
             if c.get("hsdt_can_kiem_tra"):

@@ -8,7 +8,7 @@ from experiment.decompose.run_decompose import run as decompose_run
 def _generic_detail():
     return {
         "nhom": "hop_le", "ten": "Tiêu chí mẫu", "yeu_cau_goc": "theo HSMT",
-        "hsdt_can_kiem_tra": ["don_du_thau"], "tien_quyet": False,
+        "hsdt_can_kiem_tra": ["don_du_thau"],
         "noi_dung_can_kiem_tra": [
             {"noi_dung_kiem_tra": "Có tài liệu", "hsdt_kiem_tra": "don_du_thau",
              "yeu_cau": "phải có", "can_lam_ro": "", "can_tra_cuu": False}],

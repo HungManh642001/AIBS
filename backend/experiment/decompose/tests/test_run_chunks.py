@@ -115,7 +115,7 @@ def _run_fixtures(tmp_path, with_chunks: bool):
         "[TAG:LIST]": {"criteria": [{"nhom": "hop_le", "ten": "Hiệu lực bảo lãnh"}]},
         "[TAG:STRUCT:": {
             "nhom": "hop_le", "ten": "Hiệu lực bảo lãnh", "yeu_cau_goc": "Hiệu lực theo E-BDL",
-            "hsdt_can_kiem_tra": ["bao_dam_du_thau"], "tien_quyet": False,
+            "hsdt_can_kiem_tra": ["bao_dam_du_thau"],
             "noi_dung_can_kiem_tra": [{
                 "noi_dung_kiem_tra": "Thời hạn hiệu lực bảo lãnh", "hsdt_kiem_tra": "bao_dam_du_thau",
                 "yeu_cau": "theo E-BDL", "can_lam_ro": "Thời hạn hiệu lực bảo lãnh", "can_tra_cuu": True}]},

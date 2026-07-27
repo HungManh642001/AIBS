@@ -58,11 +58,10 @@ def _doc(db, pkg_id: int, loai: str, name: str, subdir: str, lines: list[str],
     return d
 
 
-def _crit(db, pkg_id: int, thu_tu: int, ten: str, yeu_cau_goc: str, ho_so: list[str],
-          tien_quyet: bool, noi_dung: list[dict], loi_ai: str = "") -> models.RubricCriterion:
+def _crit(db, pkg_id: int, thu_tu: int, ten: str, yeu_cau_goc: str, ho_so: list[str], noi_dung: list[dict], loi_ai: str = "") -> models.RubricCriterion:
     c = models.RubricCriterion(
         package_id=pkg_id, thu_tu=thu_tu, nhom="hop_le", ten=ten, yeu_cau_goc=yeu_cau_goc,
-        hsdt_can_kiem_tra=ho_so, tien_quyet=tien_quyet, loi_ai=loi_ai)
+        hsdt_can_kiem_tra=ho_so, loi_ai=loi_ai)
     db.add(c)
     db.flush()
     for i, n in enumerate(noi_dung):
@@ -75,8 +74,7 @@ def _crit(db, pkg_id: int, thu_tu: int, ten: str, yeu_cau_goc: str, ho_so: list[
     return c
 
 
-def _eval(db, pkg_id: int, vendor_id: int, thu_tu: int, ten: str, tien_quyet: bool,
-          yeu_cau_goc: str, verdicts: list[dict], nhom: str = "hop_le") -> None:
+def _eval(db, pkg_id: int, vendor_id: int, thu_tu: int, ten: str, yeu_cau_goc: str, verdicts: list[dict], nhom: str = "hop_le") -> None:
     """1 tiêu chí đã chấm + các verdict con; ket_qua tiêu chí roll-up từ verdict."""
     kqs = {v["ket_qua"] for v in verdicts}
     xet = kqs - {KET_QUA_KHONG_AP_DUNG}
@@ -91,8 +89,7 @@ def _eval(db, pkg_id: int, vendor_id: int, thu_tu: int, ten: str, tien_quyet: bo
 
     ev = models.HsdtCriterionEval(
         package_id=pkg_id, vendor_id=vendor_id, thu_tu=thu_tu, nhom=nhom, ten=ten,
-        tien_quyet=tien_quyet, ket_qua=ket_qua, loai=(ket_qua == KET_QUA_KHONG and tien_quyet),
-        yeu_cau_goc=yeu_cau_goc)
+        ket_qua=ket_qua, yeu_cau_goc=yeu_cau_goc)
     db.add(ev)
     db.flush()
     for i, v in enumerate(verdicts):
@@ -290,7 +287,7 @@ def seed(reset: bool = False, with_error: bool = False) -> None:
             "ket_qua": KET_QUA_KHONG_AP_DUNG, "trang": [], "do_tin": 1.0, "nguon": "E-CDNT 11.3",
             "ghi_chu": "Nhà thầu độc lập — tiêu chí chỉ áp dụng với nhà thầu liên danh"}])
     # Kiểm tra thường trực của hệ thống: mỗi kiểm tra một TIÊU CHÍ, đếm chung trong tổng hợp
-    # nhưng KHÔNG tiên quyết (không tự loại) — xem experiment/evaluate/pipeline._thanh_tieu_chi.
+    # — xem experiment/evaluate/pipeline._thanh_tieu_chi.
     _eval(db, pid, v_ap.id, 10, "Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)", False, "",
           [{"ten": "Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)", "ho_so": "don_du_thau",
             "ket_qua": KET_QUA_SOI, "bang_chung": "Người ký: Nguyễn Văn A",
@@ -366,7 +363,7 @@ def seed(reset: bool = False, with_error: bool = False) -> None:
             "ket_qua": KET_QUA_DAT, "bang_chung": "Trang 1: đủ 2 chữ ký, 2 dấu",
             "trang": [1], "do_tin": 0.9, "nguon": "E-CDNT 11.3"}])
 
-    # Hòa Bình — BỊ LOẠI (trượt tiêu chí tiên quyết) + mâu thuẫn hình thức
+    # Hòa Bình — có tiêu chí KHÔNG ĐẠT + mâu thuẫn hình thức
     _profile(db, pid, v_hb.id, HINH_THUC_LIEN_DANH, "hồ sơ HSDT",
              "Đơn dự thầu nhắc tới 'các thành viên liên danh' nhưng không có thỏa thuận liên danh",
              [{"loai_ho_so": "don_du_thau", "files": ["don_du_thau_hoa_binh.pdf"], "n_trang": 1}],
@@ -422,7 +419,7 @@ def seed(reset: bool = False, with_error: bool = False) -> None:
   {n_doc} tài liệu, {n_crit} tiêu chí, 5 nhà thầu:
     An Phát    - đã chấm, hợp lệ (có 1 nội dung 'không áp dụng' vì độc lập)
     TS-ĐV      - đã chấm, liên danh, 1 nội dung 'cần làm rõ'
-    Hòa Bình   - đã chấm, BỊ LOẠI (tiên quyết) + mâu thuẫn hình thức{' + 1 verdict LỖI (chặn xuất báo cáo)' if with_error else ''}
+    Hòa Bình   - đã chấm, có tiêu chí không đạt + mâu thuẫn hình thức{' + 1 verdict LỖI (chặn xuất báo cáo)' if with_error else ''}
     Minh Quang - có hồ sơ, CHƯA chấm
     Tân Tiến   - chưa có hồ sơ
 

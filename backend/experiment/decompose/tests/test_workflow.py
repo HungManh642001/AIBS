@@ -27,10 +27,10 @@ def _nd(noi_dung, yeu_cau="theo HSMT", can_lam_ro="", hsdt="don_du_thau"):
             "can_lam_ro": can_lam_ro, "can_tra_cuu": bool(can_lam_ro)}
 
 
-def _crit(ten, contents, nhom="hop_le", tien_quyet=False, hsdt=None):
+def _crit(ten, contents, nhom="hop_le", hsdt=None):
     return {
         "nhom": nhom, "ten": ten, "yeu_cau_goc": f"{ten} theo HSMT",
-        "hsdt_can_kiem_tra": hsdt or [], "tien_quyet": tien_quyet,
+        "hsdt_can_kiem_tra": hsdt or [], 
         "noi_dung_can_kiem_tra": contents,
     }
 
