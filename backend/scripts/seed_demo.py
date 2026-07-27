@@ -289,11 +289,34 @@ def seed(reset: bool = False, with_error: bool = False) -> None:
            {"ten": "Đủ chữ ký các thành viên", "ho_so": "thoa_thuan_lien_danh",
             "ket_qua": KET_QUA_KHONG_AP_DUNG, "trang": [], "do_tin": 1.0, "nguon": "E-CDNT 11.3",
             "ghi_chu": "Nhà thầu độc lập — tiêu chí chỉ áp dụng với nhà thầu liên danh"}])
-    _eval(db, pid, v_ap.id, 0, "Phát hiện của hệ thống (ngoài checklist HSMT)", False, "",
-          [{"ten": "Người ký khớp đăng ký kinh doanh", "ho_so": "don_du_thau",
+    # Kiểm tra thường trực của hệ thống: nay là TIÊU CHÍ đầy đủ (tiên quyết, kéo được 'loại'),
+    # mỗi kiểm tra một dòng — xem experiment/evaluate/pipeline._thanh_tieu_chi.
+    _eval(db, pid, v_ap.id, 10, "Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)", True, "",
+          [{"ten": "Người ký đơn dự thầu khớp đại diện pháp luật (ĐKKD)", "ho_so": "don_du_thau",
             "ket_qua": KET_QUA_SOI, "bang_chung": "Người ký: Nguyễn Văn A",
             "trang": [1], "do_tin": 0.5,
             "ghi_chu": "Không có ĐKKD trong HSDT để đối chiếu người ký"}],
+          nhom="phat_hien_bo_sung")
+    _eval(db, pid, v_ap.id, 11, "Tên gói thầu ghi trong tài liệu khớp gói thầu đang xét", True, "",
+          [{"ten": "Tên gói thầu ghi trong tài liệu khớp gói thầu đang xét",
+            "ho_so": "don_du_thau", "ket_qua": KET_QUA_DAT,
+            "bang_chung": "Đơn ghi 'Gói thầu Mua sắm máy tính xách tay' — trùng gói đang xét",
+            "trang": [1], "do_tin": 0.9, "ghi_chu": ""}],
+          nhom="phat_hien_bo_sung")
+    _eval(db, pid, v_ap.id, 12,
+          "Người ký bảo đảm dự thầu có thẩm quyền (đứng đầu hoặc ủy quyền hợp lệ)", True, "",
+          [{"ten": "Người ký bảo đảm dự thầu có thẩm quyền", "ho_so": "bao_dam_du_thau",
+            "ket_qua": KET_QUA_KHONG,
+            "bang_chung": "Thư bảo lãnh do Phó giám đốc chi nhánh ký, không kèm giấy ủy quyền",
+            "trang": [1], "do_tin": 0.85,
+            "ghi_chu": "Ký thay mà không có ủy quyền — căn cứ loại theo quy định"}],
+          nhom="phat_hien_bo_sung")
+    _eval(db, pid, v_ap.id, 13,
+          "Phân công liên danh nêu rõ hạng mục và khớp tỷ lệ trong bảng giá", True, "",
+          [{"ten": "Phân công liên danh nêu rõ hạng mục và khớp tỷ lệ trong bảng giá",
+            "ho_so": "thoa_thuan_lien_danh", "ket_qua": KET_QUA_KHONG_AP_DUNG, "trang": [],
+            "do_tin": 1.0,
+            "ghi_chu": "HSDT không có thỏa thuận liên danh — nhà thầu dự thầu độc lập"}],
           nhom="phat_hien_bo_sung")
 
     # Liên danh TS-ĐV — hợp lệ, nội dung liên danh được chấm thật
