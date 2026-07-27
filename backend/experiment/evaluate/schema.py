@@ -65,6 +65,10 @@ def validate_eval_verdict(d: dict[str, Any]) -> dict[str, Any]:
     return EvalVerdictModel(**d).model_dump()
 
 
+NGUON_VISION = "vision"       # text do model đọc ảnh (bản scan) — có cờ chữ ký/dấu
+NGUON_PDF_TEXT = "pdf_text"   # text nhúng sẵn trong PDF — chính xác 100%, tái lập, 0 call
+
+
 @dataclass
 class PageRecord:
     file: str
@@ -74,6 +78,7 @@ class PageRecord:
     co_chu_ky: bool = False
     co_dau: bool = False
     image: bytes = b""            # PNG bytes — CHỈ trong RAM, không serialize
+    nguon_trich: str = NGUON_VISION   # audit: text trang này đến từ đâu
 
 
 @dataclass

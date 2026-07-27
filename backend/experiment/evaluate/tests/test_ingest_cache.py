@@ -28,6 +28,66 @@ class DictCache:
 _OK = {"[IN]": {"text": "Đơn dự thầu ...", "co_chu_ky": True, "co_dau": False}}
 
 
+def _pdf_bang(chu: str = "STT") -> bytes:
+    """PDF có text nhúng + bảng, KHÔNG ảnh -> đủ điều kiện đi đường tất định."""
+    d = fitz.open()
+    pg = d.new_page()
+    xs = [50, 200, 350]
+    ys = [60 + 30 * i for i in range(5)]          # 4 hàng -> vượt ngưỡng text nhúng
+    for x in xs:
+        pg.draw_line(fitz.Point(x, ys[0]), fitz.Point(x, ys[-1]))
+    for y in ys:
+        pg.draw_line(fitz.Point(xs[0], y), fitz.Point(xs[-1], y))
+    pg.insert_text((55, ys[0] + 20), chu, fontsize=5)
+    pg.insert_text((205, ys[0] + 20), "Ten hang " + "x" * 60, fontsize=5)
+    for i in range(1, 4):
+        pg.insert_text((55, ys[i] + 20), str(i), fontsize=5)
+        pg.insert_text((205, ys[i] + 20), f"May chu {i} " + "y" * 60, fontsize=5)
+    return d.tobytes()
+
+
+async def test_trang_co_text_nhung_khong_goi_vision():
+    """Trang PDF có text nhúng -> đọc tất định, KHÔNG qua LLM (diệt gốc bất ổn khi đọc bảng)."""
+    vision = ScriptedVision(dict(_OK))
+    pages = await ingest_hsdt([("bg.pdf", "bang_gia", _pdf_bang())], vision, dpi=100)
+    assert vision.calls == []
+    assert len(pages) == 1 and "May chu" in pages[0].text and " | " in pages[0].text
+    assert pages[0].nguon_trich == "pdf_text"
+
+
+async def test_trang_scan_van_di_duong_vision():
+    vision = ScriptedVision(dict(_OK))
+    pages = await ingest_hsdt([("scan.pdf", "don_du_thau", _pdf("Đơn"))], vision, dpi=100)
+    assert len(vision.calls) == 1
+    assert pages[0].text == "Đơn dự thầu ..." and pages[0].nguon_trich == "vision"
+
+
+async def test_file_hon_hop_chi_goi_vision_dung_trang_scan():
+    """Bảng giá thật hay có 5 trang bảng sạch + 1 trang ký -> chỉ trang ký cần vision."""
+    d = fitz.open(stream=_pdf_bang(), filetype="pdf")
+    d.insert_pdf(fitz.open(stream=_pdf("trang scan"), filetype="pdf"))
+    data = d.tobytes()
+    d.close()
+    vision = ScriptedVision(dict(_OK))
+    pages = await ingest_hsdt([("bg.pdf", "bang_gia", data)], vision, dpi=100)
+    assert len(pages) == 2
+    assert [p.nguon_trich for p in pages] == ["pdf_text", "vision"]
+    assert len(vision.calls) == 1                   # chỉ 1 call cho trang scan
+
+
+async def test_key_doi_khi_doi_cach_trich():
+    """Đổi logic trích -> khóa cache đổi, không ăn lại text bóc theo cách cũ."""
+    import experiment.evaluate.ingest as mod
+    data = _pdf("A")
+    truoc = ingest_cache_key(data, 200)
+    mod_ver = mod.TRICH_VERSION
+    try:
+        mod.TRICH_VERSION = mod_ver + "-x"
+        assert ingest_cache_key(data, 200) != truoc
+    finally:
+        mod.TRICH_VERSION = mod_ver
+
+
 def test_key_doi_khi_noi_dung_file_doi():
     assert ingest_cache_key(_pdf("A"), 200) != ingest_cache_key(_pdf("B"), 200)
 

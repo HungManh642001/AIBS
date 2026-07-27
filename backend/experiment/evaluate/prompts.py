@@ -11,14 +11,22 @@ from experiment.evaluate.schema import HINH_THUC_DOC_LAP
 SYS_INGEST = (
     "Bạn đọc ẢNH một trang hồ sơ dự thầu (HSDT) scan tiếng Việt. Hãy: (1) BÓC toàn bộ chữ thành text "
     "(giữ số/tên/ngày chính xác, KHÔNG bịa); (2) Nếu có chữ ký, con dấu hãy mô tả chi tiết; (3) ghi co_chu_ky (có chữ ký tay/scan không), co_dau "
-    "(có con dấu đỏ/đóng dấu không). KHÔNG cần phân loại hồ sơ (loại đã biết khi tải). Chỉ trả JSON."
+    "(có con dấu đỏ/đóng dấu không). KHÔNG cần phân loại hồ sơ (loại đã biết khi tải).\n"
+    "TRANG CÓ BẢNG (bảng giá, bảng phân công...): xuất MỖI HÀNG một dòng, các ô trong hàng cách "
+    "nhau bằng ' | ', giữ ĐỦ số ô kể cả ô trống (ô trống để rỗng giữa hai dấu |) để không lệch "
+    "cột. Bóc HẾT mọi hàng theo đúng thứ tự trên trang, kể cả hàng tiêu đề và hàng tổng cộng: "
+    "KHÔNG tóm tắt, KHÔNG bỏ hàng, KHÔNG gộp hai hàng làm một, KHÔNG thay số liệu bằng '...'. "
+    "Chỉ trả JSON."
 )
 
 
 def ingest_prompt() -> str:
+    """Không dùng chain-of-thought: bước này chỉ CHÉP chữ trong ảnh, suy luận thêm chỉ làm kết quả
+    trôi giữa hai lần chạy (cùng trang ra khác nhau) và ăn mất ngân sách token của phần text."""
     return (
         "[IN]\n"
-        + cot_block('{"text":"<toàn bộ chữ trong ảnh kèm mô tả bổ sung>","co_chu_ky":false,"co_dau":false}')
+        "Trả về DUY NHẤT một khối JSON trong ```json ... ``` theo đúng cấu trúc:\n"
+        '{"text":"<toàn bộ chữ trong ảnh kèm mô tả bổ sung>","co_chu_ky":false,"co_dau":false}'
     )
 
 

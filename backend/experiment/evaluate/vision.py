@@ -17,11 +17,16 @@ from services.json_utils import extract_json
 VisionFn = Callable[..., Awaitable[AiOutcome]]
 
 
+def page_to_png(page: fitz.Page, dpi: int = 200) -> bytes:
+    """Một trang -> PNG bytes. Render theo TỪNG trang: trang đọc thẳng từ text nhúng khỏi render."""
+    return page.get_pixmap(dpi=dpi).tobytes("png")
+
+
 def pdf_to_images(data: bytes, dpi: int = 200) -> list[bytes]:
     """Mỗi trang PDF -> PNG bytes (để gửi model đọc ảnh)."""
     doc = fitz.open(stream=data, filetype="pdf")
     try:
-        return [page.get_pixmap(dpi=dpi).tobytes("png") for page in doc]
+        return [page_to_png(page, dpi=dpi) for page in doc]
     finally:
         doc.close()
 

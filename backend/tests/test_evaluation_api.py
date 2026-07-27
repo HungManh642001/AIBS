@@ -66,7 +66,7 @@ def _upload_pdf(client, pid: int, vendor_id: int, name: str = "don.pdf",
 
 def test_evaluate_passes_ocr_cache_bound_to_documents(client, monkeypatch):
     """Router phải cấp cache gắn ĐÚNG tài liệu -> chấm lại không OCR lại (chỗ tốn nhất)."""
-    from experiment.evaluate.ingest import ingest_cache_key
+    from experiment.evaluate.ingest import DPI_MAC_DINH, ingest_cache_key
 
     seen = {}
     base = _fake_eval("đạt")
@@ -84,14 +84,14 @@ def test_evaluate_passes_ocr_cache_bound_to_documents(client, monkeypatch):
 
     cache = seen["cache"]
     assert cache is not None
-    key = ingest_cache_key(seen["files"][0][2], 200)
+    key = ingest_cache_key(seen["files"][0][2], DPI_MAC_DINH)
     assert cache.get(key) is None                       # lần đầu: chưa có gì
     cache.put(key, [{"trang": 1, "text": "đã OCR", "co_chu_ky": False, "co_dau": False}])
     assert cache.get(key)[0]["text"] == "đã OCR"        # lưu được và đọc lại đúng
 
 
 def test_clear_ocr_cache_endpoint(client, monkeypatch):
-    from experiment.evaluate.ingest import ingest_cache_key
+    from experiment.evaluate.ingest import DPI_MAC_DINH, ingest_cache_key
 
     seen = {}
     base = _fake_eval("đạt")
@@ -106,7 +106,7 @@ def test_clear_ocr_cache_endpoint(client, monkeypatch):
     vid = client.get(f"/api/v1/packages/{pid}").json()["data"]["vendors"][0]["id"]
     doc_id = _upload_pdf(client, pid, vid)
     client.post(f"/api/v1/packages/{pid}/evaluate")
-    key = ingest_cache_key(seen["files"][0][2], 200)
+    key = ingest_cache_key(seen["files"][0][2], DPI_MAC_DINH)
     seen["cache"].put(key, [{"trang": 1, "text": "đã OCR", "co_chu_ky": False, "co_dau": False}])
 
     r = client.delete(f"/api/v1/packages/{pid}/ocr-cache?doc_id={doc_id}")

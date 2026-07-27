@@ -45,10 +45,10 @@ async def test_core_returns_full_result_with_profile_and_standing():
 
 async def test_core_forwards_cache_to_ingest():
     """Cache xuống tới ingest -> chấm lại nhà thầu không OCR lại (chỗ tốn thời gian nhất)."""
-    from experiment.evaluate.ingest import ingest_cache_key
+    from experiment.evaluate.ingest import DPI_MAC_DINH, ingest_cache_key
 
     data = _pdf("đơn")
-    cache = {ingest_cache_key(data, 200): [
+    cache = {ingest_cache_key(data, DPI_MAC_DINH): [
         {"trang": 1, "text": "đã OCR trước đó", "co_chu_ky": True, "co_dau": False}]}
 
     class _Cache:
