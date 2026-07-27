@@ -46,11 +46,25 @@ _BY_TYPE = {
     "dang_ky_kinh_doanh": [_p(1, "dang_ky_kinh_doanh", "ĐKKD... Người đại diện theo pháp luật: Nguyễn Văn A")],
 }
 
+# Mọi kịch bản đều kèm tên pháp nhân 2 phía — prompt nay BẮT BUỘC bóc, thiếu là 'cần làm rõ'.
+_CTY = "Công ty cổ phần ABC"
+
+
+def _kb_chu_ky(**kw):
+    """Kịch bản bước 1: mặc định cùng pháp nhân, ghi đè phần cần test."""
+    return {"[RULE:chu_ky_khop_dkkd]": {
+        "nha_thau_don": _CTY, "doanh_nghiep_dkkd": _CTY, "phap_nhan_khop": True, **kw}}
+
+
+def _kb_uy_quyen(**kw):
+    return {"nguoi_uy_quyen": "Nguyễn Văn A", "nguoi_duoc_uy_quyen": "Trần Văn B",
+            "nha_thau_don": _CTY, "phap_nhan_uy_quyen": _CTY, "phap_nhan_khop": True, **kw}
+
 
 async def test_handler_dat_khong_dat_soi():
-    ok = ScriptedVision({"[RULE:chu_ky_khop_dkkd]": {
-        "ket_qua": "đạt", "nguoi_ky": "Nguyễn Văn A", "dai_dien_phap_luat": "Nguyễn Văn A",
-        "bang_chung": "đơn ký A; ĐKKD đại diện A", "trang": [1], "do_tin": 0.9}})
+    ok = ScriptedVision(_kb_chu_ky(
+        ket_qua="đạt", nguoi_ky="Nguyễn Văn A", dai_dien_phap_luat="Nguyễn Văn A",
+        bang_chung="đơn ký A; ĐKKD đại diện A", trang=[1], do_tin=0.9))
     v = await SKILL.handler(_BY_TYPE, None, {}, ok)
     assert v.ket_qua == KET_QUA_DAT
     assert v.nguon_doc == ["don_du_thau", "dang_ky_kinh_doanh"]
@@ -58,25 +72,96 @@ async def test_handler_dat_khong_dat_soi():
     assert ok.calls[-1][1] == 0                             # text-only, không đính ảnh
 
     # bang_chung rỗng -> dựng từ nguoi_ky/dai_dien_phap_luat (vẫn có căn cứ đọc được)
-    thieu_bc = ScriptedVision({"[RULE:chu_ky_khop_dkkd]": {
-        "ket_qua": "đạt", "nguoi_ky": "Nguyễn Văn A", "dai_dien_phap_luat": "Nguyễn Văn A"}})
+    thieu_bc = ScriptedVision(_kb_chu_ky(
+        ket_qua="đạt", nguoi_ky="Nguyễn Văn A", dai_dien_phap_luat="Nguyễn Văn A"))
     vb = await SKILL.handler(_BY_TYPE, None, {}, thieu_bc)
     assert "Nguyễn Văn A" in vb.bang_chung
 
-    lech = ScriptedVision({"[RULE:chu_ky_khop_dkkd]": {
-        "ket_qua": "không đạt", "nguoi_ky": "Trần B", "dai_dien_phap_luat": "Nguyễn Văn A",
-        "bang_chung": "ký B ≠ đại diện A", "trang": [1]}})
+    lech = ScriptedVision(_kb_chu_ky(
+        ket_qua="không đạt", nguoi_ky="Trần B", dai_dien_phap_luat="Nguyễn Văn A",
+        bang_chung="ký B ≠ đại diện A", trang=[1]))
     v2 = await SKILL.handler(_BY_TYPE, None, {}, lech)
     assert v2.ket_qua == KET_QUA_KHONG
 
-    mo_ho = ScriptedVision({"[RULE:chu_ky_khop_dkkd]": {"ket_qua": "cần làm rõ", "ghi_chu": "không thấy tên"}})
+    mo_ho = ScriptedVision(_kb_chu_ky(ket_qua="cần làm rõ", ghi_chu="không thấy tên"))
     v3 = await SKILL.handler(_BY_TYPE, None, {}, mo_ho)
     assert v3.ket_qua == KET_QUA_SOI
 
 
-_LECH = {"[RULE:chu_ky_khop_dkkd]": {
-    "ket_qua": "không đạt", "nguoi_ky": "Trần Văn B", "dai_dien_phap_luat": "Nguyễn Văn A",
-    "bang_chung": "ký B ≠ đại diện A", "trang": [1]}}
+# ---- pháp nhân: ĐKKD/GUQ phải là của CHÍNH bên đứng tên ký đơn ----
+
+_OSB_DON = "Công ty cổ phần Tập đoàn OSB"
+_OSB_KHAC = "Công ty TNHH Công nghệ cao OSB"
+
+
+async def test_dkkd_khac_phap_nhan_thi_khong_dat_du_ten_nguoi_ky_khop():
+    """CA THẬT (osb): ĐKKD của pháp nhân KHÁC -> so tên người là vô nghĩa (đại diện công ty khác).
+
+    Trùng thương hiệu 'OSB' nhưng khác loại hình + khác tên riêng = khác pháp nhân.
+    """
+    vision = ScriptedVision({"[RULE:chu_ky_khop_dkkd]": {
+        "ket_qua": "đạt", "nguoi_ky": "Nguyễn Văn A", "dai_dien_phap_luat": "Nguyễn Văn A",
+        "nha_thau_don": _OSB_DON, "doanh_nghiep_dkkd": _OSB_KHAC, "phap_nhan_khop": False,
+        "bang_chung": "đơn ký A; ĐKKD đại diện A", "trang": [1]}})
+    v = await SKILL.handler(_BY_TYPE, None, {}, vision)
+    assert v.ket_qua == KET_QUA_KHONG
+    assert _OSB_DON in v.bang_chung and _OSB_KHAC in v.bang_chung   # chuyên gia thấy cả 2 tên
+    assert "pháp nhân" in v.ghi_chu
+    assert len(vision.calls) == 1                       # fail sớm, không xét tiếp ủy quyền
+
+
+async def test_ten_phap_nhan_giong_het_thi_bo_qua_llm_noi_khac():
+    """Guard 1 chiều: LLM nói 'khác' mà hai tên chuẩn hóa GIỐNG HỆT -> tin code, không báo động giả."""
+    vision = ScriptedVision({"[RULE:chu_ky_khop_dkkd]": {
+        "ket_qua": "đạt", "nguoi_ky": "Nguyễn Văn A", "dai_dien_phap_luat": "Nguyễn Văn A",
+        "nha_thau_don": "CÔNG TY CỔ PHẦN TẬP ĐOÀN OSB",
+        "doanh_nghiep_dkkd": "  Công ty Cổ phần Tập đoàn OSB ", "phap_nhan_khop": False,
+        "bang_chung": "khớp", "trang": [1]}})
+    v = await SKILL.handler(_BY_TYPE, None, {}, vision)
+    assert v.ket_qua == KET_QUA_DAT
+
+
+async def test_thieu_ten_phap_nhan_thi_khong_tu_ket_luan_lech():
+    """Không bóc được tên pháp nhân -> KHÔNG được suy ra 'khác pháp nhân' (no-fab)."""
+    vision = ScriptedVision({"[RULE:chu_ky_khop_dkkd]": {
+        "ket_qua": "đạt", "nguoi_ky": "Nguyễn Văn A", "dai_dien_phap_luat": "Nguyễn Văn A",
+        "nha_thau_don": "", "doanh_nghiep_dkkd": "", "phap_nhan_khop": False,
+        "bang_chung": "khớp", "trang": [1]}})
+    v = await SKILL.handler(_BY_TYPE, None, {}, vision)
+    assert v.ket_qua == KET_QUA_SOI and "pháp nhân" in v.ghi_chu
+
+
+async def test_guq_dung_nguoi_dung_pham_vi_nhung_sai_phap_nhan_thi_khong_dat():
+    """GUQ thỏa cả 3 điều kiện cũ mà bên ủy quyền là pháp nhân khác -> vẫn KHÔNG ĐẠT."""
+    vision = ScriptedVision({
+        "[RULE:chu_ky_khop_dkkd]": {
+            "ket_qua": "không đạt", "nguoi_ky": "Trần Văn B", "dai_dien_phap_luat": "Nguyễn Văn A",
+            "nha_thau_don": _OSB_DON, "doanh_nghiep_dkkd": _OSB_DON, "phap_nhan_khop": True,
+            "bang_chung": "ký B ≠ đại diện A", "trang": [1]},
+        "[RULE:chu_ky_uy_quyen]": {
+            "ket_qua": "đạt", "nguoi_uy_quyen": "Nguyễn Văn A", "nguoi_duoc_uy_quyen": "Trần Văn B",
+            "phap_nhan_uy_quyen": _OSB_KHAC, "phap_nhan_khop": False,
+            "bang_chung": "GUQ cho phép ký đơn dự thầu", "trang": [1]},
+    })
+    v = await SKILL.handler(_BY_TYPE_GUQ, None, {}, vision)
+    assert v.ket_qua == KET_QUA_KHONG
+    assert _OSB_KHAC in v.bang_chung and "pháp nhân" in v.ghi_chu
+
+
+async def test_guq_khong_co_dkkd_sai_phap_nhan_thi_khong_dat():
+    """Nhánh thiếu ĐKKD: GUQ của pháp nhân khác bên ký đơn -> không đạt."""
+    vision = ScriptedVision({"[RULE:chu_ky_uy_quyen_khong_dkkd]": {
+        "ket_qua": "đạt", "nguoi_uy_quyen": "Nguyễn Văn A", "nguoi_duoc_uy_quyen": "Trần Văn B",
+        "nha_thau_don": _OSB_DON, "phap_nhan_uy_quyen": _OSB_KHAC, "phap_nhan_khop": False,
+        "bang_chung": "GUQ cho phép ký đơn dự thầu", "trang": [1]}})
+    by_type = {"don_du_thau": _BY_TYPE["don_du_thau"],
+               "giay_uy_quyen": [_p(1, "giay_uy_quyen", "GIẤY ỦY QUYỀN")]}
+    v = await SKILL.handler(by_type, None, {}, vision)
+    assert v.ket_qua == KET_QUA_KHONG and "pháp nhân" in v.ghi_chu
+
+
+_LECH = _kb_chu_ky(ket_qua="không đạt", nguoi_ky="Trần Văn B",
+                   dai_dien_phap_luat="Nguyễn Văn A", bang_chung="ký B ≠ đại diện A", trang=[1])
 
 _BY_TYPE_GUQ = {**_BY_TYPE, "giay_uy_quyen": [
     _p(1, "giay_uy_quyen", "GIẤY ỦY QUYỀN: Nguyễn Văn A ủy quyền cho Trần Văn B ký đơn dự thầu")]}
@@ -93,9 +178,8 @@ async def test_handler_khong_khop_no_guq_khong_dat():
 
 async def test_handler_khong_khop_guq_hop_le_dat():
     """Ký thay + GUQ hợp lệ (đúng người, đúng phạm vi) -> 'đạt'; call 2 phải thấy tên 2 phía + GUQ."""
-    vision = ScriptedVision({**_LECH, "[RULE:chu_ky_uy_quyen]": {
-        "ket_qua": "đạt", "nguoi_uy_quyen": "Nguyễn Văn A", "nguoi_duoc_uy_quyen": "Trần Văn B",
-        "bang_chung": "GUQ: A ủy quyền B ký đơn dự thầu", "trang": [1], "do_tin": 0.9}})
+    vision = ScriptedVision({**_LECH, "[RULE:chu_ky_uy_quyen]": _kb_uy_quyen(
+        ket_qua="đạt", bang_chung="GUQ: A ủy quyền B ký đơn dự thầu", trang=[1], do_tin=0.9)})
     v = await SKILL.handler(_BY_TYPE_GUQ, None, {}, vision)
     assert v.ket_qua == KET_QUA_DAT
     assert "giay_uy_quyen" in v.nguon_doc                   # audit: đã đối chiếu GUQ
@@ -107,9 +191,9 @@ async def test_handler_khong_khop_guq_hop_le_dat():
 
 async def test_handler_khong_khop_guq_khong_cho_ky_thay():
     """GUQ có nhưng sai người/không cho ký thay đơn dự thầu -> 'không đạt'."""
-    vision = ScriptedVision({**_LECH, "[RULE:chu_ky_uy_quyen]": {
-        "ket_qua": "không đạt", "nguoi_uy_quyen": "Nguyễn Văn A", "nguoi_duoc_uy_quyen": "Lê C",
-        "bang_chung": "GUQ ủy quyền cho Lê C, không phải người ký Trần Văn B", "trang": [1]}})
+    vision = ScriptedVision({**_LECH, "[RULE:chu_ky_uy_quyen]": _kb_uy_quyen(
+        ket_qua="không đạt", nguoi_duoc_uy_quyen="Lê C", trang=[1],
+        bang_chung="GUQ ủy quyền cho Lê C, không phải người ký Trần Văn B")})
     v = await SKILL.handler(_BY_TYPE_GUQ, None, {}, vision)
     assert v.ket_qua == KET_QUA_KHONG and "giay_uy_quyen" in v.nguon_doc
 
@@ -123,9 +207,8 @@ async def test_handler_guq_call_error_becomes_loi():
 
 async def test_handler_bang_chung_luon_neu_ai_uy_quyen_cho_ai():
     """Chuyên gia phải đọc được AI ỦY QUYỀN CHO AI ngay trên bằng chứng, kể cả khi LLM không nêu."""
-    vision = ScriptedVision({**_LECH, "[RULE:chu_ky_uy_quyen]": {
-        "ket_qua": "đạt", "nguoi_uy_quyen": "Nguyễn Văn A", "nguoi_duoc_uy_quyen": "Trần Văn B",
-        "bang_chung": "trích GUQ: phạm vi gồm ký đơn dự thầu", "trang": [1]}})
+    vision = ScriptedVision({**_LECH, "[RULE:chu_ky_uy_quyen]": _kb_uy_quyen(
+        ket_qua="đạt", bang_chung="trích GUQ: phạm vi gồm ký đơn dự thầu", trang=[1])})
     v = await SKILL.handler(_BY_TYPE_GUQ, None, {}, vision)
     assert "Nguyễn Văn A ủy quyền cho Trần Văn B" in v.bang_chung
     assert "phạm vi gồm ký đơn dự thầu" in v.bang_chung      # KHÔNG nuốt trích dẫn của LLM
@@ -140,9 +223,8 @@ _BY_TYPE_KHONG_DKKD = {
 
 async def test_handler_khong_co_dkkd_guq_hop_le_dat():
     """Không có ĐKKD + có GUQ -> thẩm định GUQ độc lập (đúng người ký + đúng phạm vi) -> 'đạt'."""
-    vision = ScriptedVision({"[RULE:chu_ky_uy_quyen_khong_dkkd]": {
-        "ket_qua": "đạt", "nguoi_uy_quyen": "Nguyễn Văn A", "nguoi_duoc_uy_quyen": "Trần Văn B",
-        "bang_chung": "GUQ: phạm vi gồm ký đơn dự thầu", "trang": [1], "do_tin": 0.85}})
+    vision = ScriptedVision({"[RULE:chu_ky_uy_quyen_khong_dkkd]": _kb_uy_quyen(
+        ket_qua="đạt", bang_chung="GUQ: phạm vi gồm ký đơn dự thầu", trang=[1], do_tin=0.85)})
     v = await SKILL.handler(_BY_TYPE_KHONG_DKKD, None, {}, vision)
     assert v.ket_qua == KET_QUA_DAT
     assert v.nguon_doc == ["don_du_thau", "giay_uy_quyen"]   # audit: KHÔNG có ĐKKD trong nguồn
@@ -155,9 +237,9 @@ async def test_handler_khong_co_dkkd_guq_hop_le_dat():
 
 
 async def test_handler_khong_co_dkkd_guq_sai_nguoi_khong_dat():
-    vision = ScriptedVision({"[RULE:chu_ky_uy_quyen_khong_dkkd]": {
-        "ket_qua": "không đạt", "nguoi_uy_quyen": "Nguyễn Văn A", "nguoi_duoc_uy_quyen": "Lê C",
-        "bang_chung": "GUQ ủy quyền cho Lê C, không phải người ký đơn", "trang": [1]}})
+    vision = ScriptedVision({"[RULE:chu_ky_uy_quyen_khong_dkkd]": _kb_uy_quyen(
+        ket_qua="không đạt", nguoi_duoc_uy_quyen="Lê C", trang=[1],
+        bang_chung="GUQ ủy quyền cho Lê C, không phải người ký đơn")})
     v = await SKILL.handler(_BY_TYPE_KHONG_DKKD, None, {}, vision)
     assert v.ket_qua == KET_QUA_KHONG
     assert "Nguyễn Văn A ủy quyền cho Lê C" in v.bang_chung
