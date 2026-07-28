@@ -61,9 +61,12 @@ async def detect_vendor_profile(pages: list[PageRecord], vision_fn: VisionFn, *,
     if don_pages:
         return await _detect_tu_don(don_pages, vision_fn, vendor)
     
-    return VendorProfile
+    return VendorProfile()
 
 
 async def _detect_tu_don(don_pages: list[PageRecord], vision_fn: VisionFn,
                          vendor: VendorContext | None) -> VendorProfile:
-    return VendorProfile
+    """TẮT: người dùng khai báo hình thức (độc lập/liên danh) khi tạo nhà thầu, nên không
+    cần LLM đọc đơn dự thầu để suy ra. Trả hồ sơ RỖNG = "không rõ" -> KHÔNG bao giờ gate,
+    mọi nội dung liên danh vẫn được chấm đủ."""
+    return VendorProfile()

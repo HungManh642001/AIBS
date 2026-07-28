@@ -1,6 +1,8 @@
 """Tests router tiêu chí (pipeline decompose): bóc / sửa / chốt. Pipeline được mock (không cần proxy)."""
 import fitz
 
+from experiment.decompose.workflow import DecomposeWorkflow
+
 
 def _pdf(t):
     d = fitz.open()
@@ -43,7 +45,12 @@ def _mock_pipeline(monkeypatch, decomp=_FAKE_DECOMP, captured=None):
 
 
 def test_extract_passes_tbmt_as_scan_source(client, monkeypatch):
-    """TBMT đã upload -> router gom thành scan_source (source_doc, đường dẫn) truyền vào pipeline."""
+    """TBMT đã upload -> router gom thành scan_source (source_doc, đường dẫn) truyền vào pipeline.
+
+    source_doc phải là MÃ nguồn ("tbmt"), KHÔNG phải nhãn người đọc: mã này đi vào metadata chunk
+    (ocr_chunks._SECTION), khoá danh mục route, và MetadataFilter khi truy hồi. Nhãn hiển thị được
+    tra ngược ở DecomposeWorkflow._SOURCE_LABELS.
+    """
     cap: dict = {}
     _mock_pipeline(monkeypatch, captured=cap)
     pid = _pkg_with_hsmt(client)
@@ -55,7 +62,8 @@ def test_extract_passes_tbmt_as_scan_source(client, monkeypatch):
     scan = cap["scan_sources"]
     assert len(scan) == 1
     source_doc, path = scan[0]
-    assert "mời thầu" in source_doc.lower() and path.endswith(".pdf")
+    assert source_doc == "tbmt" and path.endswith(".pdf")
+    assert source_doc in DecomposeWorkflow._SOURCE_LABELS  # nhãn hiển thị tra được -> không lệch mã
 
 
 def test_extract_no_tbmt_empty_scan_sources(client, monkeypatch):
