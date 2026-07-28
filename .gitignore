@@ -3,6 +3,10 @@ backend/**/__pycache__/
 backend/.pytest_cache/
 backend/abes_demo.db
 backend/storage/
+# Bí mật thật (API key proxy) — CHỈ nằm ở máy chạy, không bao giờ vào git.
+# Mẫu không có bí mật: backend/.env.example
+.env
+backend/.env
 frontend/node_modules/
 frontend/dist/
 docs/
