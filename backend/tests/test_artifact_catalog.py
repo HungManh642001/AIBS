@@ -11,8 +11,11 @@ def test_dang_ky_kinh_doanh_thay_the_tu_cach_phap_ly():
     """Gọi đúng tên tài liệu thật (ĐKKD) — bỏ hẳn nhãn 'tư cách pháp lý/hợp lệ' mơ hồ."""
     a = cat.get_artifact("dang_ky_kinh_doanh")
     assert a is not None and a["label"] == "Giấy đăng ký kinh doanh"
-    assert "tư cách" not in a["label"] and "tư cách" not in a["mo_ta"]
+    assert "tư cách" not in a["label"]
     assert not any("tư cách" in al for al in a["aliases"])
+    # `mo_ta` ĐƯỢC nhắc "tư cách" — nhưng chỉ theo nghĩa PHỦ ĐỊNH ("không chọn chỉ vì tiêu chí nói
+    # về tư cách"), tức vẫn giữ đúng ý: ĐKKD không phải tài liệu chứng minh tư cách hợp lệ.
+    assert "chỉ chọn khi" in a["mo_ta"].lower()
     assert cat.get_artifact("tu_cach_phap_ly") is None
     assert "tu_cach_phap_ly" not in cat.all_codes()
     for raw in ["dang_ky_kinh_doanh", "dkkd", "Đăng ký doanh nghiệp",
@@ -83,3 +86,36 @@ def test_webform_aliases_do_not_swallow_existing_codes():
         assert cat.resolve_code(code) == code
     assert cat.resolve_code("bảng giá") == "bang_gia"          # không bị webform nuốt
     assert cat.resolve_code("thư bảo lãnh") == "bao_dam_du_thau"
+
+
+def test_mo_ta_la_muc_luc_noi_dung_khong_phai_lap_lai_nhan():
+    """`mo_ta` phải nói tài liệu CHỨA GÌ — đó là căn cứ để decompose chọn hồ sơ.
+
+    Mô tả chỉ lặp lại nhãn ("Báo cáo tài chính.") dạy model rằng trường này là nhãn, nó quay về
+    suy đoán theo chủ đề của tiêu chí và gán nhầm hồ sơ. Khoá lại bằng 2 dấu hiệu: đủ dài để chứa
+    thông tin thật, và không phải chỉ là cái nhãn viết lại.
+    """
+    for code in cat.all_codes():
+        a = cat.get_artifact(code)
+        mo_ta = a["mo_ta"]
+        assert len(mo_ta) >= 80, f"{code}: mo_ta quá ngắn để nói được tài liệu chứa gì"
+        assert mo_ta.strip(". ").lower() != a["label"].lower(), f"{code}: mo_ta chỉ lặp lại label"
+
+
+def test_don_du_thau_mo_ta_neu_ro_la_noi_nha_thau_tu_khai():
+    """Tư cách hợp lệ được nhà thầu TỰ KHAI trong đơn — đây là quy ước nghiệp vụ không suy ra
+    được từ nội dung điều khoản, nên phải nằm trong mô tả để bước phân rã chọn đúng hồ sơ."""
+    mo_ta = cat.get_artifact("don_du_thau")["mo_ta"].lower()
+    assert "tự khai" in mo_ta and "tư cách hợp lệ" in mo_ta
+
+
+def test_dang_ky_kinh_doanh_mo_ta_chan_suy_doan_theo_chu_de():
+    """Chặn đúng lỗi đã gặp: 'tư cách hợp lệ' -> đoán bừa sang giấy đăng ký kinh doanh."""
+    assert "chỉ chọn khi" in cat.get_artifact("dang_ky_kinh_doanh")["mo_ta"].lower()
+
+
+def test_mo_ta_khong_pha_so_khop_ma():
+    """`mo_ta` chỉ đi vào prompt — KHÔNG được tham gia _norm_index, kẻo mô tả dài đụng mã khác."""
+    for code in cat.all_codes():
+        assert cat.resolve_code(code) == code
+    assert cat.resolve_code("xyz_khong_ton_tai") is None

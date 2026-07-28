@@ -25,7 +25,12 @@ SYS_LIST = (
     "sách. Quy tắc nguyên tử ràng buộc NỘI DUNG và HỒ SƠ CHÍNH — nó KHÔNG cấm liệt kê thêm tài "
     "liệu ĐỐI CHIẾU: nếu yêu cầu đòi so hồ sơ chính với một tài liệu KHÁC thì PHẢI liệt kê thêm "
     "tài liệu đó. Ví dụ 'giá trong bảng giá phải phù hợp với webform (kết quả mở thầu)' → "
-    "hsdt_can_kiem_tra=[bang_gia, webform] (bang_gia là hồ sơ chính bị chấm)."
+    "hsdt_can_kiem_tra=[bang_gia, webform] (bang_gia là hồ sơ chính bị chấm).\n"
+    "CÁCH CHỌN HỒ SƠ — bắt buộc: đối chiếu yêu cầu với cột NỘI DUNG TÀI LIỆU CHỨA trong DANH MỤC "
+    "trên, chọn tài liệu THỰC SỰ CHỨA thứ cần kiểm. TUYỆT ĐỐI KHÔNG suy theo CHỦ ĐỀ của tiêu chí "
+    "(chủ đề 'tư cách hợp lệ' KHÔNG có nghĩa hồ sơ là giấy đăng ký kinh doanh). Nếu yêu cầu chỉ "
+    "trỏ tới một điều khoản HSMT (vd 'theo quy định tại Mục 5 A-CDNT') mà KHÔNG gọi tên tài liệu "
+    "nhà thầu phải nộp, thì đó là điều nhà thầu TỰ KHAI → hồ sơ chính = don_du_thau."
 )
 SYS_CRITIQUE = (
     "Bạn là chuyên gia rà soát. So sánh DANH SÁCH tiêu chí đã liệt kê với NGUỒN gốc và chỉ ra các "
@@ -120,15 +125,21 @@ _CRIT_SCHEMA = (
 
 
 def catalog_codes() -> str:
-    return ", ".join(
-        f"{c}={artifact_catalog.get_artifact(c)['mo_ta']}" for c in artifact_catalog.all_codes()
+    """Danh mục hồ sơ cho prompt — MỖI MÃ MỘT DÒNG.
+
+    Trước đây nối bằng ", ": `mo_ta` cũng chứa dấu phẩy nên ranh giới giữa các mã nhập nhằng, và
+    13 mô tả dồn thành một dòng dài thì mô tả bị đọc lướt. Xuống dòng để mô tả nội dung đủ nổi —
+    đó là căn cứ CHÍNH để chọn hồ sơ (xem quy tắc trong SYS_LIST).
+    """
+    return "\n".join(
+        f"- {c}: {artifact_catalog.get_artifact(c)['mo_ta']}" for c in artifact_catalog.all_codes()
     )
 
 
 def list_prompt(source_text: str) -> str:
     return (
         "[TAG:LIST]\n"
-        f"Danh mục loại hồ sơ (code=mo_ta): {catalog_codes()}\n\n"
+        f"DANH MỤC LOẠI HỒ SƠ HSDT (mã: nội dung tài liệu chứa):\n{catalog_codes()}\n\n"
         f"NỘI DUNG TIÊU CHUẨN ĐÁNH GIÁ (nhóm):\n{source_text}\n\n"
         + cot_block('{"criteria":[{"nhom","ten","yeu_cau_goc","hsdt_can_kiem_tra":[...]}]}')
     )
@@ -148,7 +159,7 @@ def struct_prompt(crit: dict[str, Any]) -> str:
     """Step analyze — chỉ từ tiêu chí (KHÔNG đưa source toàn nhóm để tránh nhiễu)."""
     return (
         f"[TAG:STRUCT:{crit.get('ten', '')}]\n"
-        f"Danh mục loại hồ sơ (code=label): {catalog_codes()}\n\n"
+        f"DANH MỤC LOẠI HỒ SƠ HSDT (mã: nội dung tài liệu chứa):\n{catalog_codes()}\n\n"
         f"TIÊU CHÍ: {crit.get('ten')} (nhóm {crit.get('nhom', 'hop_le')})\n"
         f"YÊU CẦU GỐC (HSMT): {crit.get('yeu_cau_goc', '')}\n"
         f"HSDT cần kiểm tra: {crit.get('hsdt_can_kiem_tra', [])}\n\n"
