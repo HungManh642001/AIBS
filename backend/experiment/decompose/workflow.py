@@ -10,6 +10,7 @@ Nội dung nguon=hsdt = dữ liệu nhà thầu -> đánh giá ở bước sau, 
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from llama_index.core.workflow import Context, Event, StartEvent, StopEvent, Workflow, step
@@ -85,7 +86,8 @@ class DecomposeWorkflow(Workflow):
                  source_summaries: dict[str, str] | None = None,
                  scan_texts: dict[str, str] | None = None,
                  form_texts: dict[str, str] | None = None,
-                 anchors: dict[str, dict[str, str]] | None = None, **kw: Any):
+                 anchors: dict[str, dict[str, str]] | None = None,
+                 max_song_song: int = 8, **kw: Any):
         super().__init__(**kw)
         self._llm = llm_fn
         self._retrieve = retrieve_fn
@@ -94,6 +96,12 @@ class DecomposeWorkflow(Workflow):
         self._scan_texts = scan_texts or {}
         self._form_texts = form_texts or {}
         self._anchors = anchors or {}           # {tên neo: {gia_tri, nguon}} — mốc chung gói thầu
+        # Trần need đang bay đồng thời (step search). @step vốn đã cho 4 tiêu chí chạy song song;
+        # thả tự do thêm các need bên trong sẽ dội hàng chục call cùng lúc vào proxy.
+        self._sem = asyncio.Semaphore(max_song_song)
+        # Phụ lục là hằng trong suốt một run nhưng trước đây dựng lại cho MỖI need (A-BDL nối tới
+        # 15k ký tự, bảng neo duyệt lại toàn bộ mốc). Nhớ kết quả — nội dung không đổi.
+        self._cache_phu_luc: dict[tuple[str, tuple[str, ...]], str] = {}
 
     # ---- nguồn nội dung nhóm (kèm lần tham chiếu Mục 3 -> Phần 4) ----
     def _build_source(self, group: dict[str, Any]) -> str:
@@ -172,14 +180,26 @@ class DecomposeWorkflow(Workflow):
                 out.append(h)
         return out
     
+    def _nho(self, khoa: tuple[str, tuple[str, ...]], dung) -> str:
+        """Nhớ phụ lục theo khoá — chúng là hằng trong một run nhưng bị gọi lại mỗi need."""
+        if khoa not in self._cache_phu_luc:
+            self._cache_phu_luc[khoa] = dung()
+        return self._cache_phu_luc[khoa]
+
     def _bdl_appendix(self) -> str:
         """Toàn bộ dòng A-BDL (nếu được cấp) — recall tất định cho giá trị data-sheet."""
+        return self._nho(("bdl", ()), self._bdl_appendix_dung)
+
+    def _bdl_appendix_dung(self) -> str:
         if not self._bdl_rows:
             return ""
         body = "\n".join(r.get("text", "") for r in self._bdl_rows)[:_BDL_CAP]
         return f"[BẢNG DỮ LIỆU (A-BDL) ĐẦY ĐỦ]\n{body}"
-    
+
     def _scan_appendix(self, srcs: list[str]) -> str:
+        return self._nho(("scan", tuple(srcs)), lambda: self._scan_appendix_dung(srcs))
+
+    def _scan_appendix_dung(self, srcs: list[str]) -> str:
         """Nguyên văn các nguồn scan nhỏ (<= _SCAN_CAP)"""
         parts: list[str] = []
         for s in srcs:
@@ -190,6 +210,9 @@ class DecomposeWorkflow(Workflow):
         return "\n\n".join(parts)
     
     def _anchor_appendix(self) -> str:
+        return self._nho(("anchor", ()), self._anchor_appendix_dung)
+
+    def _anchor_appendix_dung(self) -> str:
         """Bảng neo mốc chung — giúp thong_tin_bo_sung TỰ ĐỦ khi chuẩn tham chiếu mốc."""
         lines: list[str] = []
         for ten, v in self._anchors.items():
@@ -201,6 +224,9 @@ class DecomposeWorkflow(Workflow):
         return "[BẢNG NEO — MỐC CHUNG GÓI THẦU]\n" + "\n".join(lines) if lines else ""
     
     def _form_appendix(self, refs: list[str]) -> str:
+        return self._nho(("form", tuple(refs)), lambda: self._form_appendix_dung(refs))
+
+    def _form_appendix_dung(self, refs: list[str]) -> str:
         """Nguyên văn biểu mẫu theo mã"""
         parts: list[str] = []
         for f in refs:
@@ -341,6 +367,77 @@ class DecomposeWorkflow(Workflow):
         
         return _SearchReq(crit=crit, item=item)
 
+    async def _tra(self, *args: Any, **kw: Any) -> list[dict]:
+        """retrieve trong THREAD RIÊNG.
+
+        `self._retrieve` là hàm ĐỒNG BỘ: embed query qua HTTP tới Ollama + dựng/chạy BM25 + truy
+        Qdrant. Gọi thẳng trong step async sẽ đóng băng event loop — mọi need và mọi tiêu chí đang
+        chạy song song đều đứng chờ, kể cả những cái chỉ đang đợi mạng.
+        """
+        return await asyncio.to_thread(self._retrieve, *args, **kw)
+
+    async def _xu_ly_need(self, crit: dict, n: dict, ten: str) -> None:
+        """Tra cứu + resolve cho MỘT nội dung — sửa `n` tại chỗ. Nuốt lỗi theo đúng lối cũ.
+
+        Semaphore chặn trần số need đang bay: 6 tiêu chí x 7 need có thể bắn ~28 call đồng thời
+        vào proxy nếu thả tự do.
+        """
+        async with self._sem:
+            nd = n.get("noi_dung_kiem_tra", "")
+            lam_ro = n.get("can_lam_ro", "") or nd
+            # 1) sinh query RIÊNG cho need này
+            qout = await self._llm(SYS_QUERY, query_prompt(crit, n, sources=self._sources or None),
+                                   validate=validate_query)
+
+            base = (qout.data.get("query") if qout.status == "ok" else "") or f"{lam_ro}"
+            sugg = qout.data.get("nguon_goi_y", []) if qout.status == "ok" else []
+            route = [str(s) for s in sugg if str(s) in self._sources and str(s) != 'hsmt']
+            # 2) định tuyến theo need: tham chiếu mẫu -> tra VÀO Biểu mẫu; còn lại -> giá trị.
+            form_refs = extract_form_refs(f"{lam_ro} {n.get('yeu_cau', '')}")
+
+            if form_refs:
+                query = base.strip()
+                log.info("      [retrieve|mẫu] %s | %s", nd, query)
+                hits = self._merge_hits(
+                    await self._tra(query, k=10, is_form=True),  # VÀO chunk Biểu mẫu
+                )
+                appendix = self._form_appendix(form_refs)  # need mẫu: bảng dữ liệu không liên quan
+            elif route:
+                query = base.strip()
+                log.info("      [retrieve|nguon %s] %s | %s", ",".join(route), nd, query)
+                hits = self._merge_hits(
+                    await self._tra(query, k=6),
+                )
+                appendix = self._scan_appendix(route)
+            else:
+                query = base.strip()
+                log.info("      [retrieve] %s | %s", nd, query)
+                hits = self._merge_hits(
+                    await self._tra(query, k=6, clause_doc="cdnt"),
+                )
+                appendix = self._bdl_appendix()
+            log.debug("         [hits] %s | %s", nd, hits)
+
+            # 3) resolve bậc 1 (kèm phụ lục A-BDL nếu là need giá trị)
+            if await self._try_resolve(crit, n, hits, appendix, attempt=1):
+                return
+            # 4) bậc retry: query GÓC KHÁC, bỏ mọi filter, nới k (phủ Biểu mẫu/A-CDNT/TBMT)
+            q2out = await self._llm(SYS_QUERY, retry_query_prompt(crit, n, query),
+                                    validate=validate_query)
+            base2 = (q2out.data.get("query") if q2out.status == "ok" else "") or f"{lam_ro} {ten}"
+            query2 = base2.strip()
+            log.info("      [retrieve|retry] %s | %s", nd, query2)
+            hits2 = await self._tra(query2, k=20)
+            retry_appendix = "\n\n".join(a for a in (
+                self._bdl_appendix(),
+                self._scan_appendix(list(self._scan_texts)),
+                self._form_appendix(form_refs)
+            ) if a)
+            log.debug("         [hits|retry] %s | %s", nd, hits2)
+
+            if not await self._try_resolve(crit, n, hits2, retry_appendix, attempt=2):
+                n["_queries_da_thu"] = [query, query2]  # đo lường; pop ở đoạn no-fab
+
     # ---- Step 3: tìm giá trị cho nội dung can_tra_cuu — ĐỘC LẬP từng need, 1 call/1 việc ----
     @step
     async def search(self, ctx: Context, ev: _SearchReq) -> _Done:
@@ -352,79 +449,18 @@ class DecomposeWorkflow(Workflow):
             if n.get("can_tra_cuu") and not (n.get("thong_tin_bo_sung") or "").strip()
         ]
 
-        # Neo mã điều khoản (trích từ yêu cầu gốc) -> nhồi vào query giúp BM25 khớp đúng dòng A-BDL.
-        crit_refs = extract_clause_refs(f"{item.get('yeu_cau_goc', '')} {ten}")
-
+        # NEO MÃ ĐIỀU KHOẢN VÀO QUERY ĐANG TẮT. Trước đây query = base + refs điều khoản
+        # (extract_clause_refs) + "mẫu số N" (extract_form_refs) để BM25 khớp đúng dòng A-BDL/biểu
+        # mẫu; nay chỉ gửi query thô của LLM. Ba biến crit_refs/refs/anchors vẫn được TÍNH rồi VỨT
+        # -> đã bỏ hẳn (2 lượt regex/need cho không việc gì). Muốn bật lại: nối chúng vào `query`
+        # trong _xu_ly_need. test_search_query_anchored_with_clause_ref và
+        # test_search_form_need_routes_into_bieu_mau đang đỏ vì đúng chỗ này.
         if needs and self._retrieve:
-            log.info("    [search] %s -> %d nội dung cần tra cứu", ten, len(needs))
-            for n in needs:
-                nd = n.get("noi_dung_kiem_tra", "")
-                lam_ro = n.get("can_lam_ro", "") or nd
-                # 1) sinh query RIÊNG cho need này
-                log.info(f'[Step3] need: {n}')
-
-                qout = await self._llm(SYS_QUERY, query_prompt(crit, n, sources=self._sources or None), validate=validate_query)
-                log.info(f'[Step3] qout: {qout}')
-                
-                # query = (qout.data.get("query") if qout.status == "ok" else "") or f"{ten} {lam_ro}"
-                base = (qout.data.get("query") if qout.status == "ok" else "") or f"{lam_ro}"
-                sugg = qout.data.get("nguon_goi_y", []) if qout.status == "ok" else []
-                route = [str(s) for s in sugg if str(s) in self._sources and str(s) != 'hsmt']
-                refs = list(dict.fromkeys(extract_clause_refs(lam_ro) + crit_refs))
-                # 2) định tuyến theo need: tham chiếu mẫu -> tra VÀO Biểu mẫu; còn lại -> giá trị.
-                form_refs = extract_form_refs(f"{lam_ro} {n.get('yeu_cau', '')}")
-                log.info(f"         [form_refs] {form_refs}")
-
-                if form_refs:
-                    anchors = [f"mẫu số {f}" for f in form_refs]
-                    query = " ".join([base]).strip()
-                    log.info("      [retrieve|mẫu] %s", query)
-                    hits = self._merge_hits(
-                        self._retrieve(query, k=10, is_form=True),  # VÀO chunk Biểu mẫu
-                    )
-                    appendix = self._form_appendix(form_refs)  # need mẫu: bảng dữ liệu không liên quan
-                elif route:
-                    query = " ".join([base]).strip()
-                    log.info("      [retrieve|nguon %s] %s", ",".join(route), query)
-                    hits = self._merge_hits(
-                        # *[self._retrieve(query, k=6, source_doc=s) for s in route],
-                        self._retrieve(query, k = 6),
-                    )
-                    appendix = self._scan_appendix(route)
-                else:
-                    query = " ".join([base]).strip()
-                    log.info("      [retrieve] %s", query)
-                    # general = [h for h in self._retrieve(query, k=6)
-                    #            if not (h.get("metadata") or {}).get("is_form")][:3]  # mẫu trống = nhiễu
-                    hits = self._merge_hits(
-                        # self._retrieve(query, k=6, clause_doc="bdl"),  # dòng khai giá trị
-                        self._retrieve(query, k=6, clause_doc="cdnt"),
-                    )
-                    appendix = self._bdl_appendix()
-                log.info(f"         [hits] {hits}")
-                log.info(f"         [appendix] {appendix}")
-                
-                # 3) resolve bậc 1 (kèm phụ lục A-BDL nếu là need giá trị)
-                if await self._try_resolve(crit, n, hits, appendix, attempt=1):
-                    continue
-                # 4) bậc retry: query GÓC KHÁC, bỏ mọi filter, nới k (phủ Biểu mẫu/A-CDNT/TBMT)
-                q2out = await self._llm(SYS_QUERY, retry_query_prompt(crit, n, query),
-                                        validate=validate_query)
-                base2 = (q2out.data.get("query") if q2out.status == "ok" else "") or f"{lam_ro} {ten}"
-                query2 = " ".join([base2]).strip()
-                log.info("      [retrieve|retry] %s", query2)
-                hits2 = self._retrieve(query2, k=20)
-                retry_appendix = "\n\n".join(a for a in (
-                    self._bdl_appendix(), 
-                    self._scan_appendix(list(self._scan_texts)),
-                    self._form_appendix(form_refs)
-                ) if a)
-                
-                log.info(f"         [hits] {hits2}")
-                log.info(f"         [retry_appendix] {retry_appendix}")
-
-                if not await self._try_resolve(crit, n, hits2, retry_appendix, attempt=2):
-                    n["_queries_da_thu"] = [query, query2]  # đo lường; pop ở đoạn no-fab
+            log.info("    [search] %s -> %d nội dung cần tra cứu (song song)", ten, len(needs))
+            # Các need ĐỘC LẬP: _sources/_scan_texts/_form_texts chỉ đọc, _try_resolve chỉ ghi vào
+            # chính `n` của nó. Chạy song song ra prompt và kết quả Y HỆT tuần tự, chỉ khác thứ tự
+            # thời gian. Đây là đường găng: tiêu chí nhiều need nhất (7) tốn 14 call nối đuôi.
+            await asyncio.gather(*(self._xu_ly_need(crit, n, ten) for n in needs))
 
         # No-fab: nội dung can_tra_cuu vẫn trống thong_tin_bo_sung -> can_review (KHÔNG bịa).
         flagged: list[str] = []
