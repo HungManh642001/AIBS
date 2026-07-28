@@ -25,7 +25,8 @@ log = logging.getLogger("abes.migrations")
 _COLUMNS: dict[str, dict[str, str]] = {
     "vendor": {"hinh_thuc": "VARCHAR(32) DEFAULT ''",
                "ten_viet_tat": "VARCHAR(255) DEFAULT ''"},
-    "rubric_noi_dung": {"ap_dung": "VARCHAR(16) DEFAULT ''"},
+    "rubric_noi_dung": {"ap_dung": "VARCHAR(16) DEFAULT ''",
+                        "dieu_kien_ap_dung": "JSON DEFAULT '{}'"},
     "hsdt_criterion_eval": {"yeu_cau_goc": "TEXT DEFAULT ''"},
     "hsdt_verdict": {"nguon_hsmt": "TEXT DEFAULT ''", "nguon_doc": "JSON DEFAULT '[]'"},
     "tender_document": {"ocr_key": "VARCHAR(96) DEFAULT ''", "ocr_pages": "JSON DEFAULT '[]'"},

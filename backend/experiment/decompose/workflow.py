@@ -14,7 +14,7 @@ from typing import Any
 
 from llama_index.core.workflow import Context, Event, StartEvent, StopEvent, Workflow, step
 
-from experiment.decompose.refs import extract_clause_refs
+from experiment.decompose.dieu_kien import doi_chieu_tieu_chi
 from experiment.decompose.llm import LlmFn
 from experiment.decompose.prompts import (
     SYS_CRITIQUE,
@@ -483,5 +483,9 @@ class DecomposeWorkflow(Workflow):
         listed_n = await ctx.store.get("listed_n")
         criteria = [d.detail for d in done]
         needs = [d.needs_review for d in done if d.needs_review]
-        log.info("  [collect] %d tiêu chí, %d cần soi", len(criteria), len(needs))
+        # Điều kiện áp dụng theo GIÁ TRỊ — đối chiếu ở đây (không ở search) vì analyze cũng có
+        # đường trả _Done thẳng, và tới đây mọi thong_tin_bo_sung của tiêu chí đã tra xong.
+        n_bo = sum(doi_chieu_tieu_chi(c, self._anchors) for c in criteria)
+        log.info("  [collect] %d tiêu chí, %d cần soi, %d nội dung KHÔNG áp dụng (điều kiện HSMT)",
+                 len(criteria), len(needs), n_bo)
         return StopEvent(result=self._assemble(group, criteria, added, listed_n, needs))

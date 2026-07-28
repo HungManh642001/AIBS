@@ -37,7 +37,8 @@ def _criteria_dicts(db: Session, package_id: int) -> list[dict[str, Any]]:
         "noi_dung_can_kiem_tra": [
             {"noi_dung_kiem_tra": n.noi_dung_kiem_tra, "hsdt_kiem_tra": n.hsdt_kiem_tra,
              "yeu_cau": n.yeu_cau, "thong_tin_bo_sung": n.thong_tin_bo_sung,
-             "nguon": n.nguon, "can_review": n.can_review, "ap_dung": n.ap_dung}
+             "nguon": n.nguon, "can_review": n.can_review, "ap_dung": n.ap_dung,
+             "dieu_kien_ap_dung": n.dieu_kien_ap_dung or {}}
             for n in c.noi_dung],
     } for c in crits]
 

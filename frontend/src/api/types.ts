@@ -15,11 +15,18 @@ export interface TenderDoc {
 }
 
 // ---- Tiêu chí đánh giá (decompose) ----
+// Điều kiện áp dụng theo GIÁ TRỊ gói thầu, decompose đã đối chiếu tất định (0 call AI).
+// ket_luan='' = chưa quyết được -> nội dung VẪN được chấm; can_cu nói rõ vì sao.
+export interface DieuKienApDung {
+  dai_luong?: string; phep_so_sanh?: string; nguong?: string;
+  ket_luan?: "" | "ap_dung" | "khong_ap_dung"; can_cu?: string;
+}
 export interface NoiDungKiemTra {
   id?: number; noi_dung_kiem_tra: string; hsdt_kiem_tra: string; yeu_cau: string;
   can_lam_ro: string; can_tra_cuu: boolean; thong_tin_bo_sung: string; nguon: string;
   can_review: boolean;
   ap_dung?: string;   // '' = mọi nhà thầu | 'lien_danh' | 'doc_lap' (áp dụng cấp nội dung)
+  dieu_kien_ap_dung?: DieuKienApDung;
 }
 export interface RubricCriteria {
   id?: number; nhom: string; ten: string; yeu_cau_goc: string;

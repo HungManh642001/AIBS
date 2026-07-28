@@ -7,7 +7,7 @@ from experiment.evaluate.prompts import SYS_EVAL, eval_prompt
 from experiment.evaluate.route import _norm, loc_dung_chung, pages_by_type, pages_text, route_pages
 from experiment.evaluate.rules.registry import RuleRegistry, RuleSkill, run_skill
 from experiment.evaluate.schema import (
-    HINH_THUC_DOC_LAP, HINH_THUC_LIEN_DANH,
+    HINH_THUC_DOC_LAP, HINH_THUC_LIEN_DANH, KET_LUAN_KHONG_AP_DUNG,
     KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_KHONG_AP_DUNG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU,
     CriterionEval, PageRecord, VendorContext, VendorProfile, Verdict, validate_eval_verdict,
 )
@@ -84,6 +84,16 @@ def _gate_khong_ap_dung(nd: dict[str, Any], profile: VendorProfile | None,
     profile=None / hình thức không rõ -> None (fail-safe: chấm, không im lặng bỏ). Báo cáo in
     nguyên văn yêu cầu gốc bị bỏ qua để chuyên gia bắt lỗi nếu decompose gán ap_dung sai.
     """
+    # (1) Điều kiện theo GIÁ TRỊ do decompose đã đối chiếu tất định (vd giá trị bảo đảm dự thầu
+    # 939 triệu, trong khi nội dung chỉ áp dụng khi < 50 triệu). KHÔNG phụ thuộc hình thức nhà
+    # thầu -> phải xét TRƯỚC nhánh profile=None, nếu không prod (hsdt_pipeline không truyền
+    # profile) sẽ bỏ qua toàn bộ cơ chế này.
+    dk = nd.get("dieu_kien_ap_dung") or {}
+    if dk.get("ket_luan") == KET_LUAN_KHONG_AP_DUNG:
+        return _verdict(nd, KET_QUA_KHONG_AP_DUNG, do_tin=1.0,
+                        ghi_chu=f"điều kiện áp dụng của HSMT không thoả — {dk.get('can_cu', '')}")
+
+    # (2) Điều kiện theo HÌNH THỨC nhà thầu — cần biết hình thức mới quyết được.
     if profile is None or not profile.hinh_thuc:
         return None
     ap = canon_hinh_thuc(nd.get("ap_dung", ""))   # -> "độc lập" | "liên danh" | ""

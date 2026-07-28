@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Card, Checkbox, Input, Select, Table, Tag, message } from "antd";
+import { Button, Card, Checkbox, Input, Select, Table, Tag, Tooltip, message } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import Loader from "../components/Loader";
 
@@ -118,13 +118,29 @@ export default function Rubric() {
                   </div>
                 ) },
               { title: "Áp dụng với", dataIndex: "ap_dung", width: 150,
-                render: (t: string, _n, ni) => <Select value={t || ""} style={{ width: "100%" }}
-                  onChange={(v) => setNoiDung(ci, ni, "ap_dung", v)}
-                  options={[
-                    { value: "", label: "Mọi nhà thầu" },
-                    { value: "lien_danh", label: "Chỉ liên danh" },
-                    { value: "doc_lap", label: "Chỉ độc lập" },
-                  ]} /> },
+                render: (t: string, _n, ni) => (
+                  <div>
+                    <Select value={t || ""} style={{ width: "100%" }}
+                      onChange={(v) => setNoiDung(ci, ni, "ap_dung", v)}
+                      options={[
+                        { value: "", label: "Mọi nhà thầu" },
+                        { value: "lien_danh", label: "Chỉ liên danh" },
+                        { value: "doc_lap", label: "Chỉ độc lập" },
+                      ]} />
+                    {/* Điều kiện theo GIÁ TRỊ (khác "áp dụng với" vốn theo hình thức nhà thầu).
+                        Bấm để bỏ kết luận -> nội dung được chấm lại: máy đối chiếu tất định nên
+                        có thể sai khi HSMT diễn đạt lạ, chuyên gia phải có đường thoát. */}
+                    {_n.dieu_kien_ap_dung?.ket_luan === "khong_ap_dung" && (
+                      <Tooltip title={`${_n.dieu_kien_ap_dung.can_cu} — bấm để chấm lại nội dung này`}>
+                        <Tag color="default" style={{ marginTop: "var(--sp-1)", whiteSpace: "normal", cursor: "pointer" }}
+                          onClick={() => setNoiDung(ci, ni, "dieu_kien_ap_dung",
+                            { ..._n.dieu_kien_ap_dung, ket_luan: "" })}>
+                          Không áp dụng — điều kiện HSMT
+                        </Tag>
+                      </Tooltip>
+                    )}
+                  </div>
+                ) },
               // Ô tick không cần nhãn riêng — tiêu đề cột đã nói đúng việc đó, nhãn lặp lại chỉ
               // tốn chỗ và bị xuống dòng trong cột hẹp.
               { title: "Cần chuyên gia kiểm tra", dataIndex: "can_review", width: 175,

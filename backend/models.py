@@ -111,6 +111,10 @@ class RubricNoiDung(Base):
     nguon: Mapped[str] = mapped_column(String(128), default="")
     can_review: Mapped[bool] = mapped_column(default=False)
     ap_dung: Mapped[str] = mapped_column(String(16), default="")  # ''=mọi | lien_danh | doc_lap
+    # Điều kiện áp dụng theo GIÁ TRỊ của gói thầu, decompose đã đối chiếu tất định:
+    # {dai_luong, phep_so_sanh, nguong, ket_luan, can_cu} — ket_luan='khong_ap_dung' -> bước chấm
+    # trả N/A luôn, khỏi tốn call. Xem experiment/decompose/dieu_kien.py.
+    dieu_kien_ap_dung: Mapped[dict] = mapped_column(JSON, default=dict)
     criterion: Mapped[RubricCriterion] = relationship(back_populates="noi_dung")
 
 

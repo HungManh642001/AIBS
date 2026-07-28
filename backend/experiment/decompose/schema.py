@@ -32,6 +32,28 @@ class CriteriaListModel(_Base):
     criteria: list[CriterionListItemModel] = []
 
 
+KET_LUAN_AP_DUNG = "ap_dung"              # điều kiện THOẢ -> vẫn chấm nội dung này
+KET_LUAN_KHONG_AP_DUNG = "khong_ap_dung"  # điều kiện KHÔNG thoả -> N/A tất định, khỏi chấm
+KET_LUAN_CHUA_QUYET = ""                  # chưa đối chiếu được -> chấm bình thường (fail-safe)
+
+
+class DieuKienApDung(_Base):
+    """Điều kiện kích hoạt theo GIÁ TRỊ — 'chỉ áp dụng khi <đại lượng> <phép> <ngưỡng>'.
+
+    Khác `ap_dung` (chỉ biết hình thức nhà thầu): đây là điều kiện phía HSMT, quyết được NGAY ở
+    decompose vì đại lượng đã được tra ở nội dung khác (vd 'Đối với gói thầu có giá trị bảo đảm dự
+    thầu nhỏ hơn 50 triệu đồng...' — trong khi HSMT quy định 939.000.000 VND).
+
+    STRUCT điền dai_luong/phep_so_sanh/nguong; bước đối chiếu TẤT ĐỊNH (0 call) sau step search
+    điền ket_luan + can_cu. Không đối chiếu được -> ket_luan='' và VẪN CHẤM (không im lặng bỏ sót).
+    """
+    dai_luong: str = ""       # tên đại lượng cần tra, vd 'giá trị bảo đảm dự thầu'
+    phep_so_sanh: str = ""    # < | <= | > | >= | = | !=
+    nguong: str = ""          # ngưỡng NGUYÊN VĂN, vd '50 triệu đồng' / '50.000.000 VND'
+    ket_luan: str = ""        # (bước đối chiếu) KET_LUAN_* ở trên
+    can_cu: str = ""          # (bước đối chiếu) câu giải thích cho báo cáo/chuyên gia
+
+
 class NoiDungKiemTra(_Base):
     """Một nội dung cần kiểm trên HSDT — đủ để bước chấm thầu đọc & đối chiếu."""
     noi_dung_kiem_tra: str = ""   # Nội dung kiểm tra trên HSDT
@@ -43,6 +65,7 @@ class NoiDungKiemTra(_Base):
     nguon: str = ""               # (step 3) mã điều khoản nguồn (A-BDL/A-CDNT), cho audit
     can_review: bool = False      # (step 3) True nếu can_tra_cuu mà tra không ra (KHÔNG bịa)
     ap_dung: str = ""             # áp dụng cho ai: ''=mọi nhà thầu | 'lien_danh' | 'doc_lap'
+    dieu_kien_ap_dung: DieuKienApDung = DieuKienApDung()  # điều kiện theo giá trị (nếu có)
 
 
 class ResolvedInfo(_Base):

@@ -114,6 +114,36 @@ async def test_gate_lien_danh_doc_lap_is_na_zero_call():
     assert "độc lập" in got.ghi_chu and "khai báo" in got.ghi_chu   # căn cứ hiện rõ để kiểm chứng
 
 
+async def test_gate_dieu_kien_gia_tri_na_ke_ca_khi_khong_co_profile():
+    """Điều kiện theo GIÁ TRỊ không phụ thuộc hình thức -> phải gate cả khi profile=None.
+
+    Prod (services/hsdt_pipeline) có đường KHÔNG truyền profile; nếu gate này đặt sau nhánh
+    `profile is None` thì cơ chế chết lặng ở đúng nơi cần nó nhất.
+    """
+    from experiment.evaluate.schema import KET_QUA_KHONG_AP_DUNG
+
+    nd = _nd("Cam kết bảo đảm dự thầu trong đơn", "don_du_thau")
+    nd["dieu_kien_ap_dung"] = {"ket_luan": "khong_ap_dung",
+                               "can_cu": "giá trị bảo đảm dự thầu = 939,000,000 — KHÔNG THOẢ < 50 triệu đồng"}
+    v = ScriptedVision({})
+    got = await eval_noi_dung(nd, [_page("don_du_thau", "đơn")], v, profile=None)
+
+    assert got.ket_qua == KET_QUA_KHONG_AP_DUNG
+    assert v.calls == []                       # TẤT ĐỊNH, 0 call AI
+    assert "939,000,000" in got.ghi_chu        # căn cứ đi tới báo cáo cho chuyên gia kiểm chứng
+
+
+async def test_gate_dieu_kien_chua_quyet_duoc_thi_van_cham():
+    """FAIL-SAFE: decompose không quyết được (ket_luan='') -> KHÔNG bỏ, chấm bình thường."""
+    nd = _nd("Cam kết bảo đảm dự thầu trong đơn", "don_du_thau")
+    nd["dieu_kien_ap_dung"] = {"ket_luan": "", "can_cu": "không tra được — vẫn chấm"}
+    vision = ScriptedVision({"[EV:Cam kết bảo đảm dự thầu trong đơn]":
+                             {"ket_qua": "đạt", "bang_chung": "có cam kết", "trang": [1]}})
+
+    got = await eval_noi_dung(nd, [_page("don_du_thau", "đơn có cam kết")], vision)
+    assert got.ket_qua == KET_QUA_DAT
+
+
 async def test_gate_off_when_hinh_thuc_khong_ro_falls_back_to_thieu():
     """FAIL-SAFE: hình thức không rõ -> KHÔNG gate -> vẫn 'thiếu hồ sơ' như hiện nay."""
     from experiment.evaluate.schema import VendorProfile

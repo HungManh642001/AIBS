@@ -14,6 +14,12 @@ KET_QUA_THIEU = "thiếu hồ sơ"
 KET_QUA_LOI = "lỗi"
 KET_QUA_KHONG_AP_DUNG = "không áp dụng"   # nội dung không áp dụng với nhà thầu này (vd điều kiện liên danh)
 
+# Giá trị `dieu_kien_ap_dung.ket_luan` mà decompose gán khi điều kiện theo GIÁ TRỊ của HSMT không
+# thoả (vd nội dung chỉ áp dụng khi bảo đảm dự thầu < 50 triệu, gói này quy định 939 triệu).
+# CỐ Ý chép lại hằng thay vì import experiment.decompose: evaluate đọc output decompose dưới dạng
+# dict thuần (decomposition.json / DB), hai module không phụ thuộc nhau — xem decompose/schema.py.
+KET_LUAN_KHONG_AP_DUNG = "khong_ap_dung"
+
 # Hình thức dự thầu — "" (không rõ) là FAIL-SAFE: không gate, chấm đủ như khi chưa có tính năng.
 HINH_THUC_DOC_LAP = "độc lập"
 HINH_THUC_LIEN_DANH = "liên danh"

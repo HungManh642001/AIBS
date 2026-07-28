@@ -65,6 +65,15 @@ SYS_STRUCT = (
     "MỘT yêu cầu gốc có thể CHỨA cả mệnh đề CHUNG (ap_dung='') lẫn mệnh đề điều kiện liên danh "
     "(ap_dung='lien_danh') -> TÁCH thành nội dung riêng, gắn ap_dung đúng cho từng cái. KHI KHÔNG "
     "CHẮC -> để '' (chấm cho mọi nhà thầu, không bỏ sót).\n"
+    "- dieu_kien_ap_dung: CHỈ điền khi yeu_cau_goc nêu điều kiện kích hoạt theo MỘT GIÁ TRỊ CỦA GÓI "
+    "THẦU (không phải theo hình thức nhà thầu), dạng 'Đối với gói thầu có <đại lượng> <so sánh> "
+    "<ngưỡng> thì...'. Tách thành {dai_luong, phep_so_sanh, nguong}: dai_luong = tên đại lượng ĐÚNG "
+    "NHƯ HSMT gọi (vd 'giá trị bảo đảm dự thầu'), phep_so_sanh là một trong < <= > >= = !=, nguong "
+    "giữ NGUYÊN VĂN kèm đơn vị (vd '50 triệu đồng'). Ví dụ: 'Đối với gói thầu có giá trị bảo đảm dự "
+    "thầu nhỏ hơn 50 triệu đồng, nhà thầu có cam kết trong đơn dự thầu' -> "
+    '{"dai_luong":"giá trị bảo đảm dự thầu","phep_so_sanh":"<","nguong":"50 triệu đồng"}. '
+    "KHÔNG có điều kiện dạng này -> bỏ trống cả ba. KHÔNG tự đối chiếu điều kiện, KHÔNG tự bỏ nội "
+    "dung: cứ liệt kê nội dung như bình thường, hệ thống sẽ đối chiếu sau.\n"
     "TUYỆT ĐỐI KHÔNG bịa số/nội dung."
 )
 SYS_QUERY = (
@@ -120,7 +129,8 @@ def anchors_prompt(body: str) -> str:
 _CRIT_SCHEMA = (
     '{"nhom","ten","yeu_cau_goc","hsdt_can_kiem_tra":[...],'
     '"noi_dung_can_kiem_tra":[{"noi_dung_kiem_tra","hsdt_kiem_tra","yeu_cau","can_lam_ro",'
-    '"can_tra_cuu":false,"ap_dung":""}]}'
+    '"can_tra_cuu":false,"ap_dung":"",'
+    '"dieu_kien_ap_dung":{"dai_luong":"","phep_so_sanh":"","nguong":""}}]}'
 )
 
 
