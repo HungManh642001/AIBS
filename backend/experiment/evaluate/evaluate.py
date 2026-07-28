@@ -1,7 +1,6 @@
 """Tầng C+D — đánh giá từng nội dung (đối chiếu HSDT vs chuẩn HSMT) + roll-up tiêu chí."""
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from experiment.evaluate.prompts import SYS_EVAL, eval_prompt
@@ -15,7 +14,9 @@ from experiment.evaluate.schema import (
 from experiment.evaluate.vendor_profile import canon_hinh_thuc
 from experiment.evaluate.vision import VisionFn
 
-log = logging.getLogger("experiment.evaluate")
+from experiment.logger_config import setup_logger
+log = setup_logger('EVALUATE', 'evaluate.log')
+
 _KET_QUA_HOP_LE = {KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_SOI}
 _EVAL_MAX_TOKENS = 4096
 _CROSS_TYPE_CAP = 3000  # trần text MỖI loại hồ sơ khi đối chiếu chéo (thay [:6000] toàn cục)
@@ -45,14 +46,14 @@ def _cross_text(nd: dict[str, Any], matched: list[PageRecord], pages: list[PageR
     Tài liệu dùng chung được lọc về đúng nhà thầu đang chấm TRƯỚC khi vào prompt (loc_dung_chung).
     """
     main = nd.get("hsdt_kiem_tra", "")
-    blocks = [f"[HỒ SƠ: {main}]\n{pages_text(matched)[:_CROSS_TYPE_CAP]}"]
+    blocks = [f"[HỒ SƠ: {main}]\n{pages_text(matched)}"]
     seen = {id(p) for p in matched}
     for t in extra_types:
         ps = [p for p in route_pages(pages, str(t)) if id(p) not in seen]
         ps = loc_dung_chung(ps, str(t), vendor_ctx)
         if ps:
             seen.update(id(p) for p in ps)
-            blocks.append(f"[HỒ SƠ: {t}]\n{pages_text(ps)[:_CROSS_TYPE_CAP]}")
+            blocks.append(f"[HỒ SƠ: {t}]\n{pages_text(ps)}")
     return "\n\n".join(blocks)
 
 

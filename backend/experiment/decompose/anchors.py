@@ -1,6 +1,6 @@
-"""Bảng neo gói thầu (hướng A): 1 call LLM/run trích mốc chung từ E-BDL + nguồn scan.
+"""Bảng neo gói thầu (hướng A): 1 call LLM/run trích mốc chung từ A-BDL + nguồn scan.
 
-Mốc chung (đóng/mở thầu, hiệu lực E-HSDT...) là thứ chuẩn TƯƠNG ĐỐI tham chiếu tới
+Mốc chung (đóng/mở thầu, hiệu lực A-HSDT...) là thứ chuẩn TƯƠNG ĐỐI tham chiếu tới
 ("≥120 ngày kể từ thời điểm đóng thầu" — mốc nằm ở TBMT, ngoài bằng chứng của lượt resolve).
 Đính bảng neo vào mọi prompt RESOLVE để thong_tin_bo_sung TỰ ĐỦ. Lỗi/thiếu -> {} (hành vi
 cũ giữ nguyên, KHÔNG bịa).
@@ -16,9 +16,9 @@ from experiment.decompose.schema import validate_anchors
 
 log = logging.getLogger("experiment.decompose")
 
-_BDL_CAP = 15000    # trần tư liệu E-BDL (đồng bộ workflow._BDL_CAP)
+_BDL_CAP = 15000    # trần tư liệu A-BDL (đồng bộ workflow._BDL_CAP)
 _SCAN_CAP = 12000   # trần 1 nguồn scan (đồng bộ workflow._SCAN_CAP)
-_MAX_TOKENS = 8192  # Qwen3 có <think> -> budget rộng
+_MAX_TOKENS = 2048  # Qwen3 có <think> -> budget rộng
 
 
 async def build_anchors(llm_fn: LlmFn, bdl_rows: list[dict[str, Any]],
@@ -27,11 +27,11 @@ async def build_anchors(llm_fn: LlmFn, bdl_rows: list[dict[str, Any]],
     parts: list[str] = []
     bdl = "\n".join(r.get("text", "") for r in bdl_rows).strip()
     if bdl:
-        parts.append(f"[BẢNG DỮ LIỆU E-BDL]\n{bdl[:_BDL_CAP]}")
+        parts.append(f"[BẢNG DỮ LIỆU A-BDL]\n{bdl}")
     for src, t in scan_texts.items():
         t = (t or "").strip()
         if t:
-            parts.append(f"[{src.upper()}]\n{t[:_SCAN_CAP]}")
+            parts.append(f"[{src.upper()}]\n{t}")
     if not parts:
         return {}
     out = await llm_fn(SYS_ANCHORS, anchors_prompt("\n\n".join(parts)),

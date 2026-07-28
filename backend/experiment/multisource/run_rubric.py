@@ -26,8 +26,9 @@ from experiment.multisource.merge import merge_chunk_files
 from experiment.multisource.ocr_chunks import ocr_scan_to_chunks
 from experiment.multisource.summarize import summarize_source
 
-log = logging.getLogger("experiment.multisource")
-
+# log = logging.getLogger("experiment.multisource")
+from experiment.logger_config import setup_logger
+log = setup_logger('MULTISOURCE', 'multisource.log')
 
 async def run_multi(hsmt_pdf: str, scan_sources: list[tuple[str, str]], out_dir: str,
                     vision_fn: Any | None = None, embed: Any | None = None,
@@ -61,13 +62,13 @@ async def run_multi(hsmt_pdf: str, scan_sources: list[tuple[str, str]], out_dir:
     return await decompose_run(groups_path=str(out / "chuong3_groups.json"),
                                db_path=str(out / "qdrant"), out_dir=str(out),
                                llm_fn=llm_fn, retrieve_fn=retrieve_fn,
-                               chunks_path=merged,               # nạp E-BDL + nguyên văn nguồn scan
-                               summaries_path=str(spath))        # danh mục route theo nguồn
+                               chunks_path=merged,      # nạp dòng A-BDL làm phụ lục resolve
+                               summaries_path=str(spath))  
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Rubric đa nguồn (HSMT + scan mời thầu)")
-    ap.add_argument("--hsmt", required=True, help="HSMT pdf-text")
+    ap.add_argument("--hsmt", default="experiment/samples/62/A-HSMT.pdf", help="HSMT pdf-text")
     ap.add_argument("--scan", nargs="*", default=[], help="các nguồn scan <source_doc>=<đường_dẫn.pdf>")
     ap.add_argument("--out", default="experiment/out_multi")
     ap.add_argument("--quiet", action="store_true")

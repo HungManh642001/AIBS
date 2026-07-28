@@ -48,7 +48,7 @@ def vendor_form_prompt(don_text: str, vendor: Any | None = None) -> str:
         f"{ten}"
         f"ĐƠN DỰ THẦU (bóc từ ảnh):\n{don_text}\n\n"
         + cot_block('{"hinh_thuc":"độc lập|liên danh|","bang_chung":"<trích nguyên văn từ đơn>",'
-                    '"trang":[...],"do_tin":0.0,"ghi_chu":""}')
+                    '"trang":[1,3,...],"do_tin":0.0,"ghi_chu":""}')
     )
 
 
@@ -77,10 +77,10 @@ SYS_EVAL = (
     "Chỉ trả JSON."
 )
 
-_SCHEMA_EVAL = ('{"ket_qua":"đạt|không đạt|cần làm rõ","bang_chung":"<trích HSDT>","trang":[...],'
+_SCHEMA_EVAL = ('{"ket_qua":"đạt|không đạt|cần làm rõ","bang_chung":"<trích HSDT>","trang":[1,3,...],'
                 '"do_tin":0.0,"ghi_chu":""}')
 _SCHEMA_EVAL_NA = ('{"ket_qua":"đạt|không đạt|cần làm rõ|không áp dụng","bang_chung":"<trích HSDT>",'
-                   '"trang":[...],"do_tin":0.0,"ghi_chu":""}')
+                   '"trang":[1,3,...],"do_tin":0.0,"ghi_chu":""}')
 
 
 def _vendor_block(vendor_ctx: Any | None, profile: Any | None) -> str:

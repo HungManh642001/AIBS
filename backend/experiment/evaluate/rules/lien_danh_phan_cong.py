@@ -118,7 +118,7 @@ def validate_bang_gia_chunk(d: dict[str, Any]) -> dict[str, Any]:
 def ttld_prompt(ttld_text: str) -> str:
     return (
         "[RULE:lien_danh_ttld]\n"
-        f"THỎA THUẬN LIÊN DANH (bóc từ ảnh):\n{ttld_text[:_TTLD_CAP]}\n\n"
+        f"THỎA THUẬN LIÊN DANH (bóc từ ảnh):\n{ttld_text}\n\n"
         + cot_block('{"thanh_vien":[{"ten":"...","mo_ta_cong_viec":"<nguyên văn>",'
                     '"neu_ro_hang_muc":true,"ty_le_khai":0.0}],"trang":[...],"ghi_chu":""}')
     )

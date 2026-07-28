@@ -88,7 +88,7 @@ async def extract(package_id: int, db: Session = Depends(get_db)):
     pdf_path = str(storage.abs_path(hsmt.file_path))
     workdir = str(storage.abs_path(f"{package_id}/rubric_work"))
     # Nguồn scan gói thầu (TBMT...) -> đường đa nguồn: bảng neo thấy mốc đóng/mở thầu từ TBMT.
-    scan_sources = [("Thông báo mời thầu", str(storage.abs_path(d.file_path)))
+    scan_sources = [("tbmt", str(storage.abs_path(d.file_path)))
                     for d in pkg.documents if d.loai == "TBMT"]
     log.info("[rubric] gói %s: bóc tiêu chí từ HSMT=%s (%d nguồn scan)",
              package_id, hsmt.file_path, len(scan_sources))

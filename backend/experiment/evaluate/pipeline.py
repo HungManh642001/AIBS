@@ -5,7 +5,6 @@ nhánh khác CLI. Đặt logic dựng EvalResult ở ĐÂY, cả hai gọi chung
 """
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from experiment.evaluate.cached_vision import CachedVision, CallCache
@@ -20,7 +19,8 @@ from experiment.evaluate.schema import (
 from experiment.evaluate.vendor_profile import detect_vendor_profile
 from experiment.evaluate.vision import VisionFn, default_vision_fn
 
-log = logging.getLogger("experiment.evaluate")
+from experiment.logger_config import setup_logger
+log = setup_logger('EVALUATE', 'evaluate.log')
 
 
 def _thanh_tieu_chi(v: Verdict) -> CriterionEval:

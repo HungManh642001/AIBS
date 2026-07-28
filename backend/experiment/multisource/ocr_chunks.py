@@ -15,8 +15,8 @@ log = logging.getLogger("experiment.multisource")
 
 SYS_OCR = (
     "Bạn đọc ẢNH một trang tài liệu mời thầu (scan, tiếng Việt). (1) BÓC TOÀN BỘ chữ thành text, "
-    "giữ chính xác số/ngày/giờ/đơn vị, KHÔNG bịa, KHÔNG tóm tắt; (2) gist: MỘT dòng liệt kê các "
-    "LOẠI thông tin trang này chứa (vd 'thời điểm đóng/mở thầu, địa điểm, chủ đầu tư'). Chỉ trả JSON."
+    "giữ chính xác số/ngày/giờ/đơn vị, KHÔNG bịa, KHÔNG tóm tắt. (2) gist: 2-3 dòng liệt kê các "
+    "LOẠI thông tin trạng thái chứa (vd 'thời điểm đóng/mở thầu, địa điểm, chủ đầu tư'). Chỉ trả JSON."
 )
 
 # nhãn người đọc cho section_path theo source_doc
@@ -24,7 +24,7 @@ _SECTION = {"tbmt": "Thông báo mời thầu"}
 
 
 def ocr_prompt() -> str:
-    return "[OCR] Trả JSON: {\"text\":\"<toàn bộ chữ trong ảnh>\",\"gist\":\"<1 dòng: các loại thông tin trang chứa>\"}"
+    return "[OCR] Trả JSON: {\"text\":\"<toàn bộ chữ trong ảnh>\", \"gist\":\"<2-3 dòng: các loại thông tin trang chứa>\"}"
 
 
 def validate_ocr(d: dict[str, Any]) -> dict[str, Any]:
@@ -64,13 +64,14 @@ async def ocr_scan_to_chunks(pdf_path: str, source_doc: str, vision_fn: Any | No
         if out.status != "ok":
             log.warning("[ocr] %s tr%d lỗi vision: %s", source_doc, page, out.error)
             continue
-        gist = str(out.data.get("gist", "") or "")  # 1 dòng/trang -> nuôi thẻ nguồn (summarize)
+        gist = str(out.data.get("gist", "") or "")
         for i, part in enumerate(_split_text(out.data.get("text", ""), max_chars)):
             chunks.append({
                 "chunk_id": f"{source_doc}-p{page}-{i}", "text": part,
                 "section_path": [section], "page_start": page, "page_end": page,
                 "node_type": "text", "group_hint": "unknown",
                 "source_doc": source_doc, "clause_id": "", "clause_doc": "",
-                "doc": source_doc, "page_gist": gist,
+                "doc": source_doc,
+                "page_gist": gist
             })
     return chunks

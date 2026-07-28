@@ -1,0 +1,11 @@
+# Repo dùng LF. Máy dev Windows / sync từ server hay đổi sang CRLF -> diff phình hàng chục nghìn
+# dòng chỉ vì line-ending, git blame vỡ. Ép LF trong git lẫn working tree.
+* text=auto eol=lf
+
+# Nhị phân: git không được đụng vào byte.
+*.woff2 binary
+*.docx  binary
+*.pdf   binary
+*.db    binary
+*.png   binary
+*.jpg   binary

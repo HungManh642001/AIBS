@@ -1,6 +1,6 @@
-"""Trích mã điều khoản (E-CDNT/E-BDL/Mục N) từ text tiêu chí — để neo vào query truy hồi.
+"""Trích mã điều khoản (A-CDNT/A-BDL/Mục N) từ text tiêu chí — để neo vào query truy hồi.
 
-Giá trị trong E-HSMT đánh khóa theo mã điều khoản (E-BDL: 'E-CDNT 18.2 | ...'); nhồi mã vào
+Giá trị trong A-HSMT đánh khóa theo mã điều khoản (A-BDL: 'A-CDNT 18.2 | ...'); nhồi mã vào
 query giúp BM25 khớp đúng dòng. Lấy cả mã đầy đủ ('18.2') lẫn mã lớn ('18') vì giá trị có thể
 nằm ở điều khoản con lân cận (vd tiêu chí trỏ 18.3 nhưng giá trị ở 18.2).
 """
@@ -9,9 +9,9 @@ from __future__ import annotations
 import re
 import unicodedata
 
-_RE_A = re.compile(r"(?:E-?CDNT|E-?BDL|Mục)\s*(\d+(?:\.\d+)?)", re.IGNORECASE)
-_RE_B = re.compile(r"(\d+(?:\.\d+)?)\s*E-?CDNT", re.IGNORECASE)
-_RE_FORM = re.compile(r"\bmau\s*(?:so\s*)?(\d+[a-z]?(?:\.\d+)*)\b")  # chạy trên text đã _norm; giữ số phụ '05c.1'
+_RE_A = re.compile(r"(?:A-?CDNT|A-?BDL|Mục)\s*(\d+(?:\.\d+)?)", re.IGNORECASE)
+_RE_B = re.compile(r"(\d+(?:\.\d+)?)\s*A-?CDNT", re.IGNORECASE)
+_RE_FORM = re.compile(r"\bmau\s*(?:so\s*)?(\d+[a-z]?(?:\.\d+)*)\b")  # chạy trên text đã _norm
 
 
 def _norm(s: str) -> str:
@@ -33,10 +33,11 @@ def extract_clause_refs(text: str) -> list[str]:
 
 
 def extract_form_refs(text: str) -> list[str]:
-    """-> mã mẫu ('01', '04a', '05c.1') từ 'Mẫu số 01'/'mẫu 05C.1' — định tuyến need vào Biểu mẫu."""
+    """-> mã mẫu ('01', '04a') từ 'Mẫu số 01'/'mẫu 04A' — định tuyến need vào chunk Biểu mẫu."""
+    from experiment.index.schema import norm_form_id
     out: list[str] = []
     for m in _RE_FORM.finditer(_norm(text)):
-        v = m.group(1)
+        v = norm_form_id(m.group(1))
         if v not in out:
             out.append(v)
     return out

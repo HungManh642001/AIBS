@@ -24,7 +24,6 @@ Hai bất biến của cache:
 from __future__ import annotations
 
 import hashlib
-import logging
 from typing import Any, Protocol
 
 import fitz  # PyMuPDF
@@ -39,11 +38,12 @@ from experiment.evaluate.schema import (
 )
 from experiment.evaluate.vision import VisionFn, page_to_png
 
-log = logging.getLogger("experiment.evaluate")
+from experiment.logger_config import setup_logger
+log = setup_logger('EVALUATE', 'evaluate.log')
 
 # dpi render PDF -> ảnh. Là MỘT NGUỒN SỰ THẬT: nơi băm khóa cache (router) phải dùng đúng giá trị
 # ingest dùng, lệch một chút là cache không bao giờ hit mà không có lỗi nào báo ra.
-DPI_MAC_DINH = 300
+DPI_MAC_DINH = 200
 TRICH_VERSION = "t2"    # đổi khi sửa logic trích -> khóa cache đổi, không ăn lại text cách cũ
 _MAX_TOKENS_INGEST = 8192   # trang bảng dày chạm trần là model tự kết thúc sớm -> THIẾU DÒNG
 

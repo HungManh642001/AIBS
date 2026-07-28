@@ -139,8 +139,8 @@ def validate_uy_quyen(d: dict[str, Any]) -> dict[str, Any]:
 def chu_ky_prompt(don_text: str, dkkd_text: str) -> str:
     return (
         "[RULE:chu_ky_khop_dkkd]\n"
-        f"ĐƠN DỰ THẦU (bóc từ ảnh):\n{don_text[:_DOC_CAP]}\n\n"
-        f"GIẤY ĐĂNG KÝ KINH DOANH (ĐKKD, bóc từ ảnh):\n{dkkd_text[:_DOC_CAP]}\n\n"
+        f"ĐƠN DỰ THẦU (bóc từ ảnh):\n{don_text}\n\n"
+        f"GIẤY ĐĂNG KÝ KINH DOANH (ĐKKD, bóc từ ảnh):\n{dkkd_text}\n\n"
         + cot_block('{"ket_qua":"đạt|không đạt|cần làm rõ","nguoi_ky":"...","dai_dien_phap_luat":"...",'
                     '"nha_thau_don":"<pháp nhân ký đơn>","doanh_nghiep_dkkd":"<pháp nhân ĐKKD>",'
                     '"phap_nhan_khop":true,"bang_chung":"<trích 2 phía>","trang":[...],'
@@ -160,7 +160,7 @@ def uy_quyen_prompt(guq_text: str, nguoi_ky: str, dai_dien: str, nha_thau_don: s
         f"NHÀ THẦU ĐỨNG TÊN KÝ ĐƠN DỰ THẦU: {nha_thau_don or '(không rõ)'}\n"
         f"NGƯỜI KÝ ĐƠN DỰ THẦU: {nguoi_ky or '(không rõ)'}\n"
         f"ĐẠI DIỆN PHÁP LUẬT (theo ĐKKD): {dai_dien or '(không rõ)'}\n"
-        f"GIẤY ỦY QUYỀN (bóc từ ảnh):\n{guq_text[:_DOC_CAP]}\n\n"
+        f"GIẤY ỦY QUYỀN (bóc từ ảnh):\n{guq_text}\n\n"
         + cot_block(_SCHEMA_UY_QUYEN)
     )
 
@@ -169,8 +169,8 @@ def uy_quyen_khong_dkkd_prompt(don_text: str, guq_text: str) -> str:
     return (
         "[RULE:chu_ky_uy_quyen_khong_dkkd]\n"
         "LƯU Ý: HSDT KHÔNG có ĐKKD — chỉ xét người ký đơn ↔ người được ủy quyền và phạm vi.\n"
-        f"ĐƠN DỰ THẦU (bóc từ ảnh):\n{don_text[:_DOC_CAP]}\n\n"
-        f"GIẤY ỦY QUYỀN (bóc từ ảnh):\n{guq_text[:_DOC_CAP]}\n\n"
+        f"ĐƠN DỰ THẦU (bóc từ ảnh):\n{don_text}\n\n"
+        f"GIẤY ỦY QUYỀN (bóc từ ảnh):\n{guq_text}\n\n"
         + cot_block(_SCHEMA_UY_QUYEN)
     )
 

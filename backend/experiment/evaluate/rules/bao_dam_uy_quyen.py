@@ -30,7 +30,7 @@ SYS_RULE_BAO_DAM = (
     "Bạn là chuyên gia chấm thầu. Đọc THƯ BẢO LÃNH DỰ THẦU (kèm mô tả chữ ký/con dấu đã bóc từ "
     "ảnh) và thẩm định THẨM QUYỀN người ký: (1) xác định NGƯỜI KÝ và CHỨC DANH; (2) nếu chức danh "
     "là người đứng đầu tổ chức phát hành (Tổng giám đốc, Giám đốc, Chủ tịch) -> 'đạt'; (3) nếu "
-    "KHÁC (phó giám đốc, giám đốc/phó giám đốc chi nhánh, trưởng phòng...) -> BẮT BUỘC có GIẤY ỦY "
+    "KHÁC (phó giám đốc, giám đốc chi nhánh, phó giám đốc chi nhánh, trưởng phòng...) -> BẮT BUỘC có GIẤY ỦY "
     "QUYỀN scan trong cùng tài liệu, và phải thỏa CẢ HAI: người được ủy quyền ĐÚNG là người ký; "
     "nội dung/phạm vi ủy quyền bao gồm việc KÝ thư bảo lãnh/bảo đảm dự thầu -> 'đạt', thiếu hoặc "
     "sai một trong hai -> 'không đạt'; không có giấy ủy quyền -> 'không đạt'. 'cần làm rõ' khi "
@@ -58,10 +58,10 @@ def validate_bao_dam(d: dict[str, Any]) -> dict[str, Any]:
 def bao_dam_prompt(bao_dam_text: str) -> str:
     return (
         "[RULE:chu_ky_bao_dam_uy_quyen]\n"
-        f"BẢO ĐẢM DỰ THẦU (bóc từ ảnh, GUQ nếu có nằm cùng file):\n{bao_dam_text[:_DOC_CAP]}\n\n"
+        f"BẢO ĐẢM DỰ THẦU (bóc từ ảnh, GUQ nếu có nằm cùng file):\n{bao_dam_text}\n\n"
         + cot_block('{"ket_qua":"đạt|không đạt|cần làm rõ","nguoi_ky":"...","chuc_danh":"...",'
                     '"co_uy_quyen":false,"bang_chung":"<trích người ký/chức danh/câu ủy quyền>",'
-                    '"trang":[...],"do_tin":0.0,"ghi_chu":""}')
+                    '"trang":[1, 3,...],"do_tin":0.0,"ghi_chu":""}')
     )
 
 

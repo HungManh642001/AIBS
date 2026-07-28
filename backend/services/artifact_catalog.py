@@ -7,12 +7,12 @@ import unicodedata
 CATALOG: dict[str, dict] = {
     "don_du_thau": {
         "label": "Đơn dự thầu", "nhom": "hop_le",
-        "mo_ta": "Đơn dự thầu theo mẫu, có chữ ký và đóng dấu hợp lệ.",
+        "mo_ta": "Đơn dự thầu, chứa nội dung tư cách hợp lệ.",
         "aliases": ["đơn dự thầu", "don du thau", "mẫu số 01", "đơn xin dự thầu"],
     },
     "bao_dam_du_thau": {
         "label": "Bảo đảm dự thầu", "nhom": "hop_le",
-        "mo_ta": "Thư bảo lãnh ngân hàng hoặc đặt cọc bảo đảm dự thầu.",
+        "mo_ta": "Thư bảo lãnh ngân hàng hoặc Bảo đảm dự thầu.",
         "aliases": ["bảo đảm dự thầu", "bao dam du thau", "thư bảo lãnh", "thu bao lanh", "bảo lãnh dự thầu"],
     },
     "thoa_thuan_lien_danh": {
@@ -33,7 +33,7 @@ CATALOG: dict[str, dict] = {
     },
     "bao_cao_tai_chinh": {
         "label": "Báo cáo tài chính", "nhom": "nang_luc",
-        "mo_ta": "Báo cáo tài chính các năm gần nhất.", "aliases": ["báo cáo tài chính", "bctc", "bao cao tai chinh"],
+        "mo_ta": "Báo cáo tài chính.", "aliases": ["báo cáo tài chính", "bctc", "bao cao tai chinh"],
     },
     "hop_dong_tuong_tu": {
         "label": "Hợp đồng tương tự", "nhom": "nang_luc",
@@ -41,11 +41,11 @@ CATALOG: dict[str, dict] = {
     },
     "ke_khai_nhan_su": {
         "label": "Kê khai nhân sự", "nhom": "nang_luc",
-        "mo_ta": "Nhân sự chủ chốt, CV, chứng chỉ.", "aliases": ["nhân sự chủ chốt", "ke khai nhan su", "cv nhân sự"],
+        "mo_ta": "Kê khai nhân sự chủ chốt.", "aliases": ["nhân sự chủ chốt", "ke khai nhan su", "cv nhân sự"],
     },
     "ke_khai_thiet_bi": {
         "label": "Kê khai thiết bị", "nhom": "nang_luc",
-        "mo_ta": "Thiết bị, máy móc huy động.", "aliases": ["kê khai thiết bị", "thiết bị máy móc", "ke khai thiet bi"],
+        "mo_ta": "Kê khai thiết bị, máy móc huy động.", "aliases": ["kê khai thiết bị", "thiết bị máy móc", "ke khai thiet bi"],
     },
     "de_xuat_ky_thuat": {
         "label": "Đề xuất kỹ thuật", "nhom": "ky_thuat",
@@ -57,11 +57,11 @@ CATALOG: dict[str, dict] = {
     },
     "bang_gia": {
         "label": "Bảng giá dự thầu", "nhom": "tai_chinh",
-        "mo_ta": "Bảng chào giá chi tiết.", "aliases": ["bảng giá", "bang gia", "biểu giá", "chào giá"],
+        "mo_ta": "Bảng chào giá chi tiết, Bảng giá dự thầu.", "aliases": ["bảng giá", "bang gia", "biểu giá", "chào giá"],
     },
     "webform": {
         "label": "Webform / Kết quả mở thầu", "nhom": "tai_chinh",
-        "mo_ta": "Kết quả mở thầu trên hệ thống — giá dự thầu của MỌI nhà thầu (dùng chung cả gói).",
+        "mo_ta": "Webform / Kết quả mở thầu trên hệ thống — giá dự thầu của MỌI nhà thầu (dùng chung cả gói).",
         "aliases": ["webform", "web form", "kết quả mở thầu", "biên bản mở thầu",
                     "ket qua mo thau", "danh sách nhà thầu tham dự"],
         "dung_chung": True,

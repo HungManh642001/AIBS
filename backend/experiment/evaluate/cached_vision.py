@@ -20,13 +20,13 @@ Muốn model làm lại từ đầu thì xóa cache (endpoint DELETE .../cache) 
 from __future__ import annotations
 
 import hashlib
-import logging
 from typing import Any, Protocol
 
 from config import get_settings
 from services.ai_client import AiOutcome
 
-log = logging.getLogger("experiment.evaluate")
+from experiment.logger_config import setup_logger
+log = setup_logger('EVALUATE', 'evaluate.log')
 
 MODEL_CACHE = "cache"    # AiOutcome.model khi dữ liệu lấy từ cache (audit: không phải call mới)
 

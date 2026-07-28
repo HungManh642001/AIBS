@@ -61,7 +61,7 @@ function VerdictTable({ verdicts, files, onOverride }: {
       scroll={{ x: 1020 }}
       columns={[
         {
-          title: "Nội dung kiểm tra", width: 230,
+          title: "Nội dung kiểm tra", width: 160,
           render: (_, v) => (
             <div>
               <div style={{ fontWeight: 600 }}>{v.noi_dung_kiem_tra}</div>
@@ -72,15 +72,15 @@ function VerdictTable({ verdicts, files, onOverride }: {
           ),
         },
         {
-          title: "Yêu cầu", width: 230,
+          title: "Yêu cầu", width: 160,
           render: (_, v) => (
             <div>
-              <div style={{ fontWeight: 600 }}>{v.yeu_cau}</div>
+              <div>{v.yeu_cau || <span style={{ color: "var(--ink-muted)" }}>—</span>}</div>
             </div>
           ),
         },
         {
-          title: "Chuẩn theo HSMT", width: 210,
+          title: "Chuẩn theo HSMT", width: 250,
           render: (_, v) => (
             <div>
               <div>{v.thong_tin_bo_sung || <span style={{ color: "var(--ink-muted)" }}>—</span>}</div>
@@ -93,7 +93,7 @@ function VerdictTable({ verdicts, files, onOverride }: {
           ),
         },
         {
-          title: "Kết quả", width: 120,
+          title: "Kết quả", width: 125,
           render: (_, v) => (
             <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap" }}>
               <Select
@@ -107,7 +107,7 @@ function VerdictTable({ verdicts, files, onOverride }: {
         {
           // Độ tin gộp vào đây thay vì đứng cột riêng: nó là thuộc tính CỦA bằng chứng, tách ra
           // vừa tốn 66px vừa bắt mắt nhảy ngang để ghép lại hai thứ vốn đi cùng nhau.
-          title: "Bằng chứng trong HSDT", width: 300,
+          title: "Bằng chứng trong HSDT", width: 280,
           render: (_, v) => (
             <div>
               <div>{v.bang_chung || <span style={{ color: "var(--ink-muted)" }}>—</span>}</div>
@@ -119,10 +119,10 @@ function VerdictTable({ verdicts, files, onOverride }: {
           ),
         },
         {
-          title: "Ghi chú", width: 220,
+          title: "Ghi chú", width: 200,
           render: (_, v) => (
             <Input.TextArea
-              size="small" autoSize={{ minRows: 1, maxRows: 4 }} defaultValue={v.ghi_chu}
+              size="small" autoSize={{ minRows: 1, maxRows: 10 }} defaultValue={v.ghi_chu}
               placeholder="Nhận định của bạn…"
               onBlur={(e) => {
                 if (e.target.value !== v.ghi_chu) onOverride(v.id, { ghi_chu: e.target.value });
@@ -160,6 +160,16 @@ function HinhThucBanner({ v }: { v: VendorEval }) {
         Hình thức dự thầu:{" "}
         <b style={{ color: "var(--ink)" }}>{p.hinh_thuc || "không rõ"}</b>
       </span>
+      {p.bang_chung && (
+        <div style={{ fontSize: "var(--fs-label)", color: "var(--ink-muted)" }}>“{p.bang_chung}”</div>
+      )}
+      {p.mau_thuan && (
+        <div style={{ marginTop: "var(--sp-2)", padding: "var(--sp-2) var(--sp-3)", borderRadius: 6,
+                      background: "var(--partial-bg)", color: "var(--partial)", fontSize: "var(--fs-body)" }}>
+          <b>Mâu thuẫn hình thức dự thầu.</b> {p.ghi_chu}. Các nội dung dành cho liên danh vẫn được
+          chấm đầy đủ — hãy xác minh trước khi kết luận.
+        </div>
+      )}
     </div>
   );
 }
@@ -197,8 +207,6 @@ function VendorSection({ v, onOverride }: {
                 <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)" }}>
                   <ResultPill kq={c.ket_qua} />
                   <span style={{ fontWeight: 600 }}>{c.ten}</span>
-                  {/* Trọng số ngang tiêu chí HSMT, nhưng phải thấy được căn cứ đến từ đâu:
-                      HSMT yêu cầu hay hệ thống tự kiểm — nhất là khi nó kéo "bị loại". */}
                   {c.nhom === "phat_hien_bo_sung" && <Tag color="blue">Hệ thống tự kiểm</Tag>}
                 </div>
               ),
@@ -215,6 +223,7 @@ function VendorSection({ v, onOverride }: {
             }))}
           />
         )}
+
       </div>
     </div>
   );
@@ -328,13 +337,13 @@ function SummaryTable({ vendors, onOpen }: { vendors: VendorEval[]; onOpen: (vid
           render: (_, v) => <span style={{ color: "var(--ink-muted)" }}>{v.hinh_thuc || v.vendor_profile?.hinh_thuc || "—"}</span> },
         /* Máy KHÔNG kết luận loại/không loại — chỉ nêu trạng thái để chuyên gia tự quyết. */
         { title: "Trạng thái", width: 150, render: (_, v) =>
-            v.criteria.length === 0
-              ? <Tag>Chưa chấm</Tag>
-              : v.summary.n_khong_dat > 0
-                ? <Tag color="volcano">Có tiêu chí không đạt</Tag>
-                : v.summary.n_can_lam_ro > 0
-                  ? <Tag color="orange">Cần làm rõ</Tag>
-                  : <Tag color="green">Đạt toàn bộ</Tag> },
+          v.criteria.length === 0
+            ? <Tag>Chưa chấm</Tag>
+            : v.summary.n_khong_dat > 0
+              ? <Tag color="volcano">Có tiêu chí không đạt</Tag>
+              : v.summary.n_can_lam_ro > 0
+                ? <Tag color="orange">Cần làm rõ</Tag>
+                : <Tag color="green">Đạt toàn bộ</Tag> },
         { title: "Đạt", width: 70, align: "center", render: (_, v) => v.summary.n_dat },
         { title: "Không đạt", width: 100, align: "center",
           render: (_, v) => v.summary.n_khong_dat > 0

@@ -14,6 +14,9 @@ from config import get_settings
 from services.ai_client import AiOutcome  # read-only reuse
 from services.json_utils import extract_json
 
+from experiment.logger_config import setup_logger
+log = setup_logger('EVALUATE', 'evaluate.log')
+
 VisionFn = Callable[..., Awaitable[AiOutcome]]
 
 
@@ -58,7 +61,6 @@ async def default_vision_fn(
 
     import litellm
 
-
     model = settings.ai_model
     if "/" not in model:
         model = f"openai/{model}"
@@ -79,6 +81,7 @@ async def default_vision_fn(
                 timeout=300,
             )
             data = extract_json(resp["choices"][0]["message"]["content"])
+            log.info(f"VISION: {data}")
             if validate is not None:
                 data = validate(data)
             return AiOutcome(status="ok", data=data, model=settings.ai_model,

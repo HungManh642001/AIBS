@@ -15,7 +15,8 @@ from experiment.evaluate.rules.registry import RuleRegistry, default_registry
 from experiment.evaluate.schema import PackageContext, VendorContext, result_to_json
 from experiment.evaluate.vendor_profile import canon_hinh_thuc
 
-log = logging.getLogger("experiment.evaluate")
+from experiment.logger_config import setup_logger
+log = setup_logger('EVALUATE', 'evaluate.log')
 
 
 def _parse_vendor(spec: str, hinh_thuc: str = "") -> VendorContext | None:
@@ -86,8 +87,7 @@ def main(argv: list[str] | None = None) -> int:
                     help='gói thầu đang xét "Tên gói[|Mã số]" — luật tên gói thầu cần')
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args(argv)
-    logging.basicConfig(level=logging.WARNING if args.quiet else logging.INFO,
-                        format="%(message)s", stream=sys.stderr)
+
     files: list[tuple[str, str, bytes]] = []
     for spec in args.hsdt:
         if "=" not in spec:

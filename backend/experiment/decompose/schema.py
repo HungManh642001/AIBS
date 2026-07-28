@@ -1,9 +1,4 @@
-"""Schema đầu ra bước phân rã (experiment-local, output phẳng).
-
-Bỏ CriterionDetailModel/sub_checks máy-so-sánh: Qwen3 tự đánh giá thông số, không cần code.
-Mỗi tiêu chí: nhom, ten (nhãn ngắn), yeu_cau_goc, hsdt_can_kiem_tra,
-noi_dung_can_kiem_tra[{noi_dung_kiem_tra, hsdt_kiem_tra, yeu_cau, can_lam_ro, thong_tin_bo_sung, nguon, can_review}].
-"""
+"""Schema đầu ra bước phân rã (experiment-local, output phẳng)."""
 from __future__ import annotations
 
 import unicodedata
@@ -45,26 +40,20 @@ class NoiDungKiemTra(_Base):
     can_lam_ro: str = ""          # Thông tin cần làm rõ (chưa rõ trong yeu_cau); '' nếu không
     can_tra_cuu: bool = False     # = (can_lam_ro != '') -> step 3 tra cứu
     thong_tin_bo_sung: str = ""   # (step 3) chuẩn ĐÃ RESOLVE, tự đủ, có quan hệ so sánh
-    nguon: str = ""               # (step 3) mã điều khoản nguồn (E-BDL/E-CDNT), cho audit
+    nguon: str = ""               # (step 3) mã điều khoản nguồn (A-BDL/A-CDNT), cho audit
     can_review: bool = False      # (step 3) True nếu can_tra_cuu mà tra không ra (KHÔNG bịa)
-    doi_chieu_hsdt: bool = False  # (step 3) True nếu thông tin THUỘC hồ sơ nhà thầu -> chấm trực tiếp
     ap_dung: str = ""             # áp dụng cho ai: ''=mọi nhà thầu | 'lien_danh' | 'doc_lap'
 
 
 class ResolvedInfo(_Base):
-    """Output step search (resolve 1 need): thông tin bổ sung đã tra + nguồn, hoặc cần review.
-
-    thuoc_hsdt: escape — thông tin cần làm rõ THUỘC hồ sơ nhà thầu nộp (không có trong HSMT)
-    -> need chuyển 'đối chiếu trực tiếp trên HSDT', không phải lỗi tra cứu.
-    """
+    """Output step search (resolve 1 need): thông tin bổ sung đã tra + nguồn, hoặc cần review."""
     thong_tin_bo_sung: str = ""
     nguon: str = ""
     can_review: bool = False
-    thuoc_hsdt: bool = False
 
 
 class QueryOut(_Base):
-    """Output step search (sinh query 1 need). nguon_goi_y: mã nguồn tài liệu NÊN tra (route mềm)."""
+    """Output step search (sinh query 1 need)."""
     query: str = ""
     nguon_goi_y: list[Any] = []
 
@@ -98,18 +87,8 @@ def validate_criterion(d: dict[str, Any]) -> dict[str, Any]:
     return CriterionModel(**d).model_dump()
 
 
-def _unwrap_query(d: dict[str, Any]) -> dict[str, Any]:
-    """Qwen có lúc bọc kết quả trong khóa con (vd 'result') -> lấy dict con chứa 'query'."""
-    if str(d.get("query") or "").strip():
-        return d
-    for v in d.values():
-        if isinstance(v, dict) and str(v.get("query") or "").strip():
-            return v
-    return d
-
-
 def validate_query(d: dict[str, Any]) -> dict[str, Any]:
-    return QueryOut(**_unwrap_query(d)).model_dump()
+    return QueryOut(**d).model_dump()
 
 
 def validate_resolved_value(d: dict[str, Any]) -> dict[str, Any]:

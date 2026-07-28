@@ -77,7 +77,7 @@ def run(pdf_path: str, out_dir: str) -> dict:
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description="Chunk HSMT PDF-text phân cấp")
-    ap.add_argument("--pdf", default="experiment/samples/E-HSMT.pdf", help="đường dẫn HSMT PDF-text")
+    ap.add_argument("--pdf", default="experiment/samples/A-HSMT.pdf", help="đường dẫn HSMT PDF-text")
     ap.add_argument("--out", default="experiment/out", help="thư mục artefact")
     args = ap.parse_args(argv)
     metrics = run(args.pdf, args.out)

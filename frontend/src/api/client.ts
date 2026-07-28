@@ -1,6 +1,9 @@
 import axios from "axios";
 
-export const api = axios.create({ baseURL: "http://localhost:8000/api/v1" });
+const hostname = typeof window !== "undefined" ? window.location.hostname : "localhost";
+const baseURL = `http://${hostname}:8000/api/v1`;
+
+export const api = axios.create({ baseURL });
 
 // Backend trả lỗi nghiệp vụ kèm mã HTTP 4xx/5xx -> axios ném trước khi unwrap() kịp chạy, khiến UI
 // hiện "Request failed with status code 415" thay vì câu tiếng Việt. Đổi message về đúng envelope.

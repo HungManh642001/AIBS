@@ -32,7 +32,7 @@ _MAX_TOKENS = 4096
 
 SYS_RULE_BANG_GIA = (
     "Bạn là chuyên gia chấm thầu. Đối chiếu GIÁ trong BẢNG CHÀO GIÁ của nhà thầu với GIÁ của "
-    "CHÍNH nhà thầu đó trên WEBFORM (kết quả mở thầu). ket_qua: 'đạt' nếu giá khớp; 'không đạt' "
+    "CHÍNH nhà thầu đó trên WEBFORM (giá trên WEBFORM đã bao gồm VAT). ket_qua: 'đạt' nếu giá khớp; 'không đạt' "
     "nếu lệch (nêu rõ 2 con số); 'cần làm rõ' nếu không đọc được giá một trong hai phía — "
     "TUYỆT ĐỐI KHÔNG bịa số. bang_chung: trích giá CẢ HAI phía kèm trang từng tài liệu.\n"
     "CẢNH BÁO: WEBFORM là bảng liệt kê NHIỀU nhà thầu. CHỈ đọc dòng của nhà thầu đang chấm (khớp "
@@ -51,10 +51,10 @@ def bang_gia_prompt(bang_gia_text: str, webform_text: str, ctx: VendorContext,
         "[RULE:bang_gia_khop_webform]\n"
         f"NHÀ THẦU ĐANG CHẤM: {ctx.ten}{mst}\n"
         f"{goc}{hoi}\n"
-        f"BẢNG CHÀO GIÁ của nhà thầu (bóc từ ảnh):\n{bang_gia_text[:_DOC_CAP]}\n\n"
-        f"WEBFORM — các trang chứa nhà thầu này (đã lọc):\n{webform_text[:_DOC_CAP]}\n\n"
+        f"BẢNG CHÀO GIÁ của nhà thầu (bóc từ ảnh):\n{bang_gia_text}\n\n"
+        f"WEBFORM — các trang chứa nhà thầu này (đã lọc):\n{webform_text}\n\n"
         + cot_block('{"ket_qua":"đạt|không đạt|cần làm rõ","bang_chung":"<giá 2 phía + trang>",'
-                    '"trang":[...],"do_tin":0.0,"ghi_chu":""}')
+                    '"trang":[1,3,...],"do_tin":0.0,"ghi_chu":""}')
     )
 
 

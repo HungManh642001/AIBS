@@ -13,8 +13,11 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
+import pickle
+import os
 
-log = logging.getLogger("experiment.decompose")
+from experiment.logger_config import setup_logger
+log = setup_logger('DECOMPOSE', 'decompose.log')
 
 from config import get_settings
 
@@ -23,15 +26,17 @@ from experiment.decompose.llm import default_llm_fn
 from experiment.decompose.retrieval import open_disk_index
 from experiment.decompose.schema import DecomposeResult, GroupDecomposition, result_to_json
 from experiment.decompose.workflow import DecomposeWorkflow
+from experiment.index.build_index import _DEFAULT_NODES
 
-_DEFAULT_GROUPS = "out/chuong3_groups.json"
-_DEFAULT_DB = "out/qdrant"
-_DEFAULT_OUT = "out"
-_DEFAULT_CHUNKS = "out/chunks.jsonl"
-_DEFAULT_SUMMARIES = "out/source_summaries.json"
-# Tóm tắt tĩnh cho HSMT (nguồn chính, pdf-text) — mục danh mục route khi corpus đa nguồn.
-_HSMT_SUMMARY = ("Hồ sơ mời thầu chính: chỉ dẫn nhà thầu E-CDNT, bảng dữ liệu E-BDL, "
-                 "tiêu chuẩn, biểu mẫu, yêu cầu kỹ thuật")
+_DEFAULT_GROUPS = "experiment/out/chuong3_groups.json"
+_DEFAULT_DB = "experiment/out/qdrant"
+_DEFAULT_OUT = "experiment/out"
+_DEFAULT_CHUNKS = "experiment/out/chunks.jsonl"
+_DEFAULT_SUMMARIES = "experiment/out/source_summaries.json"
+_HSMT_SUMMARY = ("Hồ sơ mời thầu chính: gồm nội dung chỉ dẫn nhà thầu A-CDNT; bảng dữ liệu mời thầu A-BDL (gồm một số thông tin dữ liệu yêu cầu về gói thầu); "
+                 "tiêu chuẩn đánh giá; quy đinh hình thức, nội dung các biểu mẫu, hợp đồng; yêu cầu kỹ thuật")
+
+os.environ["OPENAI_API_KEY"] = "mock-key-b25-llamaindex-retriever"
 
 
 def _read_chunks(chunks_path: str | None) -> list[dict[str, Any]]:
@@ -49,7 +54,7 @@ def _load_bdl_rows(chunks_path: str | None) -> list[dict[str, Any]]:
 
 
 def _load_scan_texts(chunks_path: str | None) -> dict[str, str]:
-    """chunks.jsonl -> {source_doc: nguyên văn} các nguồn NGOÀI hsmt (phụ lục nguồn scan nhỏ)."""
+    """chunks.jsonl -> {source_doc: nguyên văn} các nguồn NGOÀI hsmt"""
     out: dict[str, list[str]] = {}
     for c in _read_chunks(chunks_path):
         src = c.get("source_doc") or "hsmt"
@@ -59,7 +64,7 @@ def _load_scan_texts(chunks_path: str | None) -> dict[str, str]:
 
 
 def _fmt_summary(v: Any) -> str:
-    """Giá trị summaries -> chuỗi hiển thị: thẻ {tom_tat, cac_truong} phẳng hoá; chuỗi giữ nguyên."""
+    """Giá trị summaries -> chuỗi hiển thị: thẻ {tom_tat, cac_truong} phẳng hóa; chuỗi giữ nguyên"""
     if isinstance(v, dict):
         tom_tat = str(v.get("tom_tat", "") or "").strip()
         truong = [s for s in (str(t).strip() for t in (v.get("cac_truong") or [])) if s]
@@ -70,14 +75,12 @@ def _fmt_summary(v: Any) -> str:
 
 
 def _load_form_texts(chunks_path: str | None) -> dict[str, str]:
-    """chunks.jsonl -> {mã mẫu: nguyên văn TRỌN mẫu} cho phụ lục resolve của need 'đúng mẫu số N'.
+    """chunks.jsonl -> {mã mẫu: nguyên văn TRỌN BỘ} cho phụ lục resolve của need 'đúng mẫu sô N'
 
-    Mẫu (text + bảng) bị chunk tách nhiều mảnh mà CHỈ mảnh đầu mang từ khóa 'Mẫu số X'
-    (tên mẫu không phải heading -> không vào section_path) -> retrieve trượt phần bảng.
-    Vá bằng quét TUẦN TỰ: chunk Biểu mẫu có marker -> mở mẫu mới; không marker -> KẾ THỪA
-    mẫu đang mở; chunk ngoài chương Biểu mẫu -> reset.
+    Chunk con của sub-form (05C.1) thường tham chiếu parent (05C). Logic KHÔNG cho phép
+    current revert từ sub-form về parent: nếu detected < current (prefix ngắn hơn) => giữ current.
     """
-    from experiment.index.schema import form_id_of, is_form_chunk  # tái dùng detector của index
+    from experiment.index.schema import form_id_of, is_form_chunk
 
     out: dict[str, list[str]] = {}
     current = ""
@@ -85,24 +88,28 @@ def _load_form_texts(chunks_path: str | None) -> dict[str, str]:
         if not is_form_chunk(c):
             current = ""
             continue
-        current = form_id_of(c) or current
+        detected = form_id_of(c)
+        if detected:
+            # Chỉ đổi form khi ID mới khác VÀ KHÔNG là parent của current
+            # vd: current=05c.1, detected=05c -> giữ 05c.1 (05c là parent)
+            # vd: current=05c, detected=06 -> đổi 06 (khác hẳn)
+            # vd: current=05c, detected=05c.1 -> đổi 05c.1 (child mới)
+            if detected != current and (not current or not current.startswith(detected)):
+                current = detected
         if current and (c.get("text") or "").strip():
             out.setdefault(current, []).append(c["text"])
     return {k: "\n".join(v) for k, v in out.items()}
 
 
 def _load_summaries(path: str | None) -> dict[str, str]:
-    """source_summaries.json -> {source_doc: tóm tắt} (bỏ entry rỗng; file người sửa tay ĐƯỢC ưu tiên).
-
-    Giá trị nhận cả 2 dạng: chuỗi (cũ/sửa tay nhanh) hoặc thẻ {tom_tat, cac_truong} (summarize mới).
-    """
+    """source_summarires.json -> {source_doc: tóm tắt}"""
     if not path:
         return {}
     p = Path(path)
     if not p.exists():
         return {}
     data = json.loads(p.read_text(encoding="utf-8"))
-    out = {str(k): _fmt_summary(v) for k, v in data.items()}
+    out =  {str(k): _fmt_summary(v) for k, v in data.items()}
     return {k: v for k, v in out.items() if v}
 
 
@@ -118,7 +125,7 @@ def _to_markdown(r: DecomposeResult) -> str:
         )
         for c in g.criteria:
             nds = c.get("noi_dung_can_kiem_tra", [])
-            flag = " ⚠️cần soi" if (any(n.get("can_review") for n in nds) or c.get("loi_ai")) else ""
+            flag = " ⚠️cần review" if (any(n.get("can_review") for n in nds) or c.get("loi_ai")) else ""
             lines.append(f"- **{c.get('ten')}** ({c.get('nhom')}){flag}")
             if c.get("yeu_cau_goc"):
                 lines.append(f"    - yêu cầu gốc: {c.get('yeu_cau_goc')}")
@@ -129,10 +136,8 @@ def _to_markdown(r: DecomposeResult) -> str:
                     val = n["thong_tin_bo_sung"]
                     if n.get("nguon"):
                         val += f" [nguồn: {n['nguon']}]"
-                elif n.get("doi_chieu_hsdt"):
-                    val = "(đối chiếu trực tiếp trên HSDT)"
                 elif n.get("can_review"):
-                    val = "⚠️cần soi"
+                    val = "⚠️cần review"
                 elif n.get("can_tra_cuu"):
                     val = f"(cần tra cứu: {n.get('can_lam_ro', '')})"
                 else:
@@ -159,9 +164,7 @@ async def run(
 ) -> dict[str, Any]:
     """Phân rã 4 nhóm; ghi decomposition.json/.md + report; trả metrics.
 
-    chunks_path (tùy chọn): chunks.jsonl -> dòng E-BDL (phụ lục resolve) + nguyên văn nguồn scan.
-    summaries_path (tùy chọn): source_summaries.json -> danh mục {nguồn: tóm tắt} bật route mềm
-    theo nguồn ở step 3 (chỉ bật khi corpus THẬT SỰ đa nguồn — có chunk ngoài hsmt).
+    chunks_path (tùy chọn): chunks.jsonl để nạp dòng A-BDL làm phụ lục resolve (recall tất định).
     """
     settings = settings or get_settings()
     gp = Path(groups_path)
@@ -171,29 +174,46 @@ async def run(
 
     bdl_rows = _load_bdl_rows(chunks_path)
     if chunks_path:
-        log.info("Phụ lục E-BDL: %d dòng (từ %s)", len(bdl_rows), chunks_path)
+        log.info("Phụ lục A-BDL: %d dòng (từ %s)", len(bdl_rows), chunks_path)
 
     scan_texts = _load_scan_texts(chunks_path)
     sources: dict[str, str] | None = None
-    if scan_texts:  # chỉ bật route khi corpus đa nguồn; đơn nguồn giữ NGUYÊN hành vi cũ
+    if scan_texts:
         summaries = _load_summaries(summaries_path)
         sources = {"hsmt": _HSMT_SUMMARY}
         for s in scan_texts:
-            sources[s] = summaries.get(s) or s  # thiếu tóm tắt -> dùng mã nguồn (không bịa)
-        log.info("Danh mục nguồn route: %s", list(sources))
+            sources[s] = summaries.get(s) or s
+        log.info(f"Danh mục nguồn route: {list(sources)}")
+
+    form_texts = _load_form_texts(chunks_path)
+    # log.info(f"[FORM TEXT]: {form_texts}")
+    # log.info(f"[FORM TEXT]: {form_texts.get('02')}")
 
     llm_fn = llm_fn or default_llm_fn
-
+    
     # Bảng neo gói thầu (hướng A): 1 call/run trích mốc chung -> mọi RESOLVE tự đủ.
     anchors: dict[str, dict[str, str]] = {}
     if bdl_rows or scan_texts:
         anchors = await build_anchors(llm_fn, bdl_rows, scan_texts)
         if anchors:
             log.info("Bảng neo gói thầu: %s", list(anchors))
+            log.info("Bảng neo gói thầu: %s", anchors)
 
     close_client = None
     if retrieve_fn is None:
-        close_client, retrieve_fn = open_disk_index(db_path, settings)
+        with open(_DEFAULT_NODES, 'rb') as f:
+            nodes = pickle.load(f)
+        close_client, retrieve_fn = open_disk_index(db_path, nodes, settings)
+    
+
+    # query = 'ngày phát hành hồ sơ mời thầu hoặc thời điểm ký thư bảo lãnh dự thầu'
+    # query = 'thời điểm phát hành hồ sơ mời thầu ngày bắt đầu cung cấp hồ sơ mời thầu'
+    # query = 'Mục 17.3 A-CDNT các trường hợp vi phạm không dự thầu'
+    # res = retrieve_fn(query, k=10, clause_doc="cdnt")
+    # log.info(len(res))
+    # for i in res:
+    #     log.info(i)
+    # return
 
     try:
         result = DecomposeResult(doc=data.get("doc", "HSMT"))
@@ -201,12 +221,13 @@ async def run(
         for i, g in enumerate(groups, 1):
             log.info("=== Nhóm %d/%d: %s ===", i, len(groups), g.get("group", ""))
             wf = DecomposeWorkflow(llm_fn=llm_fn, retrieve_fn=retrieve_fn, timeout=600,
-                                   bdl_rows=bdl_rows or None,
-                                   source_summaries=sources, scan_texts=scan_texts or None,
-                                   form_texts=_load_form_texts(chunks_path) or None,
+                                   bdl_rows=bdl_rows or None, source_summaries=sources,
+                                   scan_texts=scan_texts or None, 
+                                   form_texts=form_texts or None,
                                    anchors=anchors or None)
             gd: GroupDecomposition = await wf.run(group=g)
             result.groups.append(gd)
+            break
     finally:
         if close_client is not None:
             close_client.close()
@@ -231,8 +252,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--db", default=_DEFAULT_DB)
     ap.add_argument("--out", default=_DEFAULT_OUT)
     ap.add_argument("--chunks", default=_DEFAULT_CHUNKS,
-                    help="chunks.jsonl để nạp dòng E-BDL làm phụ lục resolve")
-    ap.add_argument("--summaries", default=_DEFAULT_SUMMARIES,
+                    help="chunks.jsonl để nạp dòng A-BDL làm phụ lục resolve")
+    ap.add_argument("--summaries", default=_DEFAULT_SUMMARIES, 
                     help="source_summaries.json ({nguồn: tóm tắt}) bật route theo nguồn (đa nguồn)")
     ap.add_argument("--quiet", action="store_true", help="tắt log tiến độ")
     args = ap.parse_args(argv)

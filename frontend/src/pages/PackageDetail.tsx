@@ -50,11 +50,11 @@ function DocTable({ docs, artifactTypes, onChangeType, onDelete }: {
               <Select size="small" style={{ minWidth: 190 }} value={d.artifact_type || undefined}
                 placeholder="chọn loại" options={artifactTypes}
                 onChange={(v) => onChangeType(d.id, v)} />
-              {d.artifact_validation?.match === false && (
+              {/* {d.artifact_validation?.match === false && (
                 <Tooltip title={d.artifact_validation?.note || "Nghi tải nhầm loại"}>
                   <Tag color="warning">nghi nhầm loại</Tag>
                 </Tooltip>
-              )}
+              )} */}
             </div>
           ),
         },
@@ -341,7 +341,7 @@ function VendorModal({ open, vendor, pkgId, onClose, onSaved }: {
 
   return (
     <Modal open={open} onCancel={onClose} onOk={save} okText="Lưu" cancelText="Hủy"
-      title={vendor ? "Sửa nhà thầu" : "Thêm nhà thầu"} destroyOnClose>
+      title={vendor ? "Sửa nhà thầu" : "Thêm nhà thầu"} destroyOnHidden>
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)", marginTop: "var(--sp-2)" }}>
         <Input placeholder="Tên đầy đủ" value={ten} onChange={(e) => setTen(e.target.value)} />
         <Input placeholder="Tên viết tắt (khớp webform)" value={tt} onChange={(e) => setTt(e.target.value)} />

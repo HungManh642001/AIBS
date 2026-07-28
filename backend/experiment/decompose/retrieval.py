@@ -1,22 +1,20 @@
 """Cổng truy hồi cho workflow phân rã.
 
 Thật: truy hồi hybrid trên index Qdrant on-disk (`experiment.index`). Test: tiêm in-memory
-hoặc scripted. retrieve_fn(query, k, clause_doc=None, is_form=None, source_doc=None)
--> list[{text, metadata, score}]. clause_doc="bdl" -> chỉ Bảng dữ liệu E-BDL;
-source_doc="tbmt" -> chỉ chunk của nguồn tài liệu đó (route theo nguồn).
+hoặc scripted. retrieve_fn(query, k) -> list[{text, metadata, score}].
 """
 from __future__ import annotations
 
 from typing import Any, Callable
 
-from llama_index.core.vector_stores import FilterOperator, MetadataFilter, MetadataFilters
 from qdrant_client import QdrantClient
+from llama_index.core.vector_stores import FilterOperator, MetadataFilter, MetadataFilters
 
 from experiment.index.embedder import build_embedder
 from experiment.index.schema import COLLECTION
-from experiment.index.store import build_vector_store, open_index
+from experiment.index.store import build_vector_store, hybrid_retriever, open_index
 
-# retrieve_fn(query, k, clause_doc=None) -> list[hit dict]
+# retrieve_fn(query, k) -> list[hit dict]
 RetrieveFn = Callable[..., list[dict[str, Any]]]
 
 
@@ -28,9 +26,10 @@ def hits_to_dicts(hits: Any) -> list[dict[str, Any]]:
 
 
 class IndexRetriever:
-    """retrieve_fn dựa trên một VectorStoreIndex đã mở (giữ index sống suốt run)."""
+    """retrieve_fn dựa trên một VectorStoreIndex đã mở."""
 
-    def __init__(self, index: Any):
+    def __init__(self, nodes: Any, index: Any):
+        self.nodes = nodes
         self._index = index
 
     def __call__(self, query: str, k: int = 5, clause_doc: str | None = None,
@@ -40,20 +39,19 @@ class IndexRetriever:
             conds.append(MetadataFilter(key="clause_doc", value=clause_doc, operator=FilterOperator.EQ))
         if is_form is not None:  # need 'đúng mẫu số N' -> tra VÀO chunk Biểu mẫu (payload int 0/1)
             conds.append(MetadataFilter(key="is_form", value=int(is_form), operator=FilterOperator.EQ))
-        if source_doc:  # route theo nguồn tài liệu (hsmt/tbmt/...) — step-3 gợi ý từ danh mục nguồn
+        if source_doc:  # rout theo nguồn tài liệu (hsmt/tbmt/...) 
             conds.append(MetadataFilter(key="source_doc", value=source_doc, operator=FilterOperator.EQ))
         filters = MetadataFilters(filters=conds) if conds else None
-        retriever = self._index.as_retriever(
-            vector_store_query_mode="hybrid", similarity_top_k=k, sparse_top_k=k, filters=filters
-        )
+        retriever = hybrid_retriever(self.nodes, self._index, filters, k)
+
         return hits_to_dicts(retriever.retrieve(query))
 
 
 def open_disk_index(
-    db_path: str, settings: Any, collection: str = COLLECTION
+    db_path: str, nodes: Any, settings: Any, collection: str = COLLECTION
 ) -> tuple[QdrantClient, IndexRetriever]:
     """Mở index on-disk -> (client cần đóng cuối run, retrieve_fn)."""
     client = QdrantClient(path=str(db_path))
     store = build_vector_store(client, collection)
     index = open_index(store, build_embedder(settings))
-    return client, IndexRetriever(index)
+    return client, IndexRetriever(nodes, index)

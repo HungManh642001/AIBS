@@ -16,7 +16,6 @@ sai và bỏ sót tiêu chí thật. Metadata là nguồn sự thật duy nhất
 """
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -25,7 +24,8 @@ from experiment.evaluate.schema import (
     KET_QUA_LOI, KET_QUA_SOI, PackageContext, PageRecord, VendorContext, Verdict,
 )
 
-log = logging.getLogger("experiment.evaluate")
+from experiment.logger_config import setup_logger
+log = setup_logger('EVALUATE', 'evaluate.log')
 
 PHAM_VI_TIEU_CHI = "tieu_chi"
 PHAM_VI_GOI = "goi"

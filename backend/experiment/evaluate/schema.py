@@ -1,10 +1,11 @@
 """Schema đánh giá HSDT — verdict đủ để audit (bằng chứng + trang + nguồn chuẩn HSMT)."""
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 KET_QUA_DAT = "đạt"
 KET_QUA_KHONG = "không đạt"
@@ -29,6 +30,19 @@ class _Base(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
+def _parse_int_from_string(v: Any) -> int | None:
+    """Parse 'Trang 9 (Bảng chào giá)' -> 9, int giữ nguyên, string không có số -> None."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v
+    if isinstance(v, str):
+        m = re.search(r'(\d+)', v)
+        if m:
+            return int(m.group(1))
+    return None
+
+
 class IngestPageModel(_Base):
     """Output vision ingest 1 trang: CHỈ bóc text + cờ thị giác (loại hồ sơ đã biết khi tải file)."""
     text: str = ""
@@ -43,6 +57,13 @@ class EvalVerdictModel(_Base):
     do_tin: float = 0.0
     ghi_chu: str = ""
 
+    @field_validator("trang", mode="before")
+    @classmethod
+    def parse_trang(cls, v: Any) -> list[int]:
+        if not isinstance(v, list):
+            return []
+        return [int(_parse_int_from_string(item)) for item in v if _parse_int_from_string(item) is not None]
+
 
 class VendorFormModel(_Base):
     """Output AI đọc đơn dự thầu để xác định hình thức dự thầu (độc lập/liên danh)."""
@@ -51,6 +72,13 @@ class VendorFormModel(_Base):
     trang: list[int] = []
     do_tin: float = 0.0
     ghi_chu: str = ""
+
+    @field_validator("trang", mode="before")
+    @classmethod
+    def parse_trang(cls, v: Any) -> list[int]:
+        if not isinstance(v, list):
+            return []
+        return [int(_parse_int_from_string(item)) for item in v if _parse_int_from_string(item) is not None]
 
 
 def validate_ingest_page(d: dict[str, Any]) -> dict[str, Any]:
@@ -84,6 +112,7 @@ class PageRecord:
     image: bytes = b""            # PNG bytes — CHỈ trong RAM, không serialize
     nguon_trich: str = NGUON_VISION   # audit: text trang này đến từ đâu
     canh_bao: str = ""            # nghi bóc thiếu/lệch cột — luật và báo cáo phải thấy
+
 
 
 @dataclass

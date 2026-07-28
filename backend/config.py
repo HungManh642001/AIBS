@@ -11,17 +11,18 @@ class Settings(BaseSettings):
 
     storage_dir: Path = BASE_DIR / "storage"
     db_url: str = f"sqlite:///{BASE_DIR / 'abes_demo.db'}"
-    ai_base_url: str = "http://localhost:4000/v1"  # LiteLLM Proxy (OpenAI-compatible, kết thúc bằng /v1)
-    ai_api_key: str = ""                           # API key của LiteLLM Proxy
+    ai_base_url: str = "http://10.10.50.58:30099/v1"   # LiteLLM proxy
+    ai_api_key: str = "sk-dat-key-that-o-day"
+    ollama_url: str = "http://192.168.24.237:11434"
+    ai_embed_model: str = "bge-m3"
     ai_model: str = "qwen3.6-27b"
-    ai_embed_model: str = "bge-m3"                  # model embedding qua LiteLLM proxy (bước index)
     ai_mock: bool = False                          # True -> luôn dùng mock
-    ai_temperature: float = 0.0                    # 0 -> tái lập kết quả
-    # temperature=0 KHÔNG đủ để tái lập: vLLM gộp batch động nên thứ tự cộng số thực đổi theo tải.
-    # seed cố định là điều kiện tối thiểu; đổi seed = xin model một "góc nhìn" khác.
-    ai_seed: int = 20260101
-    ai_max_tokens: int = 4096                       # giới hạn token sinh (đánh giá/sub-check)
-
+    ai_temperature: float = 0.0
+    ai_seed: int = 42
+    ai_max_tokens: int = 4096
+    ai_max_tokens_extract: int = 8192
+    ai_chunk_chars: int = 120000
+    ai_chunk_overlap: int = 800
 
 @lru_cache
 def get_settings() -> Settings:

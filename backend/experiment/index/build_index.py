@@ -12,8 +12,11 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+import pickle
 
 from config import get_settings
+from experiment.logger_config import setup_logger
+log = setup_logger('INDEX', 'index.log')
 
 from experiment.index.embedder import DeterministicEmbedding, build_embedder
 from experiment.index.schema import COLLECTION, chunks_to_nodes, keep_for_index
@@ -21,9 +24,10 @@ from experiment.index.store import build_index, build_vector_store
 
 from qdrant_client import QdrantClient
 
-_DEFAULT_CHUNKS = "out/chunks.jsonl"
-_DEFAULT_DB = "out/qdrant"
-_DEFAULT_OUT = "out"
+_DEFAULT_CHUNKS = "experiment/out/chunks.jsonl"
+_DEFAULT_DB = "experiment/out/qdrant"
+_DEFAULT_OUT = "experiment/out"
+_DEFAULT_NODES = "experiment/out/nodes.pkl"
 
 
 def _load_chunks(path: str) -> list[dict[str, Any]]:
@@ -40,7 +44,6 @@ def _write_report(out_dir: Path, m: dict[str, Any]) -> Path:
         f"- chunks: {m['n_chunks']} (bỏ TCĐG/Biểu mẫu: {m['n_excluded']})\n"
         f"- points: {m['n_points']}\n"
         f"- dense_dim: {m['dense_dim']}\n"
-        f"- sparse: BM25 (Qdrant/bm25)\n"
         f"- db: {m['db']}\n"
         f"- elapsed: {m['elapsed']}s\n"
     )
@@ -56,18 +59,22 @@ def run(
     collection: str = COLLECTION,
     embed: Any | None = None,
     filter_sections: bool = True,
+    nodes_path: str = _DEFAULT_NODES,
 ) -> dict[str, Any]:
     """Đọc chunks -> nodes -> dựng collection Qdrant on-disk; trả metrics + ghi report.
-
-    filter_sections=True (mặc định): bỏ chương TCĐG/Biểu mẫu (không mang giá trị) -> giảm nhiễu.
+    filter_sections = True: bỏ chương TCĐG/Biểu mẫu.
     """
     t0 = time.time()
     if embed is None:
         embed = build_embedder(get_settings())
     chunks_all = _load_chunks(chunks_path)
     chunks = [c for c in chunks_all if keep_for_index(c)] if filter_sections else chunks_all
+    # log.info(chunks)
     n_excluded = len(chunks_all) - len(chunks)
     nodes = chunks_to_nodes(chunks)
+
+    with open(nodes_path, 'wb') as f:
+        pickle.dump(nodes, f)
 
     db = Path(db_path)
     db.mkdir(parents=True, exist_ok=True)
@@ -108,9 +115,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--db", default=_DEFAULT_DB)
     ap.add_argument("--out", default=_DEFAULT_OUT)
     ap.add_argument("--collection", default=COLLECTION)
+    ap.add_argument("--nodes", default=_DEFAULT_NODES)
     ap.add_argument("--fake", action="store_true", help="Dùng DeterministicEmbedding (offline)")
-    ap.add_argument("--all-sections", action="store_true",
-                    help="Index MỌI chương (không bỏ TCĐG/Biểu mẫu)")
     args = ap.parse_args(argv)
 
     embed = DeterministicEmbedding() if args.fake else None
@@ -121,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
             out_dir=args.out,
             collection=args.collection,
             embed=embed,
-            filter_sections=not args.all_sections,
+            nodes_path=args.nodes,
         )
     except Exception as exc:  # no-silent-mock: báo lỗi rõ, không tạo vector giả
         print(f"[build_index] LỖI: {type(exc).__name__}: {exc}", file=sys.stderr)

@@ -44,13 +44,13 @@ def run(pdf_path: str, out_dir: str) -> dict:
         ref = f"  ⚠️ tham chiếu {g.ref_target}" if g.is_reference else ""
         report.append(f"- **{g.group}** — {g.muc} (tr {g.muc_page[0]}–{g.muc_page[1]}): "
                       f"{n_text} block text, {n_tab} block bảng{ref}")
-    (out / "report.md").write_text("\n".join(report), encoding="utf-8")
+    (out / "report-extract.md").write_text("\n".join(report), encoding="utf-8")
     return metrics
 
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description="Trích nội dung 4 nhóm tiêu chuẩn Chương III")
-    ap.add_argument("--pdf", required=True, help="đường dẫn HSMT PDF-text")
+    ap.add_argument("--pdf", default="experiment/samples/A-HSMT.pdf", help="đường dẫn HSMT PDF-text")
     ap.add_argument("--out", default="experiment/out", help="thư mục artefact")
     args = ap.parse_args(argv)
     metrics = run(args.pdf, args.out)

@@ -70,7 +70,7 @@ def ten_goi_prompt(pkg: PackageContext, excerpts: dict[str, str]) -> str:
         f"CÁC DÒNG NHẮC 'GÓI THẦU' TRONG HSDT (bóc từ ảnh):\n{docs}\n\n"
         + cot_block('{"ket_qua":"đạt|không đạt|cần làm rõ",'
                     '"tai_lieu_lech":[{"loai_ho_so":"...","ten_ghi":"...","trang":[...]}],'
-                    '"bang_chung":"<trích dòng căn cứ>","trang":[...],"do_tin":0.0,"ghi_chu":""}')
+                    '"bang_chung":"<trích dòng căn cứ>","trang":[1,3,...],"do_tin":0.0,"ghi_chu":""}')
     )
 
 
