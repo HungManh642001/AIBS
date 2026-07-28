@@ -22,6 +22,7 @@ log = setup_logger('DECOMPOSE', 'decompose.log')
 from config import get_settings
 
 from experiment.decompose.anchors import build_anchors
+from experiment.decompose.cache import FileCallCache, boc_cache, cache_path
 from experiment.decompose.llm import default_llm_fn
 from experiment.decompose.retrieval import open_disk_index
 from experiment.decompose.schema import DecomposeResult, GroupDecomposition, result_to_json
@@ -161,10 +162,14 @@ async def run(
     settings: Any | None = None,
     chunks_path: str | None = None,
     summaries_path: str | None = None,
+    dung_cache: bool = True,
 ) -> dict[str, Any]:
     """Phân rã 4 nhóm; ghi decomposition.json/.md + report; trả metrics.
 
     chunks_path (tùy chọn): chunks.jsonl để nạp dòng A-BDL làm phụ lục resolve (recall tất định).
+    dung_cache: nhớ kết quả LLM trong out_dir/llm_cache.json — chạy lại gói cũ khỏi trả tiền lại
+        cho các bước không đổi. Khóa băm cả prompt nên sửa prompt là tự trượt cache.
+        Chỉ áp khi llm_fn KHÔNG được tiêm (test tiêm ScriptedLlm thì đo call, không được cache).
     """
     settings = settings or get_settings()
     gp = Path(groups_path)
@@ -189,8 +194,17 @@ async def run(
     # log.info(f"[FORM TEXT]: {form_texts}")
     # log.info(f"[FORM TEXT]: {form_texts.get('02')}")
 
-    llm_fn = llm_fn or default_llm_fn
-    
+    # Cache CHỈ bọc llm thật. Test tiêm ScriptedLlm rồi khẳng định trên .calls -> cache sẽ nuốt
+    # call và làm sai phép đo; ngoài ra kịch bản test vốn đã tức thì, chẳng có gì để tiết kiệm.
+    llm_cache = None
+    if llm_fn is None:
+        llm_fn = default_llm_fn
+        if dung_cache:
+            llm_cache = FileCallCache(cache_path(out_dir))
+            llm_fn = boc_cache(llm_fn, llm_cache, model=getattr(settings, "ai_model", ""))
+            log.info("[llm-cache] %s (%d mục sẵn có)", cache_path(out_dir), len(llm_cache))
+
+
     # Bảng neo gói thầu (hướng A): 1 call/run trích mốc chung -> mọi RESOLVE tự đủ.
     anchors: dict[str, dict[str, str]] = {}
     if bdl_rows or scan_texts:
@@ -232,6 +246,11 @@ async def run(
         if close_client is not None:
             close_client.close()
 
+    if llm_cache is not None:
+        d = getattr(llm_fn, "dem", {})
+        log.info("[llm-cache] trúng %d / gọi thật %d (cache còn %d mục)",
+                 d.get("trung", 0), d.get("truot", 0), len(llm_cache))
+
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     (out / "decomposition.json").write_text(
@@ -256,6 +275,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--summaries", default=_DEFAULT_SUMMARIES, 
                     help="source_summaries.json ({nguồn: tóm tắt}) bật route theo nguồn (đa nguồn)")
     ap.add_argument("--quiet", action="store_true", help="tắt log tiến độ")
+    ap.add_argument("--no-cache", action="store_true",
+                    help="bỏ qua llm_cache.json, hỏi lại model từ đầu")
     args = ap.parse_args(argv)
     logging.basicConfig(
         level=logging.WARNING if args.quiet else logging.INFO,
@@ -264,7 +285,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         metrics = asyncio.run(run(groups_path=args.groups, db_path=args.db, out_dir=args.out,
-                                  chunks_path=args.chunks, summaries_path=args.summaries))
+                                  chunks_path=args.chunks, summaries_path=args.summaries,
+                                  dung_cache=not args.no_cache))
     except Exception as exc:  # no-silent-mock: báo lỗi rõ
         print(f"[run_decompose] LỖI: {type(exc).__name__}: {exc}", file=sys.stderr)
         print("  Chế độ thật cần LiteLLM proxy chạy & phục vụ model. ", file=sys.stderr)

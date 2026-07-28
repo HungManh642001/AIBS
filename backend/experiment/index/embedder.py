@@ -27,9 +27,13 @@ def build_embedder(settings: Any) -> OllamaEmbedding:
     #     api_key=settings.ai_api_key or "sk-no-key",
     #     is_chat_model=False,
     # )
+    # embed_batch_size: LlamaIndex mặc định 10 -> 377 chunk thành 38 round-trip HTTP TUẦN TỰ tới
+    # Ollama (đo: bước dựng index mất 94s). bge-m3 nhúng mỗi text ĐỘC LẬP, gộp vào một request
+    # KHÔNG đổi vector — chỉ bớt số vòng mạng. Hạ xuống nếu Ollama kêu payload quá lớn.
     return OllamaEmbedding(
         model_name=settings.ai_embed_model,
-        base_url=settings.ollama_url
+        base_url=settings.ollama_url,
+        embed_batch_size=settings.ai_embed_batch,
     )
 
 

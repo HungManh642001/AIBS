@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     ai_api_key: str = ""
     ollama_url: str = "http://192.168.24.237:11434"
     ai_embed_model: str = "bge-m3"
+    # Số text gộp vào MỘT request embedding. Mặc định của LlamaIndex là 10 -> quá nhiều vòng mạng
+    # khi index vài trăm chunk. bge-m3 nhúng từng text độc lập nên đổi số này KHÔNG đổi vector.
+    ai_embed_batch: int = 64
     ai_model: str = "qwen3.6-27b"
     ai_mock: bool = False                          # True -> luôn dùng mock
     ai_temperature: float = 0.0
