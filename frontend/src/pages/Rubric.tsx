@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Button, Card, Checkbox, Input, Select, Table, Tag, Tooltip, message } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import Loader from "../components/Loader";
-import TieuDeTieuChi from "../components/TieuDeTieuChi";
 
 const { TextArea } = Input;
 const AUTO = { minRows: 1, maxRows: 6 } as const;
@@ -85,16 +84,14 @@ export default function Rubric() {
         </div>
       )}
       {criteria.map((c, ci) => (
-        <Card key={ci} className="tieu-chi-card" style={{ marginBottom: "var(--sp-3)" }}
-          // Màn ĐỐI CHIẾU: chuyên gia soát checklist AI bóc ra có khớp điều khoản không, nên phải
-          // đọc TRỌN điều khoản. Không cắt, và bỏ hẳn đoạn "Nguyên văn HSMT" cũ — cắt rồi lặp lại
-          // đầy đủ ngay bên dưới là hiện cùng một câu hai lần.
-          title={<TieuDeTieuChi yeuCauGoc={c.yeu_cau_goc} ten={c.ten} max={Infinity} />}
-          extra={
-            <span style={{ whiteSpace: "nowrap" }}>
-              <Tag color="blue">{NHOM_LABEL[c.nhom] ?? c.nhom}</Tag>
-              {c.hsdt_can_kiem_tra?.map((a) => <Tag key={a}>{nhan(a)}</Tag>)}
-            </span>}>
+        <Card key={ci} title={c.ten} style={{ marginBottom: "var(--sp-3)" }} extra={
+          <span>
+            <Tag color="blue">{NHOM_LABEL[c.nhom] ?? c.nhom}</Tag>
+            {c.hsdt_can_kiem_tra?.map((a) => <Tag key={a}>{nhan(a)}</Tag>)}
+          </span>}>
+          <p style={{ color: "var(--ink-muted)", marginTop: 0 }}>
+            <b style={{ color: "var(--ink)" }}>Nguyên văn HSMT:</b> {c.yeu_cau_goc}
+          </p>
           <Table rowKey={(_, i) => String(i)} pagination={false} dataSource={c.noi_dung_can_kiem_tra}
             scroll={{ x: 1080 }}
             columns={[
