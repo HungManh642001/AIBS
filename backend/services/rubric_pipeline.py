@@ -23,10 +23,13 @@ log = logging.getLogger("abes.rubric")
 
 
 async def build_decomposition(pdf_path: str, workdir: str,
-                              scan_sources: list[tuple[str, str]] | None = None) -> dict[str, Any]:
+                              scan_sources: list[tuple[str, str]] | None = None,
+                              force: bool = False) -> dict[str, Any]:
     """HSMT PDF (+ nguồn scan TBMT) -> decomposition.json (dict). workdir chứa artefact per gói.
 
     scan_sources: [(source_doc, đường_dẫn_pdf)] các tài liệu scan gói thầu (vd TBMT). Rỗng -> chỉ HSMT.
+    force: bỏ qua manifest, chạy lại cả chunk/extract/OCR dù file đầu vào không đổi. Bình thường
+        KHÔNG cần — đổi file hay đổi mã nguồn của bước nào là bước đó tự chạy lại.
     """
     wd = Path(workdir)
     wd.mkdir(parents=True, exist_ok=True)
@@ -34,7 +37,7 @@ async def build_decomposition(pdf_path: str, workdir: str,
     scan = scan_sources or []
     log.info("[rubric] bắt đầu bóc tiêu chí (đa nguồn): HSMT + %d nguồn scan", len(scan))
 
-    await run_multi(pdf_path, scan, str(wd))            # -> wd/decomposition.json
+    await run_multi(pdf_path, scan, str(wd), force=force)   # -> wd/decomposition.json
 
     log.info("[rubric] HOÀN TẤT bóc tiêu chí trong %.1fs", time.perf_counter() - t0)
     return json.loads((wd / "decomposition.json").read_text(encoding="utf-8"))
