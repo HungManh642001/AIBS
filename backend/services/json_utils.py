@@ -100,6 +100,48 @@ def _fallback_auto_close(text: str, start: int) -> dict[str, Any] | None:
         return None
 
 
+_ESCAPE_HOP_LE = set('"\\/bfnrtu')
+
+
+def va_escape(s: str) -> str:
+    """Escape các dấu `\\` KHÔNG mở đầu một escape hợp lệ của JSON — chỉ bên trong chuỗi.
+
+    LLM rất hay nhả LaTeX (`$\\ge$`), phần trăm (`\\%`) hay đường dẫn Windows (`C:\\Users`) vào giữa
+    chuỗi. JSON chỉ cho phép \\" \\\\ \\/ \\b \\f \\n \\r \\t \\uXXXX, nên `\\g` làm json.loads ném
+    `Invalid \\escape` và cả object bị vứt dù nội dung hoàn toàn đọc được.
+
+    Vá KHÔNG mất dữ liệu: `$\\ge$` trở thành literal `$\ge$` trong chuỗi kết quả.
+
+    CHỈ đụng phần trong chuỗi — ngoài chuỗi mà có `\\` thì đó là hỏng kiểu khác, để tầng sau lo.
+    """
+    out: list[str] = []
+    in_str = False
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if not in_str:
+            if ch == '"':
+                in_str = True
+            out.append(ch)
+            i += 1
+            continue
+        if ch == "\\":
+            ke = s[i + 1] if i + 1 < len(s) else ""
+            if ke in _ESCAPE_HOP_LE:
+                out.append(ch)
+                out.append(ke)      # nuốt luôn ký tự sau: `\"` không được tính là đóng chuỗi
+                i += 2
+                continue
+            out.append("\\\\")      # dấu \ đứng một mình -> nhân đôi cho hợp lệ
+            i += 1
+            continue
+        if ch == '"':
+            in_str = False
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def extract_json(raw: str) -> dict[str, Any]:
     """Bóc object JSON ngoài cùng. Ưu tiên khối ```json fence; fallback → ném ValueError."""
     if not raw or not raw.strip():
@@ -137,12 +179,25 @@ def extract_json(raw: str) -> dict[str, Any]:
             if depth == 0:
                 end = i + 1
                 break
+    ly_do_that = ""   # nguyên nhân THẬT của tầng 1 — giữ để báo đúng bệnh ở cuối
     if end != -1:
         candidate = _strip_trailing_commas(text[start:end])
         try:
             return json.loads(candidate)
         except json.JSONDecodeError as e:
+            ly_do_that = str(e)
             log.warning("extract_json: tầng 1 depth OK nhưng json.loads lỗi: %s", e)
+
+        # Tầng 1b: ngoặc đã cân bằng mà vẫn lỗi -> thủ phạm thường là escape không hợp lệ
+        # (LaTeX/đường dẫn). Vá rồi thử lại TRƯỚC các tầng chữa-ngoặc, vì ngoặc đâu có hỏng.
+        va = va_escape(candidate)
+        if va != candidate:
+            try:
+                obj = json.loads(va)
+                log.warning("extract_json: tầng 1b vá escape hỏng thành công (%s)", ly_do_that)
+                return obj
+            except json.JSONDecodeError as e:
+                log.warning("extract_json: tầng 1b vá escape vẫn lỗi: %s", e)
 
     # Tầng 2: raw_decode từ start (ngoặc ngoài cùng) — không scan inner brace
     try:
@@ -165,7 +220,11 @@ def extract_json(raw: str) -> dict[str, Any]:
         return result
 
     preview = raw[-200:].replace("\n", "\\n")
-    raise ValueError(f"JSON object không cân bằng ngoặc (preview cuối: ...{preview})")
+    # Báo ĐÚNG bệnh: nếu tầng 1 đã đếm được ngoặc cân bằng thì ngoặc KHÔNG phải vấn đề, và ta đã
+    # biết lỗi thật từ json.loads. Nói "không cân bằng ngoặc" ở ca đó là đẩy người debug đi sai
+    # hướng — chính chỗ này từng làm mất thời gian truy một lỗi escape LaTeX.
+    ly_do = ly_do_that if ly_do_that else "không cân bằng ngoặc"
+    raise ValueError(f"Không parse được JSON ({ly_do}) (preview cuối: ...{preview})")
 
 
 def clamp_page_refs(refs: Any, max_page: int = 0) -> list[int]:
