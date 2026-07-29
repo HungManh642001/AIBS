@@ -18,6 +18,8 @@ from config import get_settings
 from experiment.logger_config import setup_logger
 log = setup_logger('INDEX', 'index.log')
 
+from experiment.index.embed_cache import EmbedCache, gan_embedding
+from experiment.index.embed_cache import cache_path as embed_cache_path
 from experiment.index.embedder import DeterministicEmbedding, build_embedder
 from experiment.index.schema import COLLECTION, chunks_to_nodes, keep_for_index
 from experiment.index.store import build_index, build_vector_store
@@ -60,9 +62,12 @@ def run(
     embed: Any | None = None,
     filter_sections: bool = True,
     nodes_path: str = _DEFAULT_NODES,
+    dung_cache: bool = True,
 ) -> dict[str, Any]:
     """Đọc chunks -> nodes -> dựng collection Qdrant on-disk; trả metrics + ghi report.
     filter_sections = True: bỏ chương TCĐG/Biểu mẫu.
+    dung_cache: nhớ vector theo nội dung chunk trong out_dir/embed_cache.pkl. Chunk không đổi
+        giữa các lần chạy lại -> khỏi nhúng lại (93% thời gian dựng index là Ollama).
     """
     t0 = time.time()
     if embed is None:
@@ -75,6 +80,15 @@ def run(
 
     with open(nodes_path, 'wb') as f:
         pickle.dump(nodes, f)
+
+    # Điền sẵn vector đã có từ lần chạy trước; LlamaIndex `embed_nodes` bỏ qua node đã có
+    # `.embedding` nên nó chỉ nhúng phần còn thiếu.
+    cache_stat = {"trung": 0, "nhung": len(nodes)}
+    if dung_cache:
+        cache = EmbedCache(embed_cache_path(out_dir))
+        cache_stat = gan_embedding(nodes, embed, cache)
+        log.info("[embed-cache] dùng lại %d / nhúng mới %d (cache còn %d vector)",
+                 cache_stat["trung"], cache_stat["nhung"], len(cache))
 
     db = Path(db_path)
     db.mkdir(parents=True, exist_ok=True)
@@ -91,7 +105,10 @@ def run(
                 pass
             raise
         n_points = client.count(collection).count
-        dense_dim = len(embed.get_query_embedding("dim probe"))
+        # Lấy dim từ vector đã có thay vì bắn thêm 1 call "dim probe" — khi mọi thứ đã cache thì
+        # call đó là lần gọi Ollama DUY NHẤT còn lại của cả bước dựng index.
+        dense_dim = (len(nodes[0].embedding) if nodes and nodes[0].embedding
+                     else len(embed.get_query_embedding("dim probe")))
     finally:
         client.close()
 
@@ -117,6 +134,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--collection", default=COLLECTION)
     ap.add_argument("--nodes", default=_DEFAULT_NODES)
     ap.add_argument("--fake", action="store_true", help="Dùng DeterministicEmbedding (offline)")
+    ap.add_argument("--no-cache", action="store_true",
+                    help="bỏ qua embed_cache.pkl, nhúng lại toàn bộ chunk")
     args = ap.parse_args(argv)
 
     embed = DeterministicEmbedding() if args.fake else None
@@ -128,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
             collection=args.collection,
             embed=embed,
             nodes_path=args.nodes,
+            dung_cache=not args.no_cache,
         )
     except Exception as exc:  # no-silent-mock: báo lỗi rõ, không tạo vector giả
         print(f"[build_index] LỖI: {type(exc).__name__}: {exc}", file=sys.stderr)
