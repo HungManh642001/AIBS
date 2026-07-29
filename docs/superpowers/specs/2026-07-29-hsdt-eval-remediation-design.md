@@ -69,26 +69,30 @@ hsdt_doi_chieu: list[str] = []   # tài liệu ĐỐI CHIẾU riêng cho nội d
 dung chỉ cần hồ sơ chính → để rỗng.* Kỳ vọng trên gói 54: nội dung 1 → `[]`, nội dung 2 →
 `["webform"]`.
 
-**b) Khớp luật** (`evaluate.py::_skill_cho_nd`) đổi từ "thành viên" sang "bao trùm":
+**b) Khớp luật — chỉ can thiệp khi NHẬP NHẰNG.** Giữ nguyên phép khớp theo thành viên hiện tại
+(`_skill_cho_nd`) làm bước lọc ứng viên, rồi thêm bước **phân xử** ở cấp tiêu chí: với mỗi luật,
+nếu chỉ **một** nội dung là ứng viên → giữ nguyên hành vi hôm nay, không đụng gì. Nếu **từ hai**
+nội dung trở lên cùng là ứng viên (đúng ca gói 54) mới chạy phân xử ba tầng:
 
 ```
-bộ hồ sơ của nội dung = {nd.hsdt_kiem_tra} ∪ set(nd.hsdt_doi_chieu)
-luật khớp khi          set(skill.ho_so_can) ⊆ bộ hồ sơ của nội dung
+tầng 1 — metadata:  giữ nội dung nào khai ĐỦ bộ hồ sơ của luật
+                    (set(ho_so_can) ⊆ {nd.hsdt_kiem_tra} ∪ set(nd.hsdt_doi_chieu))
+tầng 2 — từ khóa:   không nội dung nào khai (dữ liệu decompose cũ) → giữ nội dung có NHẮC tài liệu
+                    đối chiếu của luật trong `noi_dung_kiem_tra` + `yeu_cau`, tra alias qua
+                    services/artifact_catalog.py (webform: "webform", "kết quả mở thầu",
+                    "biên bản mở thầu", "danh sách nhà thầu tham dự"...)
+tầng 3 — fail-safe: cả hai tầng đều không chọn được ai → GIỮ NGUYÊN toàn bộ ứng viên (hành vi
+                    hôm nay) + log.warning, thà thừa còn hơn âm thầm mất luật
 ```
 
-**c) Fallback cho dữ liệu decompose cũ — không cần cờ phiên bản.** Trong một tiêu chí đã khớp luật
-ở cấp tiêu chí:
+Chọn cách này thay vì đổi thẳng phép khớp sang "bao trùm" vì bán kính rủi ro nhỏ hơn hẳn: nội dung
+duy nhất của một tiêu chí không bao giờ đổi hành vi, kể cả khi STRUCT chọn `hsdt_kiem_tra` là tài
+liệu đối chiếu (ca đã có test `test_skill_serves_need_routed_to_reference_doc` khoá lại — nếu rơi
+xuống eval chung thì prompt nuốt trọn webform của mọi nhà thầu).
 
-- Có **ít nhất một** nội dung khai `hsdt_doi_chieu` khác rỗng → dữ liệu decompose mới → **tin
-  metadata tuyệt đối**; nội dung không khai thì không khớp luật.
-- **Không nội dung nào** khai → dữ liệu decompose cũ → dùng predicate từ khóa: nội dung khớp luật
-  khi `yeu_cau` + `noi_dung_kiem_tra` có nhắc alias của tài liệu đối chiếu, tra qua
-  `services/artifact_catalog.py` (`webform` có alias `webform`, `kết quả mở thầu`, `biên bản mở
-  thầu`, `danh sách nhà thầu tham dự`...).
-
-Heuristic này tự suy biến an toàn theo cả hai chiều: STRUCT quên khai cho cả tiêu chí → rơi về
-predicate từ khóa (vẫn đúng trên dữ liệu gói 54 hiện có, không cần re-run decompose); khai đúng dù
-chỉ một chỗ → predicate tắt hẳn, metadata là nguồn sự thật duy nhất.
+Kết quả trên gói 54: cả 2 nội dung đều là ứng viên → tầng 1 chưa có dữ liệu → tầng 2 giữ nội dung 2
+("Giá dự thầu phù hợp giữa Webform và Bảng giá"), loại nội dung 1 ("Bảng chào giá chi tiết theo Mẫu
+số 05C.1"). **Đúng ngay cả trước khi re-run decompose.** Sau khi re-run, tầng 1 quyết luôn.
 
 ### Hệ quả
 
@@ -263,11 +267,13 @@ chữa**, không mất tín hiệu nào.
 ## Kiểm thử
 
 **Phần 1**
-- `_skill_cho_nd`: nội dung khai `hsdt_doi_chieu=["webform"]` → khớp luật; nội dung khai `[]` trong
-  cùng tiêu chí → **không** khớp (đây là ca hồi quy của gói 54).
-- Fallback: tiêu chí mà **không** nội dung nào khai `hsdt_doi_chieu` → nội dung có chữ "webform"
-  trong `yeu_cau` khớp, nội dung nói về "Mẫu số 05C.1" không khớp.
-- Hồi quy: tiêu chí 1 nội dung duy nhất (kiểu gói 62) vẫn khớp luật như trước.
+- Tầng 1: 2 nội dung ứng viên, một khai `hsdt_doi_chieu=["webform"]` → chỉ nội dung đó khớp luật.
+- Tầng 2: 2 nội dung ứng viên, không nội dung nào khai → nội dung có chữ "webform" khớp, nội dung
+  nói về "Mẫu số 05C.1" không khớp (ca hồi quy gói 54).
+- Tầng 3: 2 nội dung ứng viên, không nội dung nào khai và không nội dung nào nhắc tài liệu đối
+  chiếu → cả hai vẫn dùng luật (fail-safe), có WARNING trong log.
+- Hồi quy: tiêu chí 1 nội dung duy nhất vẫn khớp luật y như trước, kể cả khi `hsdt_kiem_tra` là
+  tài liệu đối chiếu (`webform`) — toàn bộ test luật hiện có phải xanh không sửa.
 - E2E `evaluate_criterion` trên đúng dữ liệu tiêu chí `Bang_gia_va_phu_hop_webform` của gói 54: 2
   verdict, chỉ 1 đi qua luật.
 
