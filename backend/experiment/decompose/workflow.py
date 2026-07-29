@@ -260,6 +260,9 @@ class DecomposeWorkflow(Workflow):
         anchor = self._anchor_appendix()  # neo KHÔNG tự kích hoạt resolve (guard ở trên giữ nguyên)
         if anchor:
             body = f"{body}\n\n{anchor}"
+        # Lazy %s: f-string dựng chuỗi NGAY cả khi debug tắt, mà body gộp cả phụ lục nên tới ~48k
+        # ký tự cho mỗi lần resolve.
+        log.debug("         [body]: %s [n]: %s", body, n)
         rout = await self._llm(SYS_RESOLVE, resolve_prompt(crit, n, body, attempt=attempt),
                                validate=validate_resolved_value, max_tokens=_STRUCT_MAX_TOKENS)
         log.info(f"       [result] {rout}")
@@ -417,6 +420,7 @@ class DecomposeWorkflow(Workflow):
                 )
                 appendix = self._bdl_appendix()
             log.debug("         [hits] %s | %s", nd, hits)
+            log.debug("         [appendix] %s | %s", nd, appendix)
 
             # 3) resolve bậc 1 (kèm phụ lục A-BDL nếu là need giá trị)
             if await self._try_resolve(crit, n, hits, appendix, attempt=1):
@@ -434,6 +438,7 @@ class DecomposeWorkflow(Workflow):
                 self._form_appendix(form_refs)
             ) if a)
             log.debug("         [hits|retry] %s | %s", nd, hits2)
+            log.debug("         [appendix|retry] %s | %s", nd, retry_appendix)
 
             if not await self._try_resolve(crit, n, hits2, retry_appendix, attempt=2):
                 n["_queries_da_thu"] = [query, query2]  # đo lường; pop ở đoạn no-fab

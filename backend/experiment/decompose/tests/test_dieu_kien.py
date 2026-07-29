@@ -133,3 +133,30 @@ def test_khong_co_dieu_kien_thi_khong_dung_gi():
     nd = _nd("Bình thường")
     assert doi_chieu_tieu_chi(_crit(nd)) == 0
     assert nd["dieu_kien_ap_dung"] == {}
+
+
+# ---- ca THẬT gói 62: mệnh đề điều kiện bị LIST tách sang TIÊU CHÍ RIÊNG ----
+def test_quyet_duoc_du_dieu_kien_nam_o_tieu_chi_rieng_khong_co_anh_em():
+    """Bố cục do LLM quyết: quy tắc nguyên tử đẩy mệnh đề điều kiện thành tiêu chí riêng 1 nội dung.
+
+    Khi đó KHÔNG có nội dung anh em nào mang giá trị -> phải lấy từ BẢNG NEO. Trước đây chỉ tra
+    trong cùng tiêu chí nên gói 62 trượt, trong khi gói 54 (mệnh đề nằm chung tiêu chí với 'Giá trị
+    bảo lãnh') lại trúng — cùng một cơ chế, kết quả phụ thuộc bố cục là KHÔNG chấp nhận được.
+    """
+    crit = _crit(_nd("Cam kết bảo đảm dự thầu trong đơn", dieu_kien_ap_dung=_dk()))
+    neo = {"giá trị bảo đảm dự thầu": {"gia_tri": "285.000.000 VND", "nguon": "A-BDL CDNT 17.2"}}
+
+    assert doi_chieu_tieu_chi(crit, neo) == 1
+    dk = crit["noi_dung_can_kiem_tra"][0]["dieu_kien_ap_dung"]
+    assert dk["ket_luan"] == KET_LUAN_KHONG_AP_DUNG
+    assert "285,000,000" in dk["can_cu"] and "bảng neo" in dk["can_cu"]
+
+
+def test_ten_dai_luong_khac_ten_neo_thi_khong_quyet():
+    """`dai_luong` phải là tên NGUYÊN VĂN trong danh mục neo; 'giá trị bảo lãnh' là cách gọi khác
+    -> KHÔNG khớp -> fail-safe vẫn chấm (đây là lý do SYS_STRUCT buộc chép nguyên văn tên mục)."""
+    crit = _crit(_nd("Cam kết", dieu_kien_ap_dung=_dk(dai_luong="giá trị bảo lãnh")))
+    neo = {"giá trị bảo đảm dự thầu": {"gia_tri": "285.000.000 VND", "nguon": "A-BDL"}}
+
+    assert doi_chieu_tieu_chi(crit, neo) == 0
+    assert crit["noi_dung_can_kiem_tra"][0]["dieu_kien_ap_dung"]["ket_luan"] == ""

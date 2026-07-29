@@ -43,6 +43,11 @@ SYS_STRUCT = (
     "hsdt_can_kiem_tra), hãy lập CHECKLIST noi_dung_can_kiem_tra — những nội dung cần kiểm tra trên "
     "Hồ sơ dự thầu (HSDT) để kết luận tiêu chí. Liệt kê ĐẦY ĐỦ, đừng bỏ sót. Mỗi nội dung gồm:\n"
     "- noi_dung_kiem_tra: điều cần kiểm trên HSDT (vd 'Giá trị bảo lãnh', 'Bảo đảm tư cách hợp lệ').\n"
+    "  MỆNH ĐỀ 'HOẶC' — KHÔNG ĐƯỢC TÁCH: hai vế nối bằng 'hoặc' là HAI CÁCH THOẢ CÙNG MỘT yêu cầu, "
+    "chỉ cần đạt MỘT vế là đạt. Giữ nguyên thành MỘT nội dung, `yeu_cau` chép ĐỦ CẢ HAI vế kèm chữ "
+    "'hoặc'. Tách ra thành hai nội dung riêng là biến quan hệ HOẶC thành VÀ -> bước chấm sẽ đánh "
+    "trượt vế mà nhà thầu không dùng, dù họ hoàn toàn hợp lệ. (Ngược lại, các vế nối bằng 'và' / "
+    "dấu chấm phẩy là những yêu cầu ĐỘC LẬP -> vẫn tách như bình thường.)\n"
     "- hsdt_kiem_tra: CHỌN 1 loại hồ sơ (trong hsdt_can_kiem_tra của tiêu chí) để kiểm nội dung này "
     "— phải là hồ sơ CỦA NHÀ THẦU đang BỊ CHẤM (hồ sơ chính, thường đứng đầu hsdt_can_kiem_tra), "
     "KHÔNG PHẢI TÀI LIỆU ĐỐI CHIẾU. Vd 'giá bảng giá phải khớp webform' -> hsdt_kiem_tra='bang_gia' "
@@ -67,13 +72,15 @@ SYS_STRUCT = (
     "CHẮC -> để '' (chấm cho mọi nhà thầu, không bỏ sót).\n"
     "- dieu_kien_ap_dung: CHỈ điền khi yeu_cau_goc nêu điều kiện kích hoạt theo MỘT GIÁ TRỊ CỦA GÓI "
     "THẦU (không phải theo hình thức nhà thầu), dạng 'Đối với gói thầu có <đại lượng> <so sánh> "
-    "<ngưỡng> thì...'. Tách thành {dai_luong, phep_so_sanh, nguong}: dai_luong = tên đại lượng ĐÚNG "
-    "NHƯ HSMT gọi (vd 'giá trị bảo đảm dự thầu'), phep_so_sanh là một trong < <= > >= = !=, nguong "
-    "giữ NGUYÊN VĂN kèm đơn vị (vd '50 triệu đồng'). Ví dụ: 'Đối với gói thầu có giá trị bảo đảm dự "
-    "thầu nhỏ hơn 50 triệu đồng, nhà thầu có cam kết trong đơn dự thầu' -> "
+    "<ngưỡng> thì...'. Tách thành {dai_luong, phep_so_sanh, nguong}: dai_luong PHẢI CHỌN NGUYÊN VĂN "
+    "MỘT MỤC trong DANH MỤC ĐẠI LƯỢNG GÓI THẦU nêu ở cuối prompt (chép đúng từng chữ, KHÔNG diễn "
+    "đạt lại — hệ thống đối chiếu theo đúng tên đó); phep_so_sanh là một trong < <= > >= = !=; "
+    "nguong giữ NGUYÊN VĂN kèm đơn vị (vd '50 triệu đồng'). Ví dụ: 'Đối với gói thầu có giá trị bảo "
+    "đảm dự thầu nhỏ hơn 50 triệu đồng, nhà thầu có cam kết trong đơn dự thầu' -> "
     '{"dai_luong":"giá trị bảo đảm dự thầu","phep_so_sanh":"<","nguong":"50 triệu đồng"}. '
-    "KHÔNG có điều kiện dạng này -> bỏ trống cả ba. KHÔNG tự đối chiếu điều kiện, KHÔNG tự bỏ nội "
-    "dung: cứ liệt kê nội dung như bình thường, hệ thống sẽ đối chiếu sau.\n"
+    "Điều kiện dựa trên đại lượng KHÔNG có trong danh mục -> bỏ trống cả ba (hệ thống sẽ chấm bình "
+    "thường, KHÔNG bỏ sót). KHÔNG có điều kiện dạng này -> cũng bỏ trống cả ba. KHÔNG tự đối chiếu "
+    "điều kiện, KHÔNG tự bỏ nội dung: cứ liệt kê nội dung như bình thường, hệ thống đối chiếu sau.\n"
     "TUYỆT ĐỐI KHÔNG bịa số/nội dung."
 )
 SYS_QUERY = (
@@ -111,8 +118,21 @@ SYS_ANCHORS = (
 
 _ANCHOR_CATALOG = (
     "- thời điểm đóng thầu\n- thời điểm mở thầu\n- thời gian hiệu lực A-HSDT\n"
-    "- tên gói thầu\n- bên mời thầu\n- chủ đầu tư\n- giá gói thầu"
+    "- tên gói thầu\n- bên mời thầu\n- chủ đầu tư\n- giá gói thầu\n"
+    "- giá trị bảo đảm dự thầu"
 )
+
+
+def anchor_names() -> str:
+    """Danh mục neo dạng danh sách phẳng — DÙNG CHUNG cho ANCHORS và STRUCT.
+
+    Đây là TỪ VỰNG CÓ KIỂM SOÁT nối hai bước: ANCHORS trích giá trị và đặt tên theo danh mục này,
+    STRUCT phải gọi `dai_luong` bằng ĐÚNG tên đó. Nhờ vậy bước đối chiếu điều kiện khớp tất định,
+    KHÔNG phụ thuộc việc LLM xếp mệnh đề điều kiện vào tiêu chí nào (trước đây chỉ tra trong nội
+    dung anh em cùng tiêu chí -> tách sang tiêu chí riêng là mất dấu; và 'giá trị bảo lãnh' vs
+    'giá trị bảo đảm dự thầu' là hai cách gọi cùng một thứ nên khớp chuỗi cũng trượt).
+    """
+    return _ANCHOR_CATALOG
 
 
 def anchors_prompt(body: str) -> str:
@@ -186,13 +206,19 @@ def struct_prompt(crit: dict[str, Any]) -> str:
         "tên, đóng dấu. Đối với nhà thầu liên danh, đơn phải do đại diện từng thành viên ký hoặc "
         "thành viên đứng đầu ký thay mặt theo phân công trong thỏa thuận liên danh' "
         "(hsdt=[don_du_thau, thoa_thuan_lien_danh]) — mệnh đề 1 áp dụng MỌI nhà thầu, mệnh đề 2 CHỈ "
-        "liên danh; hồ sơ BỊ CHẤM là đơn dự thầu, thỏa thuận liên danh là tài liệu ĐỐI CHIẾU:\n"
+        "liên danh; hồ sơ BỊ CHẤM là đơn dự thầu, thỏa thuận liên danh là tài liệu ĐỐI CHIẾU. "
+        "CHÚ Ý mệnh đề 2 có chữ 'hoặc' -> hai vế là hai cách ký ĐỀU HỢP LỆ, gộp làm MỘT nội dung và "
+        "chép đủ cả hai; tách đôi sẽ đánh trượt nhà thầu chỉ dùng một cách:\n"
         '  [{"noi_dung_kiem_tra":"Đơn ký bởi đại diện hợp pháp","hsdt_kiem_tra":"don_du_thau",'
         '"yeu_cau":"Đơn được đại diện hợp pháp của nhà thầu ký tên, đóng dấu",'
         '"can_lam_ro":"","can_tra_cuu":false,"ap_dung":""},\n'
-        '   {"noi_dung_kiem_tra":"Liên danh: ký thay mặt đúng phân công","hsdt_kiem_tra":"don_du_thau",'
-        '"yeu_cau":"Thành viên đứng đầu ký thay mặt phù hợp phân công trong thỏa thuận liên danh",'
+        '   {"noi_dung_kiem_tra":"Liên danh: cách ký đơn hợp lệ","hsdt_kiem_tra":"don_du_thau",'
+        '"yeu_cau":"Đơn do đại diện hợp pháp của TỪNG thành viên liên danh ký tên, đóng dấu (nếu '
+        'có) HOẶC thành viên đứng đầu liên danh thay mặt liên danh ký theo phân công trách nhiệm '
+        'trong thỏa thuận liên danh — thoả MỘT trong hai là đạt",'
         '"can_lam_ro":"","can_tra_cuu":false,"ap_dung":"lien_danh"}]\n\n'
+        f"DANH MỤC ĐẠI LƯỢNG GÓI THẦU (chỉ dùng cho dieu_kien_ap_dung.dai_luong — chép NGUYÊN VĂN "
+        f"tên mục, không có mục nào khớp thì bỏ trống dieu_kien_ap_dung):\n{anchor_names()}\n\n"
         + cot_block(_CRIT_SCHEMA)
     )
 

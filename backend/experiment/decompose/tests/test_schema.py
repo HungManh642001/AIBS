@@ -61,3 +61,32 @@ def test_tieu_chi_khong_con_tien_quyet():
     from experiment.decompose.schema import CriterionModel
 
     assert "tien_quyet" not in CriterionModel.model_fields
+
+
+# ---- mệnh đề "hoặc": prompt phải dạy GỘP, không tách (ca thật gói 54 nd#156/#157) ----
+def test_sys_struct_cam_tach_menh_de_hoac():
+    """Hai vế nối 'hoặc' là hai cách thoả CÙNG một yêu cầu; tách ra biến HOẶC thành VÀ."""
+    from experiment.decompose.prompts import SYS_STRUCT
+
+    s = SYS_STRUCT.lower()
+    assert "hoặc" in s and "không được tách" in s
+    assert "thoả một" in s or "thoả cùng một" in s or "một vế" in s
+
+
+def test_vi_du_3_giu_du_ca_hai_ve_cua_hoac():
+    """Ví dụ 3 từng chỉ nêu vế 'thành viên đứng đầu ký' -> chính nó dạy model bỏ vế kia."""
+    from experiment.decompose.prompts import struct_prompt
+
+    p = struct_prompt({"ten": "X", "nhom": "hop_le", "yeu_cau_goc": "", "hsdt_can_kiem_tra": []})
+    i = p.find("VÍ DỤ 3")
+    khoi = p[i:p.find("DANH MỤC ĐẠI LƯỢNG", i)]
+    assert "TỪNG thành viên" in khoi and "đứng đầu" in khoi
+    assert "HOẶC" in khoi and "MỘT trong hai" in khoi
+
+
+def test_sys_eval_biet_hoac_chi_can_thoa_mot():
+    """Sửa decompose là vô nghĩa nếu bước chấm vẫn đòi thoả hết các vế."""
+    from experiment.evaluate.prompts import SYS_EVAL
+
+    assert "hoặc" in SYS_EVAL.lower()
+    assert "MỘT phương án" in SYS_EVAL and "KHÔNG đòi thỏa hết" in SYS_EVAL
