@@ -118,3 +118,38 @@ def test_file_hong_thi_bo_qua_chu_khong_gay(tmp_path):
 
 def test_cache_path_nam_trong_out_dir(tmp_path):
     assert cache_path(tmp_path).parent == tmp_path
+
+
+def test_hai_backend_cung_ten_model_KHONG_dung_chung_vector():
+    """Bẫy thật: OllamaEmbedding(bge-m3) và OpenAILikeEmbedding(bge-m3) đều khai 'bge-m3' nhưng
+    khác stack/precision -> vector khác. Trùng khóa thì đổi backend sẽ âm thầm dùng lại vector cũ.
+
+    embedder.py đang giữ sẵn cả hai đường (một cái bị comment) nên đây là ca thực tế.
+    """
+    from experiment.index.embed_cache import dinh_danh_embedder
+
+    class OllamaEmbedding:
+        model_name = "bge-m3"
+
+    class OpenAILikeEmbedding:
+        model_name = "bge-m3"
+
+    a, b = dinh_danh_embedder(OllamaEmbedding()), dinh_danh_embedder(OpenAILikeEmbedding())
+    assert a != b
+    assert "bge-m3" in a and "Ollama" in a
+
+    node = TextNode(text="x", metadata={})
+    assert khoa_node(a, node) != khoa_node(b, node)
+
+
+def test_doi_backend_thi_nhung_lai(tmp_path):
+    """Kiểm ở tầng gan_embedding chứ không chỉ tầng khóa."""
+    class KhacBackend(DemEmbed):
+        pass
+
+    e = _reset()
+    gan_embedding(_nodes(3), e, EmbedCache(tmp_path / "e.pkl"))
+    DemEmbed._dem["n"] = 0
+
+    stat = gan_embedding(_nodes(3), KhacBackend(), EmbedCache(tmp_path / "e.pkl"))
+    assert stat["nhung"] == 3, "đổi backend mà vẫn dùng lại vector cũ -> sai thầm lặng"

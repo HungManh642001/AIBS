@@ -40,6 +40,20 @@ def noi_dung_nhung(node: Any) -> str:
     return node.get_content(metadata_mode=MetadataMode.EMBED)
 
 
+def dinh_danh_embedder(embed: Any) -> str:
+    """Định danh embedder cho KHÓA cache — gồm CẢ lớp lẫn tên model.
+
+    Chỉ lấy `model_name` là bẫy: `OllamaEmbedding(bge-m3)` (llama.cpp, CPU) và
+    `OpenAILikeEmbedding(bge-m3)` (LiteLLM proxy, vLLM/GPU) đều khai "bge-m3" nhưng cho ra vector
+    KHÁC nhau — khác stack, khác precision. Trùng khóa thì đổi backend sẽ âm thầm dùng lại vector
+    của backend cũ, và không có gì báo: retrieval hỏng dần mà chỉ số vẫn xanh.
+
+    `embedder.py` đang giữ sẵn cả hai đường (một cái bị comment) nên đây là ca thực tế chứ không
+    phải giả định.
+    """
+    return f"{embed.__class__.__name__}:{getattr(embed, 'model_name', '') or ''}"
+
+
 def khoa_node(model: str, node: Any) -> str:
     h = hashlib.sha256()
     h.update(model.encode("utf-8"))
@@ -87,8 +101,7 @@ def gan_embedding(nodes: list[Any], embed: Any, cache: EmbedCache) -> dict[str, 
 
     Sửa nodes TẠI CHỖ. Trả {trung, nhung} để bên gọi ghi vào report.
     """
-    model = getattr(embed, "model_name", "") or embed.__class__.__name__
-    khoa = [khoa_node(model, n) for n in nodes]
+    khoa = [khoa_node(dinh_danh_embedder(embed), n) for n in nodes]
 
     thieu_idx = []
     for i, (n, k) in enumerate(zip(nodes, khoa)):
