@@ -11,6 +11,7 @@ Nội dung nguon=hsdt = dữ liệu nhà thầu -> đánh giá ở bước sau, 
 from __future__ import annotations
 
 import asyncio
+import unicodedata
 from typing import Any
 
 from llama_index.core.workflow import Context, Event, StartEvent, StopEvent, Workflow, step
@@ -67,6 +68,22 @@ class _AnalyzeReq(Event):
 class _SearchReq(Event):
     crit: dict
     item: dict
+
+
+def _ten_kieu_may(ten: str) -> bool:
+    """Nhãn tiêu chí có đang là định danh máy thay vì tiếng Việt cho người đọc?
+
+    Hai dấu hiệu: có gạch dưới, hoặc KHÔNG có lấy một chữ có dấu nào trong khi tiếng Việt gần như
+    không thể viết một cụm 3-8 từ mà sạch dấu. Chỉ dùng để CẢNH BÁO — nhãn hợp lệ nhưng tình cờ
+    không dấu (vd "Bao lanh" viết đúng chính tả tiếng Anh) là hiếm, và cảnh báo thừa vô hại.
+    """
+    t = (ten or "").strip()
+    if not t:
+        return False
+    if "_" in t:
+        return True
+    return not any(unicodedata.combining(c) for c in unicodedata.normalize("NFD", t)) \
+        and "đ" not in t.lower()
 
 
 class _Done(Event):
@@ -315,6 +332,15 @@ class DecomposeWorkflow(Workflow):
             log.info("  [list] %d tiêu chí; [critique] +%d sót", listed_n, len(added))
         else:
             log.info("  [list] %d tiêu chí (bỏ critique: nhóm free-text)", listed_n)
+
+        # `ten` hiện thẳng trên giao diện cho chuyên gia đọc, nhưng model hay tự chế nhãn kiểu định
+        # danh máy ("Tu_cach_hop_le", "Bao dam du thau (Thong thuong)"). SYS_LIST đã cấm; log lại
+        # ca vi phạm để ĐO được prompt có ăn không, thay vì phải soi tay từng gói. Chỉ cảnh báo —
+        # KHÔNG tự sửa: đặt lại tên bằng code là thêm một lớp bịa nữa.
+        xau = [c.get("ten", "") for c in listed if _ten_kieu_may(c.get("ten", ""))]
+        if xau:
+            log.warning("  [list] %d/%d tên tiêu chí còn kiểu định danh máy (thiếu dấu hoặc gạch "
+                        "dưới): %s", len(xau), len(listed), xau)
         return _Listed(crits=listed, added=added, listed_n=listed_n)
 
     # ---- fan-out: mỗi tiêu chí -> phân tích ----

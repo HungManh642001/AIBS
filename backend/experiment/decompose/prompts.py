@@ -19,8 +19,15 @@ SYS_LIST = (
     "QUY TẮC NGUYÊN TỬ — bắt buộc: mỗi tiêu chí chỉ hướng tới MỘT nội dung kiểm tra trên MỘT hồ sơ "
     "CHÍNH của nhà thầu. Nếu một loại hồ sơ có NHIỀU nội dung kiểm tra độc lập → TÁCH thành nhiều tiêu "
     "chí; KHÔNG gộp nhiều vấn đề vào một tiêu chí; KHÔNG để hai tiêu chí trùng/đè nội dung nhau. "
-    "Mỗi tiêu chí: nhom (hop_le/nang_luc/ky_thuat/tai_chinh), ten (nhãn NGẮN), yeu_cau_goc (trích "
+    "Mỗi tiêu chí: nhom (hop_le/nang_luc/ky_thuat/tai_chinh), ten, yeu_cau_goc (trích "
     "NGUYÊN VĂN câu yêu cầu gốc trong HSMT, KHÔNG TÓM TẮT, KHÔNG VIẾT GỌN, PHẢI TRÍCH ĐẦY ĐỦ), hsdt_can_kiem_tra.\n"
+    "ten = nhãn NGẮN (3-8 từ) bằng TIẾNG VIỆT CÓ DẤU ĐẦY ĐỦ, viết như tiêu đề cho người đọc: hoa "
+    "chữ đầu, các chữ sau viết thường, ngăn bằng DẤU CÁCH. TUYỆT ĐỐI KHÔNG viết kiểu định danh máy "
+    "— không bỏ dấu, không gạch dưới, không viết hoa mỗi từ, không viết tắt tự chế. "
+    'ĐÚNG: "Tư cách hợp lệ" · "Bảo đảm dự thầu" · "Thỏa thuận liên danh" · "Hiệu lực hồ sơ dự thầu". '
+    'SAI: "Tu_cach_hop_le" · "Tu cach hop le" · "Bao dam du thau (Thong thuong)" · "Hieu_luc_HSDT". '
+    "Đặt tên theo ĐÚNG cách HSMT gọi sự việc đó trong yeu_cau_goc, đừng tự nghĩ ra cách gọi mới — "
+    "nhãn này hiện trên giao diện cho chuyên gia đấu thầu đọc.\n"
     "hsdt_can_kiem_tra = MỌI tài liệu hồ sơ dự thầu cần xem để kết luận tiêu chí này, HỒ SƠ CHÍNH đứng ĐẦU danh "
     "sách. Quy tắc nguyên tử ràng buộc NỘI DUNG và HỒ SƠ CHÍNH — nó KHÔNG cấm liệt kê thêm tài "
     "liệu ĐỐI CHIẾU: nếu yêu cầu đòi so hồ sơ chính với một tài liệu KHÁC thì PHẢI liệt kê thêm "
@@ -36,7 +43,9 @@ SYS_CRITIQUE = (
     "Bạn là chuyên gia rà soát. So sánh DANH SÁCH tiêu chí đã liệt kê với NGUỒN gốc và chỉ ra các "
     "tiêu chí BỊ SÓT (chỉ trả tiêu chí còn THIẾU, không lặp lại tiêu chí đã có). Giữ QUY TẮC NGUYÊN "
     "TỬ: mỗi tiêu chí = 1 nội dung trên 1 hồ sơ CHÍNH; hsdt_can_kiem_tra vẫn liệt kê THÊM tài liệu "
-    "đối chiếu nếu yêu cầu đòi so với tài liệu khác (hồ sơ chính đứng đầu). Mục tiêu: không sót."
+    "đối chiếu nếu yêu cầu đòi so với tài liệu khác (hồ sơ chính đứng đầu). Mục tiêu: không sót.\n"
+    "ten theo ĐÚNG quy ước như bước liệt kê: nhãn ngắn TIẾNG VIỆT CÓ DẤU, hoa chữ đầu, ngăn bằng "
+    'dấu cách (vd "Thỏa thuận liên danh") — KHÔNG bỏ dấu, KHÔNG gạch dưới.'
 )
 SYS_STRUCT = (
     "Bạn là chuyên gia đấu thầu. Cho MỘT tiêu chí (đã có yeu_cau_goc trích từ Hồ sơ mời thầu (HSMT) và "

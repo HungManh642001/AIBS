@@ -90,3 +90,32 @@ def test_sys_eval_biet_hoac_chi_can_thoa_mot():
 
     assert "hoặc" in SYS_EVAL.lower()
     assert "MỘT phương án" in SYS_EVAL and "KHÔNG đòi thỏa hết" in SYS_EVAL
+
+
+# ---- ten tiêu chí: nhãn cho NGƯỜI đọc, không phải định danh máy ----
+def test_sys_list_bat_ten_tieng_viet_co_dau():
+    """`ten` hiện thẳng trên giao diện. Model tự chế "Tu cac hop le" (mất dấu + rụng chữ 'h')."""
+    from experiment.decompose.prompts import SYS_LIST
+
+    assert "CÓ DẤU" in SYS_LIST
+    assert "gạch dưới" in SYS_LIST                     # cấm kiểu Tu_cach_hop_le
+    assert "Tư cách hợp lệ" in SYS_LIST                # ví dụ ĐÚNG
+    assert "Tu_cach_hop_le" in SYS_LIST                # ví dụ SAI, nêu đích danh ca đã gặp
+
+
+def test_sys_critique_cung_quy_uoc_ten():
+    """Critique cũng sinh tiêu chí mới — bỏ sót chỗ này là nhãn xấu lọt qua đường khác."""
+    from experiment.decompose.prompts import SYS_CRITIQUE
+
+    assert "CÓ DẤU" in SYS_CRITIQUE and "gạch dưới" in SYS_CRITIQUE
+
+
+def test_phat_hien_ten_kieu_may():
+    """Cảnh báo để ĐO được prompt có ăn không, khỏi phải soi tay từng gói."""
+    from experiment.decompose.workflow import _ten_kieu_may
+
+    for xau in ["Tu_cach_hop_le", "Tu cac hop le", "Bao dam du thau (Thong thuong)", "Hieu_luc_HSDT"]:
+        assert _ten_kieu_may(xau), f"bỏ lọt nhãn xấu: {xau}"
+    for tot in ["Tư cách hợp lệ", "Bảo đảm dự thầu", "Thỏa thuận liên danh", "Đơn dự thầu"]:
+        assert not _ten_kieu_may(tot), f"báo nhầm nhãn đúng: {tot}"
+    assert not _ten_kieu_may("")       # rỗng là chuyện khác, không phải nhãn xấu
