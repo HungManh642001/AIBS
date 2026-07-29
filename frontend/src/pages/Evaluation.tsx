@@ -6,6 +6,7 @@ import { api, unwrap } from "../api/client";
 import type { CriterionEval, EvalResultsPayload, Verdict, VendorEval } from "../api/types";
 import { useArtifactLabel } from "../api/artifacts";
 import Loader from "../components/Loader";
+import TieuDeTieuChi, { biCat } from "../components/TieuDeTieuChi";
 
 const KQ_OPTS = [
   { value: "đạt", label: "Đạt" },
@@ -204,15 +205,21 @@ function VendorSection({ v, onOverride }: {
             items={v.criteria.map((c: CriterionEval) => ({
               key: String(c.eval_id),
               label: (
-                <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)" }}>
-                  <ResultPill kq={c.ket_qua} />
-                  <span style={{ fontWeight: 600 }}>{c.ten}</span>
-                  {c.nhom === "phat_hien_bo_sung" && <Tag color="blue">Hệ thống tự kiểm</Tag>}
+                // Neo vào nguyên văn điều khoản HSMT, không dùng `ten` do LLM chế (mất dấu, sai
+                // chính tả, đổi mỗi lần chạy). Pill trạng thái đứng đầu vì đây là màn QUÉT: mắt
+                // tìm cái trượt trước, rồi mới đọc điều khoản.
+                <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--sp-3)" }}>
+                  <span style={{ flex: "0 0 auto", marginTop: 2 }}><ResultPill kq={c.ket_qua} /></span>
+                  <TieuDeTieuChi yeuCauGoc={c.yeu_cau_goc} ten={c.ten} max={130} />
+                  {c.nhom === "phat_hien_bo_sung" && (
+                    <Tag color="blue" style={{ flex: "0 0 auto" }}>Hệ thống tự kiểm</Tag>
+                  )}
                 </div>
               ),
               children: (
                 <>
-                  {c.yeu_cau_goc && (
+                  {/* Nhãn Collapse đã là điều khoản (rút gọn) — chỉ hiện bản đầy đủ khi bị cắt. */}
+                  {c.yeu_cau_goc && biCat(c.yeu_cau_goc, 130) && (
                     <div style={{ marginBottom: "var(--sp-2)", fontSize: "var(--fs-body)", color: "var(--ink-muted)" }}>
                       <b>Yêu cầu gốc (HSMT):</b> {c.yeu_cau_goc}
                     </div>

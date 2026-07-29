@@ -323,3 +323,15 @@ body {
 
 /* mono utility */
 .mono { font-family: var(--font-mono); }
+
+/* Tiêu đề tiêu chí = NGUYÊN VĂN điều khoản HSMT (xem components/TieuDeTieuChi.tsx).
+   AntD mặc định cho .ant-card-head-title là nowrap + overflow hidden, nên câu dài sẽ bị CSS xén
+   thêm một lần nữa sau khi ta đã rút gọn có kiểm soát — mất chữ mà không có dấu "…". */
+.tieu-chi-card .ant-card-head { align-items: flex-start; }
+.tieu-chi-card .ant-card-head-title {
+  white-space: normal; overflow: visible; text-overflow: clip;
+  padding-top: var(--sp-3); padding-bottom: var(--sp-3);
+  /* Đây là NỘI DUNG (nguyên văn điều khoản), không phải nhãn -> đặt cỡ/độ đậm như văn bản đọc,
+     kẻo cả đoạn dài in đậm cỡ tiêu đề đè hết mọi thứ khác trên trang. */
+  font-size: var(--fs-body); font-weight: 500; line-height: 1.55;
+}
