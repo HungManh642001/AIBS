@@ -269,6 +269,16 @@ def _dong_chu_ky(ck: dict[str, Any], tv: dict[str, Any] | None) -> str:
             f"{(tv or {}).get('nguoi_dai_dien') or '(không rõ)'}")
 
 
+def _khong_ro_ten_phap_nhan(ck: dict[str, Any]) -> bool:
+    """Khối chữ ký không có LẤY MỘT tên pháp nhân nào để đối chiếu (bóc thiếu, không phải lạ).
+
+    Khác hẳn ca 'pháp nhân lạ' (có tên, chỉ là tên đó không có trong TTLD): ở đây không có căn cứ
+    nào để tra cứu, nên phải SOI — không được kết luận 'không đạt' bằng một cái tên rỗng.
+    """
+    return (not _norm(str(ck.get("thanh_vien_ttld", ""))).strip()
+            and not _norm(str(ck.get("phap_nhan", ""))).strip())
+
+
 def doi_chieu_chu_ky_lien_danh(
         d: dict[str, Any]) -> tuple[str, str, str, list[ChuKyLech]]:
     """Dữ liệu đã bóc -> (ket_qua, bang_chung, ghi_chu, lech). Hàm THUẦN: mọi phán quyết ở đây.
@@ -288,6 +298,15 @@ def doi_chieu_chu_ky_lien_danh(
     cap = [(ck, _tra_thanh_vien(tvs, ck)) for ck in cks]
     bang_chung = "; ".join(_dong_chu_ky(ck, tv) for ck, tv in cap)
 
+    # THIẾU CĂN CỨ (không đọc được tên pháp nhân nào trên khối) phải kiểm TRƯỚC ca 'pháp nhân lạ':
+    # mọi phán quyết phía sau (hình thức A/B, thiếu chữ ký) dựa trên biết ĐỦ tập pháp nhân đã ký —
+    # thiếu một tên là cả kết luận không còn đáng tin, kể cả khi một khối khác đúng là người lạ.
+    mo_ho = [ck for ck, tv in cap if tv is None and _khong_ro_ten_phap_nhan(ck)]
+    if mo_ho:
+        return (KET_QUA_SOI, bang_chung,
+                "không đọc được tên pháp nhân trên một hoặc nhiều khối chữ ký của đơn dự thầu — "
+                "chưa đối chiếu được với thỏa thuận liên danh", [])
+
     la = [str(ck.get("phap_nhan") or "(không rõ)") for ck, tv in cap if tv is None]
     if la:
         return (KET_QUA_KHONG, bang_chung,
@@ -296,17 +315,23 @@ def doi_chieu_chu_ky_lien_danh(
 
     ten_ky = {_norm(str(tv.get("ten_phap_nhan", ""))) for _, tv in cap}
     ten_tv = {_norm(str(tv.get("ten_phap_nhan", ""))) for tv in tvs}
-    dd = next((tv for tv in tvs if tv.get("la_dung_dau")), None)
+    dd_list = [tv for tv in tvs if tv.get("la_dung_dau")]
 
     if ten_ky == ten_tv:
         hinh_thuc = "tất cả thành viên liên danh cùng ký"
-    elif dd is None:
+    elif len(dd_list) > 1:
+        # Bóc dữ liệu lỗi (TTLD không thể có 2 thành viên đứng đầu) — không đoán bừa lấy người nào.
+        return (KET_QUA_SOI, bang_chung,
+                "thỏa thuận liên danh (theo dữ liệu bóc được) nêu NHIỀU HƠN MỘT thành viên đứng "
+                "đầu — chưa đối chiếu được thẩm quyền ký đơn", [])
+    elif not dd_list:
         return (KET_QUA_SOI, bang_chung,
                 "thỏa thuận liên danh không nêu rõ thành viên đứng đầu — chưa đối chiếu được thẩm "
                 "quyền ký đơn", [])
-    elif ten_ky == {_norm(str(dd.get("ten_phap_nhan", "")))}:
-        hinh_thuc = f"thành viên đứng đầu ({dd.get('ten_phap_nhan')}) ký thay mặt liên danh"
+    elif ten_ky == {_norm(str(dd_list[0].get("ten_phap_nhan", "")))}:
+        hinh_thuc = f"thành viên đứng đầu ({dd_list[0].get('ten_phap_nhan')}) ký thay mặt liên danh"
     else:
+        dd = dd_list[0]
         thieu = [str(tv.get("ten_phap_nhan", "")) for tv in tvs
                  if _norm(str(tv.get("ten_phap_nhan", ""))) not in ten_ky]
         return (KET_QUA_KHONG, bang_chung,
@@ -341,28 +366,29 @@ def ket_luan_uy_quyen_lien_danh(lech: list[ChuKyLech],
     theo_ten = {_norm(str(m.get("phap_nhan", ""))): m for m in muc}
     loi: list[str] = []
     soi: list[str] = []
-    for l in lech:
-        m = theo_ten.get(_norm(l.phap_nhan))
+    for ck_lech in lech:
+        m = theo_ten.get(_norm(ck_lech.phap_nhan))
         if m is None:
-            loi.append(f"{l.phap_nhan}: không có giấy ủy quyền cho người ký {l.nguoi_ky}")
+            loi.append(f"{ck_lech.phap_nhan}: không có giấy ủy quyền cho người ký "
+                       f"{ck_lech.nguoi_ky}")
             continue
-        khop = khop_phap_nhan(l.phap_nhan, str(m.get("phap_nhan_uy_quyen", "")),
+        khop = khop_phap_nhan(ck_lech.phap_nhan, str(m.get("phap_nhan_uy_quyen", "")),
                               bool(m.get("phap_nhan_khop")))
         if khop is None:
-            soi.append(f"{l.phap_nhan}: không đọc được tên pháp nhân bên ủy quyền")
+            soi.append(f"{ck_lech.phap_nhan}: không đọc được tên pháp nhân bên ủy quyền")
             continue
         if not khop:
-            loi.append(f"{l.phap_nhan}: giấy ủy quyền do pháp nhân KHÁC cấp "
+            loi.append(f"{ck_lech.phap_nhan}: giấy ủy quyền do pháp nhân KHÁC cấp "
                        f"({m.get('phap_nhan_uy_quyen') or '?'}), không phải thành viên liên danh "
                        f"đứng tên khối chữ ký này — ủy quyền vô hiệu")
             continue
         if not m.get("dung_nguoi"):
-            loi.append(f"{l.phap_nhan}: người được ủy quyền "
+            loi.append(f"{ck_lech.phap_nhan}: người được ủy quyền "
                        f"({m.get('nguoi_duoc_uy_quyen') or '?'}) không phải người ký đơn "
-                       f"({l.nguoi_ky})")
+                       f"({ck_lech.nguoi_ky})")
             continue
         if not m.get("dung_pham_vi"):
-            loi.append(f"{l.phap_nhan}: phạm vi ủy quyền không bao gồm việc ký đơn dự thầu")
+            loi.append(f"{ck_lech.phap_nhan}: phạm vi ủy quyền không bao gồm việc ký đơn dự thầu")
     if loi:
         return KET_QUA_KHONG, "; ".join(loi)
     if soi:

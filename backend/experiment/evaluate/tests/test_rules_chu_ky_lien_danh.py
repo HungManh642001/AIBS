@@ -129,3 +129,66 @@ def test_sai_nguoi_hoac_sai_pham_vi_thi_khong_dat():
 def test_khong_doc_duoc_ten_ben_uy_quyen_thi_soi():
     kq, gc = ket_luan_uy_quyen_lien_danh(_LECH, [_muc(_OSB, phap_nhan_uy_quyen="")])
     assert kq == KET_QUA_SOI and "không đọc được" in gc
+
+
+# --- Review Task 5 (finding 1): tên pháp nhân KHÔNG ĐỌC ĐƯỢC phải SOI, không đoán 'không đạt' ---
+
+def test_khoi_chu_ky_khong_ro_ten_phap_nhan_thi_soi_khong_ket_luan_khong_dat():
+    """Khác ca 'pháp nhân lạ' (có tên, chỉ là không có trong TTLD): đây THIẾU CĂN CỨ hoàn toàn —
+    cả `phap_nhan` lẫn `thanh_vien_ttld` đều rỗng, không có gì để tra cứu."""
+    kq, bc, gc, lech = doi_chieu_chu_ky_lien_danh({
+        "thanh_vien": [_tv(_OSB, "Nguyễn Hồng Sơn", dung_dau=True), _tv(_OHT, "Trần Vũ Thường")],
+        "chu_ky": [{"phap_nhan": "", "nguoi_ky": "X", "thanh_vien_ttld": ""}]})
+    assert kq == KET_QUA_SOI and lech == []
+    assert "không đọc được" in gc
+
+
+# --- Review Task 5 (finding 2): NHIỀU thành viên cùng gắn cờ đứng đầu -> SOI, không chọn bừa ---
+
+def test_hai_thanh_vien_cung_dung_dau_ma_chi_mot_nguoi_ky_thi_soi():
+    kq, bc, gc, lech = doi_chieu_chu_ky_lien_danh({
+        "thanh_vien": [_tv(_OSB, "Nguyễn Hồng Sơn", dung_dau=True),
+                       _tv(_OHT, "Trần Vũ Thường", dung_dau=True)],
+        "chu_ky": [_ck(_OSB, "Nguyễn Hồng Sơn")]})
+    assert kq == KET_QUA_SOI and lech == []
+    assert "nhiều hơn một" in gc.lower()
+
+
+def test_hinh_thuc_b_van_dat_du_co_nhieu_co_dung_dau():
+    """Guard 'nhiều cờ đứng đầu' KHÔNG được chặn nhầm hình thức B — hình thức B không cần biết
+    ai đứng đầu, chỉ cần MỌI thành viên cùng ký."""
+    kq, bc, gc, lech = doi_chieu_chu_ky_lien_danh({
+        "thanh_vien": [_tv(_OSB, "Nguyễn Hồng Sơn", dung_dau=True),
+                       _tv(_OHT, "Trần Vũ Thường", dung_dau=True)],
+        "chu_ky": [_ck(_OSB, "Nguyễn Hồng Sơn"), _ck(_OHT, "Trần Vũ Thường")]})
+    assert kq == KET_QUA_DAT and lech == []
+    assert "tất cả thành viên" in gc
+
+
+# --- Review Task 5 (finding 3): ket_luan_uy_quyen_lien_danh với NHIỀU chữ ký lệch (chưa test) ---
+
+_LECH2 = [ChuKyLech(phap_nhan=_OSB, nguoi_ky="Trần Vũ Thường", nguoi_dai_dien="Nguyễn Hồng Sơn"),
+          ChuKyLech(phap_nhan=_OHT, nguoi_ky="Lê Văn C", nguoi_dai_dien="Phạm Thị D")]
+
+
+def test_uy_quyen_hai_thanh_vien_deu_du_dieu_kien_thi_dat():
+    assert ket_luan_uy_quyen_lien_danh(_LECH2, [_muc(_OSB), _muc(_OHT)]) == (KET_QUA_DAT, "")
+
+
+def test_uy_quyen_mot_dung_mot_sai_phap_nhan_thi_khong_dat_va_neu_dung_ten():
+    """Chỉ nêu tên thành viên SAI trong ghi_chu — thành viên hợp lệ không bị nêu nhầm."""
+    kq, gc = ket_luan_uy_quyen_lien_danh(
+        _LECH2, [_muc(_OSB), _muc(_OHT, phap_nhan_uy_quyen=_OSB, phap_nhan_khop=False)])
+    assert kq == KET_QUA_KHONG
+    assert gc.startswith(_OHT) and "vô hiệu" in gc
+    assert "; " not in gc     # chỉ MỘT lỗi — không lẫn thông điệp của thành viên OSB hợp lệ
+
+
+def test_uy_quyen_mot_loi_mot_soi_thi_uu_tien_khong_dat():
+    """MỘT chữ ký lệch có GUQ vô hiệu (loi) + MỘT chữ ký lệch khác thiếu tên bên ủy quyền (soi)
+    -> loi PHẢI thắng soi, kết quả chung là KHÔNG ĐẠT."""
+    kq, gc = ket_luan_uy_quyen_lien_danh(
+        _LECH2, [_muc(_OSB, phap_nhan_uy_quyen=_OHT, phap_nhan_khop=False),
+                 _muc(_OHT, phap_nhan_uy_quyen="")])
+    assert kq == KET_QUA_KHONG
+    assert _OSB in gc and "vô hiệu" in gc
