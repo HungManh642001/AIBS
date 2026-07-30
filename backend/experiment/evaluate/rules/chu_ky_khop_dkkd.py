@@ -21,6 +21,12 @@ KÝ THAY (rẽ nhánh ở CODE — không bắt LLM tự làm if/else):
 Bằng chứng ủy quyền LUÔN mở đầu bằng "ai ủy quyền cho ai" — chuyên gia cần thấy ngay cặp tên này
 để rà lại, không phải đọc lần trong đoạn trích.
 
+LIÊN DANH (rẽ nhánh ở CODE theo sự có mặt của thoa_thuan_lien_danh): với nhà thầu liên danh,
+văn bản quyết định thẩm quyền ký đơn là THỎA THUẬN LIÊN DANH chứ không phải ĐKKD — nhánh này
+KHÔNG đọc ĐKKD. Đơn hợp lệ theo MỘT trong hai cách: thành viên đứng đầu ký thay mặt liên danh,
+hoặc TẤT CẢ thành viên cùng ký; mỗi khối chữ ký phải do đại diện của CHÍNH thành viên đó (theo
+thỏa thuận) ký, lệch thì xét giấy ủy quyền do CHÍNH thành viên đó cấp, đúng người, đúng phạm vi.
+
 PHÁP NHÂN (kiểm TRƯỚC tên người): ĐKKD và giấy ủy quyền phải là của CHÍNH pháp nhân đứng tên ký
 đơn dự thầu. Ca thật (samples/62/HSDT/osb): giấy ủy quyền do 'Công ty TNHH Công nghệ cao OSB' cấp
 trong khi đơn dự thầu đứng tên 'Công ty cổ phần Tập đoàn OSB' — trùng thương hiệu nên rất dễ lọt,
@@ -103,6 +109,38 @@ SYS_RULE_UY_QUYEN_KHONG_DKKD = (
     + _QUY_TAC_PHAP_NHAN +
     "bang_chung: trích nguyên văn giấy ủy quyền + câu ký trong đơn, kèm số trang. Chỉ trả JSON."
 )
+
+
+SYS_RULE_LIEN_DANH_KY = (
+    "Bạn là chuyên gia chấm thầu. Nhà thầu dự thầu theo hình thức LIÊN DANH. Đọc THỎA THUẬN LIÊN "
+    "DANH và ĐƠN DỰ THẦU rồi BÓC DỮ LIỆU (KHÔNG tính toán, KHÔNG kết luận đạt/không đạt — phần đó "
+    "hệ thống tự làm):\n"
+    "- thanh_vien: mỗi thành viên trong thỏa thuận liên danh gồm ten_phap_nhan (tên pháp nhân "
+    "NGUYÊN VĂN), nguoi_dai_dien (người đại diện của CHÍNH thành viên đó ghi trong thỏa thuận), "
+    "la_dung_dau = true nếu thỏa thuận ghi đây là THÀNH VIÊN ĐỨNG ĐẦU liên danh.\n"
+    "- chu_ky: mỗi KHỐI CHỮ KÝ ở cuối đơn dự thầu gồm phap_nhan (pháp nhân đứng tên khối chữ ký "
+    "đó), nguoi_ky (người đã ký), thanh_vien_ttld = chép ĐÚNG ten_phap_nhan của thành viên trong "
+    "danh sách thanh_vien ở trên mà khối chữ ký này thuộc về; để RỖNG nếu khối chữ ký không thuộc "
+    "thành viên nào. Đơn ghi 'ĐẠI DIỆN HỢP PHÁP CỦA NHÀ THẦU LIÊN DANH — <tên công ty>' thì đó là "
+    "MỘT khối chữ ký đứng tên công ty đó.\n"
+    + _QUY_TAC_PHAP_NHAN +
+    "Không đọc được thì để chuỗi rỗng, TUYỆT ĐỐI KHÔNG bịa tên người hay tên công ty, KHÔNG suy "
+    "đoán ai là thành viên đứng đầu khi thỏa thuận không ghi. bang_chung: trích nguyên văn phần "
+    "chữ ký trên đơn và phần nêu thành viên/đại diện/thành viên đứng đầu trong thỏa thuận, kèm số "
+    "trang. Chỉ trả JSON."
+)
+
+
+def lien_danh_ky_prompt(don_text: str, ttld_text: str) -> str:
+    return (
+        "[RULE:chu_ky_lien_danh]\n"
+        f"ĐƠN DỰ THẦU (bóc từ ảnh):\n{don_text}\n\n"
+        f"THỎA THUẬN LIÊN DANH (bóc từ ảnh):\n{ttld_text}\n\n"
+        + cot_block('{"thanh_vien":[{"ten_phap_nhan":"...","nguoi_dai_dien":"...",'
+                    '"la_dung_dau":true}],"chu_ky":[{"phap_nhan":"...","nguoi_ky":"...",'
+                    '"thanh_vien_ttld":"..."}],"bang_chung":"<trích 2 phía>","trang":[...],'
+                    '"do_tin":0.0,"ghi_chu":""}')
+    )
 
 
 class ChuKyOut(_Base):
@@ -422,6 +460,47 @@ def _verdict(ket_qua: str, bang_chung: str = "", trang: list[int] | None = None,
                    nguon_doc=nguon_doc or list(_HO_SO))
 
 
+def _verdict_ld(ket_qua: str, bang_chung: str = "", trang: list[int] | None = None,
+                do_tin: float = 0.0, ghi_chu: str = "",
+                nguon_doc: list[str] | None = None) -> Verdict:
+    """Verdict nhánh LIÊN DANH — nhãn và nguồn KHÁC hẳn nhánh ĐKKD.
+
+    Không trộn nhãn ĐKKD vào đây: báo cáo không được nói là đã đối chiếu ĐKKD trong khi nhánh này
+    không hề đọc ĐKKD.
+    """
+    return Verdict(noi_dung_kiem_tra=_TEN_LD, hsdt_kiem_tra=_DON,
+                   yeu_cau=("Đơn dự thầu của nhà thầu liên danh phải do thành viên đứng đầu ký "
+                            "thay mặt liên danh hoặc do tất cả thành viên cùng ký, đúng đại diện "
+                            "nêu trong thỏa thuận liên danh hoặc người được ủy quyền hợp lệ"),
+                   thong_tin_bo_sung="", ket_qua=ket_qua, bang_chung=bang_chung,
+                   trang=trang or [], do_tin=do_tin, ghi_chu=ghi_chu,
+                   nguon_doc=nguon_doc or [_DON, _TTLD])
+
+
+async def _xet_lien_danh(by_type: dict[str, list[PageRecord]], vision_fn: Any) -> Verdict:
+    """Nhà thầu LIÊN DANH: thẩm quyền ký đơn neo vào THỎA THUẬN LIÊN DANH, KHÔNG đọc ĐKKD.
+
+    Bước 1 (1 call): LLM bóc thành viên + đại diện (TTLD) và các khối chữ ký (đơn);
+    `doi_chieu_chu_ky_lien_danh` phán quyết. Còn chữ ký lệch người -> bước 2 xét giấy ủy quyền.
+    """
+    out = await vision_fn(SYS_RULE_LIEN_DANH_KY,
+                          lien_danh_ky_prompt(pages_text(by_type[_DON]),
+                                              pages_text(by_type[_TTLD])),
+                          validate=validate_lien_danh_ky, max_tokens=_MAX_TOKENS)
+    if out.status == "error":
+        return _verdict_ld(KET_QUA_LOI, bang_chung=f"AI lỗi: {out.error}", ghi_chu="cần soi lại")
+    d = out.data
+    trang = [int(t) for t in d.get("trang", []) if str(t).isdigit()]
+    do_tin = float(d.get("do_tin", 0.0) or 0.0)
+    ket_qua, bang_chung, ghi_chu, lech = doi_chieu_chu_ky_lien_danh(d)
+    bang_chung = bang_chung or d.get("bang_chung", "")
+    if ket_qua:
+        return _verdict_ld(ket_qua, bang_chung=bang_chung, trang=trang, do_tin=do_tin,
+                           ghi_chu=ghi_chu)
+    return _verdict_ld(KET_QUA_SOI, bang_chung=bang_chung, trang=trang, do_tin=do_tin,
+                       ghi_chu="người ký đơn khác đại diện nêu trong thỏa thuận liên danh")
+
+
 async def handler(by_type: dict[str, list[PageRecord]], vendor_ctx: VendorContext | None,
                   criterion: dict[str, Any], vision_fn: Any,
                   *, nd: dict[str, Any] | None = None, pkg: Any = None) -> Verdict:
@@ -429,6 +508,11 @@ async def handler(by_type: dict[str, list[PageRecord]], vendor_ctx: VendorContex
     if not by_type.get(_DON):
         return _verdict(KET_QUA_THIEU, bang_chung=f"HSDT không có: {_DON}",
                         ghi_chu="thiếu hồ sơ để đối chiếu chữ ký")
+    if by_type.get(_TTLD):
+        # Nhà thầu LIÊN DANH: văn bản quyết định ai được ký đơn là THỎA THUẬN LIÊN DANH, không
+        # phải ĐKKD. Dùng SỰ CÓ MẶT của hồ sơ làm tín hiệu — cùng căn cứ vendor_profile dùng để
+        # kết luận hình thức, nên không lệch với hình thức in trên báo cáo.
+        return await _xet_lien_danh(by_type, vision_fn)
     if not by_type.get(_DKKD):
         # Không có ĐKKD: còn giấy ủy quyền thì vẫn kiểm được người ký + phạm vi ủy quyền.
         if not by_type.get(_GUQ):

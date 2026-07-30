@@ -1,8 +1,12 @@
 """Nhánh LIÊN DANH của luật chữ ký đơn dự thầu: neo vào THỎA THUẬN LIÊN DANH, không phải ĐKKD."""
 from experiment.evaluate.rules.chu_ky_khop_dkkd import (
-    ChuKyLech, doi_chieu_chu_ky_lien_danh, ket_luan_uy_quyen_lien_danh,
+    SKILL, SYS_RULE_LIEN_DANH_KY, ChuKyLech, doi_chieu_chu_ky_lien_danh,
+    ket_luan_uy_quyen_lien_danh, lien_danh_ky_prompt,
 )
-from experiment.evaluate.schema import KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_SOI
+from experiment.evaluate.schema import (
+    KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU, PageRecord,
+)
+from experiment.evaluate.vision import ScriptedVision
 
 _OSB = "CÔNG TY CỔ PHẦN TẬP ĐOÀN OSB"
 _OHT = "CÔNG TY TNHH CÔNG NGHỆ CAO OSB"
@@ -192,3 +196,73 @@ def test_uy_quyen_mot_loi_mot_soi_thi_uu_tien_khong_dat():
                  _muc(_OHT, phap_nhan_uy_quyen="")])
     assert kq == KET_QUA_KHONG
     assert _OSB in gc and "vô hiệu" in gc
+
+
+# --- Task 6: prompt bóc dữ liệu + rẽ nhánh trong handler ---
+
+def _p(trang, loai, text):
+    return PageRecord(file="f.pdf", trang=trang, loai_ho_so=loai, text=text)
+
+
+_BT_LD = {
+    "don_du_thau": [_p(1, "don_du_thau", "ĐẠI DIỆN HỢP PHÁP CỦA NHÀ THẦU LIÊN DANH ...")],
+    "thoa_thuan_lien_danh": [_p(1, "thoa_thuan_lien_danh", "Thành viên đứng đầu: ...")],
+}
+
+
+def test_prompt_lien_danh_co_marker_va_ca_hai_tai_lieu():
+    p = lien_danh_ky_prompt("ĐƠN: ký bởi Trần Vũ Thường", "TTLD: đứng đầu là Tập đoàn OSB")
+    assert "[RULE:chu_ky_lien_danh]" in p
+    assert "ĐƠN: ký bởi Trần Vũ Thường" in p and "TTLD: đứng đầu là Tập đoàn OSB" in p
+    assert "KHÔNG bịa" in SYS_RULE_LIEN_DANH_KY
+    assert "thanh_vien_ttld" in SYS_RULE_LIEN_DANH_KY
+
+
+async def test_co_ttld_thi_KHONG_doc_dkkd():
+    """MẤU CHỐT: có thỏa thuận liên danh -> neo vào TTLD, tuyệt đối không đụng ĐKKD."""
+    by_type = dict(_BT_LD, dang_ky_kinh_doanh=[_p(1, "dang_ky_kinh_doanh", "đại diện: Lê Văn X")])
+    v = ScriptedVision({"[RULE:chu_ky_lien_danh]": {
+        "thanh_vien": [_tv(_OSB, "Nguyễn Hồng Sơn", dung_dau=True), _tv(_OHT, "Trần Vũ Thường")],
+        "chu_ky": [_ck(_OSB, "Nguyễn Hồng Sơn")], "trang": [1], "do_tin": 0.9}})
+    verdict = await SKILL.handler(by_type, None, {}, v)
+    assert verdict.ket_qua == KET_QUA_DAT
+    assert verdict.noi_dung_kiem_tra == "Người ký đơn dự thầu đúng đại diện liên danh (thỏa thuận liên danh)"
+    assert verdict.nguon_doc == ["don_du_thau", "thoa_thuan_lien_danh"]
+    assert len(v.calls) == 1                                  # 1 call duy nhất
+    assert "[RULE:chu_ky_khop_dkkd]" not in v.calls[0][0]     # KHÔNG hề gọi nhánh ĐKKD
+    assert v.calls[0][1] == 0                                 # text-only, không đính ảnh
+
+
+async def test_khong_co_ttld_thi_giu_nhanh_dkkd_cu():
+    """Hồi quy: nhà thầu độc lập vẫn đi nhánh ĐKKD như trước."""
+    by_type = {
+        "don_du_thau": [_p(1, "don_du_thau", "Người ký: Nguyễn Văn A")],
+        "dang_ky_kinh_doanh": [_p(1, "dang_ky_kinh_doanh", "đại diện: Nguyễn Văn A")],
+    }
+    v = ScriptedVision({"[RULE:chu_ky_khop_dkkd]": {
+        "ket_qua": "đạt", "nguoi_ky": "Nguyễn Văn A", "dai_dien_phap_luat": "Nguyễn Văn A",
+        "nha_thau_don": "Công ty ABC", "doanh_nghiep_dkkd": "Công ty ABC", "phap_nhan_khop": True}})
+    verdict = await SKILL.handler(by_type, None, {}, v)
+    assert verdict.ket_qua == KET_QUA_DAT
+    assert verdict.nguon_doc == ["don_du_thau", "dang_ky_kinh_doanh"]
+
+
+async def test_thieu_don_du_thau_van_thieu_ho_so_du_co_ttld():
+    v = ScriptedVision({})
+    verdict = await SKILL.handler({"thoa_thuan_lien_danh": _BT_LD["thoa_thuan_lien_danh"]},
+                                  None, {}, v)
+    assert verdict.ket_qua == KET_QUA_THIEU and v.calls == []
+
+
+async def test_ai_loi_thi_verdict_loi_khong_bia():
+    v = ScriptedVision({"[RULE:chu_ky_lien_danh]": RuntimeError("proxy hỏng")})
+    verdict = await SKILL.handler(_BT_LD, None, {}, v)
+    assert verdict.ket_qua == KET_QUA_LOI and "proxy hỏng" in verdict.bang_chung
+
+
+async def test_ky_mot_phan_ra_khong_dat_chi_mot_call():
+    v = ScriptedVision({"[RULE:chu_ky_lien_danh]": {
+        "thanh_vien": [_tv(_OSB, "Nguyễn Hồng Sơn", dung_dau=True), _tv(_OHT, "Trần Vũ Thường")],
+        "chu_ky": [_ck(_OHT, "Trần Vũ Thường")], "trang": [1]}})
+    verdict = await SKILL.handler(_BT_LD, None, {}, v)
+    assert verdict.ket_qua == KET_QUA_KHONG and len(v.calls) == 1
