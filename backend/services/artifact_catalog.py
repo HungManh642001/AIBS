@@ -169,6 +169,25 @@ def resolve_code(raw: str) -> str | None:
     return None
 
 
+def nhac_toi(text: str, code: str) -> bool:
+    """Đoạn text có NHẮC tới loại hồ sơ `code` không (khớp code/label/alias sau chuẩn hoá)?
+
+    Dùng để phân xử luật ↔ nội dung kiểm tra khi metadata chưa đủ (xem evaluate.py::
+    `_phan_luat_cho_nd`): "giá phải phù hợp với webform" có nhắc `webform`, "nộp bảng chào giá
+    theo Mẫu 05C.1" thì không. `_norm_code` bỏ dấu và MỌI ký tự phân cách nên bắt được cả
+    'web form', 'Kết quả mở thầu', 'ket qua mo thau'.
+    """
+    info = CATALOG.get(code)
+    if not info:
+        return False
+    nt = _norm_code(text)
+    if not nt:
+        return False
+    keys = {_norm_code(code), _norm_code(info["label"])}
+    keys |= {_norm_code(a) for a in info["aliases"]}
+    return any(k and k in nt for k in keys)
+
+
 def match_artifact(text: str) -> tuple[str | None, float]:
     """Trả (code, confidence) — code có nhiều alias khớp nhất trong text."""
     low = text.lower()

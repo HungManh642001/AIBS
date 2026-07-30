@@ -119,3 +119,29 @@ def test_mo_ta_khong_pha_so_khop_ma():
     for code in cat.all_codes():
         assert cat.resolve_code(code) == code
     assert cat.resolve_code("xyz_khong_ton_tai") is None
+
+
+def test_nhac_toi_bat_alias_bo_dau_va_dau_phan_cach():
+    from services.artifact_catalog import nhac_toi
+
+    # nội dung 2 của gói 54 — có nhắc webform
+    assert nhac_toi("Giá dự thầu trong Bảng chào giá chi tiết phải phù hợp với giá dự thầu "
+                    "trên webform", "webform")
+    assert nhac_toi("Đối chiếu với Kết quả mở thầu", "webform")
+    assert nhac_toi("so với biên bản mở thầu", "webform")
+    assert nhac_toi("theo web form của hệ thống", "webform")
+
+
+def test_nhac_toi_khong_bat_khi_khong_nhac():
+    from services.artifact_catalog import nhac_toi
+
+    # nội dung 1 của gói 54 — CHỈ nói về mẫu biểu, không nhắc webform
+    assert not nhac_toi("Phải nộp Bảng chào giá chi tiết theo đúng Mẫu số 05C.1 Chương V",
+                        "webform")
+    assert not nhac_toi("", "webform")
+
+
+def test_nhac_toi_ma_khong_co_trong_danh_muc_thi_false():
+    from services.artifact_catalog import nhac_toi
+
+    assert not nhac_toi("bất kỳ nội dung nào", "khong_ton_tai")
