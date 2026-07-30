@@ -266,3 +266,66 @@ async def test_ky_mot_phan_ra_khong_dat_chi_mot_call():
         "chu_ky": [_ck(_OHT, "Trần Vũ Thường")], "trang": [1]}})
     verdict = await SKILL.handler(_BT_LD, None, {}, v)
     assert verdict.ket_qua == KET_QUA_KHONG and len(v.calls) == 1
+
+
+# --- Task 7: bước 2 thẩm định giấy ủy quyền ---
+
+_KB_LECH = {"[RULE:chu_ky_lien_danh]": {
+    "thanh_vien": [_tv(_OSB, "Nguyễn Hồng Sơn", dung_dau=True), _tv(_OHT, "Trần Vũ Thường")],
+    "chu_ky": [_ck(_OSB, "Trần Vũ Thường")], "trang": [1], "do_tin": 0.9}}
+
+
+async def test_ca_that_goi_54_uy_quyen_tu_thanh_vien_khac_thi_khong_dat():
+    """Ca OSB gói 54: đơn đứng tên OSB Tập đoàn, người ký là đại diện OSB Công nghệ cao,
+    giấy ủy quyền lại do OSB Công nghệ cao cấp -> ủy quyền vô hiệu."""
+    by_type = dict(_BT_LD, giay_uy_quyen=[_p(1, "giay_uy_quyen", "Nguyễn Hồng Sơn ủy quyền ...")])
+    v = ScriptedVision({**_KB_LECH, "[RULE:chu_ky_lien_danh_uy_quyen]": {
+        "muc": [{"phap_nhan": _OSB, "nguoi_uy_quyen": "Nguyễn Hồng Sơn",
+                 "nguoi_duoc_uy_quyen": "Trần Vũ Thường", "phap_nhan_uy_quyen": _OHT,
+                 "phap_nhan_khop": False, "dung_nguoi": True, "dung_pham_vi": True}],
+        "bang_chung": "Giấy ủy quyền trang 1", "trang": [1], "do_tin": 0.95}})
+    verdict = await SKILL.handler(by_type, None, {}, v)
+    assert verdict.ket_qua == KET_QUA_KHONG
+    assert "vô hiệu" in verdict.ghi_chu and _OHT in verdict.ghi_chu
+    assert verdict.nguon_doc == ["don_du_thau", "thoa_thuan_lien_danh", "giay_uy_quyen"]
+    assert len(v.calls) == 2
+
+
+async def test_uy_quyen_hop_le_tu_dung_thanh_vien_thi_dat():
+    by_type = dict(_BT_LD, giay_uy_quyen=[_p(1, "giay_uy_quyen", "ủy quyền ...")])
+    v = ScriptedVision({**_KB_LECH, "[RULE:chu_ky_lien_danh_uy_quyen]": {
+        "muc": [{"phap_nhan": _OSB, "nguoi_uy_quyen": "Nguyễn Hồng Sơn",
+                 "nguoi_duoc_uy_quyen": "Trần Vũ Thường", "phap_nhan_uy_quyen": _OSB,
+                 "phap_nhan_khop": True, "dung_nguoi": True, "dung_pham_vi": True}],
+        "bang_chung": "Giấy ủy quyền trang 1", "trang": [1]}})
+    verdict = await SKILL.handler(by_type, None, {}, v)
+    assert verdict.ket_qua == KET_QUA_DAT and len(v.calls) == 2
+
+
+async def test_ky_lech_ma_khong_co_giay_uy_quyen_thi_khong_dat_khong_goi_llm_lan_2():
+    v = ScriptedVision(dict(_KB_LECH))
+    verdict = await SKILL.handler(_BT_LD, None, {}, v)
+    assert verdict.ket_qua == KET_QUA_KHONG
+    assert len(v.calls) == 1                              # KHÔNG gọi LLM lần 2
+    assert "không có giấy ủy quyền" in verdict.ghi_chu
+    assert verdict.nguon_doc == ["don_du_thau", "thoa_thuan_lien_danh"]
+
+
+def test_prompt_uy_quyen_lien_danh_neu_ro_tung_khoi_chu_ky():
+    from experiment.evaluate.rules.chu_ky_khop_dkkd import (
+        SYS_RULE_UY_QUYEN_LIEN_DANH, uy_quyen_lien_danh_prompt,
+    )
+
+    p = uy_quyen_lien_danh_prompt("GUQ: nội dung ủy quyền", _LECH)
+    assert "[RULE:chu_ky_lien_danh_uy_quyen]" in p
+    assert _OSB in p and "Trần Vũ Thường" in p and "Nguyễn Hồng Sơn" in p
+    assert "GUQ: nội dung ủy quyền" in p
+    assert "dung_pham_vi" in SYS_RULE_UY_QUYEN_LIEN_DANH
+    assert "KHÔNG bịa" in SYS_RULE_UY_QUYEN_LIEN_DANH
+
+
+def test_guard_phap_nhan_mot_chieu_trong_nhanh_uy_quyen():
+    """LLM nói 'khác pháp nhân' mà hai tên chuẩn hoá giống hệt -> tin CODE, tránh báo động giả."""
+    kq, gc = ket_luan_uy_quyen_lien_danh(
+        _LECH, [_muc(_OSB, phap_nhan_uy_quyen=_OSB.lower(), phap_nhan_khop=False)])
+    assert kq == KET_QUA_DAT and gc == ""

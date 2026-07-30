@@ -143,6 +143,38 @@ def lien_danh_ky_prompt(don_text: str, ttld_text: str) -> str:
     )
 
 
+SYS_RULE_UY_QUYEN_LIEN_DANH = (
+    "Bạn là chuyên gia chấm thầu. Trên ĐƠN DỰ THẦU của nhà thầu liên danh có khối chữ ký do người "
+    "KHÁC với đại diện nêu trong thỏa thuận liên danh ký. Đọc GIẤY ỦY QUYỀN và BÓC DỮ LIỆU cho "
+    "TỪNG khối chữ ký nêu ở đầu prompt (KHÔNG kết luận đạt/không đạt — hệ thống tự làm). Mỗi mục:\n"
+    "- phap_nhan: chép ĐÚNG tên thành viên liên danh của khối chữ ký đang xét (nêu ở đầu prompt);\n"
+    "- nguoi_uy_quyen / nguoi_duoc_uy_quyen: ai ủy quyền cho ai;\n"
+    "- phap_nhan_uy_quyen: tên pháp nhân BÊN ỦY QUYỀN ghi trong giấy ủy quyền;\n"
+    "- phap_nhan_khop: bên ủy quyền có CÙNG pháp nhân với thành viên liên danh nêu trên không;\n"
+    "- dung_nguoi: người được ủy quyền có ĐÚNG là người đã ký đơn nêu trên không;\n"
+    "- dung_pham_vi: nội dung/phạm vi ủy quyền có bao gồm việc KÝ ĐƠN DỰ THẦU không.\n"
+    "Không tìm thấy giấy ủy quyền cho một khối chữ ký nào thì BỎ QUA mục đó, TUYỆT ĐỐI KHÔNG bịa "
+    "tên hay phạm vi. "
+    + _QUY_TAC_PHAP_NHAN +
+    "bang_chung: trích nguyên văn giấy ủy quyền kèm số trang. Chỉ trả JSON."
+)
+
+
+def uy_quyen_lien_danh_prompt(guq_text: str, lech: list[ChuKyLech]) -> str:
+    khoi = "\n".join(
+        f"- Thành viên liên danh: {l.phap_nhan} | người đã ký đơn: {l.nguoi_ky} | "
+        f"đại diện theo thỏa thuận liên danh: {l.nguoi_dai_dien}" for l in lech)
+    return (
+        "[RULE:chu_ky_lien_danh_uy_quyen]\n"
+        f"CÁC KHỐI CHỮ KÝ CẦN THẨM ĐỊNH ỦY QUYỀN:\n{khoi}\n\n"
+        f"GIẤY ỦY QUYỀN (bóc từ ảnh):\n{guq_text}\n\n"
+        + cot_block('{"muc":[{"phap_nhan":"...","nguoi_uy_quyen":"...",'
+                    '"nguoi_duoc_uy_quyen":"...","phap_nhan_uy_quyen":"...","phap_nhan_khop":true,'
+                    '"dung_nguoi":true,"dung_pham_vi":true,"ghi_chu":""}],'
+                    '"bang_chung":"<trích GUQ>","trang":[...],"do_tin":0.0,"ghi_chu":""}')
+    )
+
+
 class ChuKyOut(_Base):
     ket_qua: str = KET_QUA_SOI
     nguoi_ky: str = ""
@@ -497,8 +529,38 @@ async def _xet_lien_danh(by_type: dict[str, list[PageRecord]], vision_fn: Any) -
     if ket_qua:
         return _verdict_ld(ket_qua, bang_chung=bang_chung, trang=trang, do_tin=do_tin,
                            ghi_chu=ghi_chu)
-    return _verdict_ld(KET_QUA_SOI, bang_chung=bang_chung, trang=trang, do_tin=do_tin,
-                       ghi_chu="người ký đơn khác đại diện nêu trong thỏa thuận liên danh")
+    return await _xet_uy_quyen_lien_danh(by_type, vision_fn, lech, bang_chung, trang)
+
+
+async def _xet_uy_quyen_lien_danh(by_type: dict[str, list[PageRecord]], vision_fn: Any,
+                                  lech: list[ChuKyLech], bang_chung_1: str,
+                                  trang_1: list[int]) -> Verdict:
+    """Bước 2 (chỉ khi có chữ ký lệch người): thẩm định giấy ủy quyền của TỪNG khối chữ ký.
+
+    Gộp mọi khối lệch vào MỘT call — giấy ủy quyền của liên danh thường nằm chung một file, tách
+    nhiều call chỉ tốn thêm mà không thêm bằng chứng.
+    """
+    mo_ta = "; ".join(f"{l.phap_nhan}: đơn do {l.nguoi_ky} ký, thỏa thuận liên danh ghi đại diện "
+                      f"là {l.nguoi_dai_dien}" for l in lech)
+    if not by_type.get(_GUQ):
+        return _verdict_ld(KET_QUA_KHONG, bang_chung=bang_chung_1, trang=trang_1,
+                           ghi_chu=f"người ký đơn khác đại diện nêu trong thỏa thuận liên danh và "
+                                   f"HSDT không có giấy ủy quyền — {mo_ta}")
+    nguon = [_DON, _TTLD, _GUQ]
+    out = await vision_fn(SYS_RULE_UY_QUYEN_LIEN_DANH,
+                          uy_quyen_lien_danh_prompt(pages_text(by_type[_GUQ]), lech),
+                          validate=validate_uy_quyen_lien_danh, max_tokens=_MAX_TOKENS)
+    if out.status == "error":
+        return _verdict_ld(KET_QUA_LOI, bang_chung=f"AI lỗi (thẩm định ủy quyền): {out.error}",
+                           ghi_chu="cần soi lại", nguon_doc=nguon)
+    d2 = out.data
+    ket_qua, ly_do = ket_luan_uy_quyen_lien_danh(lech, d2.get("muc") or [])
+    bang_chung = f"{bang_chung_1}; ủy quyền: {d2.get('bang_chung', '') or mo_ta}"
+    ghi_chu = ly_do or ("người ký đơn ký theo ủy quyền hợp lệ của thành viên liên danh — "
+                        f"{mo_ta}")
+    return _verdict_ld(ket_qua, bang_chung=bang_chung, trang=trang_1,
+                       do_tin=float(d2.get("do_tin", 0.0) or 0.0), ghi_chu=ghi_chu,
+                       nguon_doc=nguon)
 
 
 async def handler(by_type: dict[str, list[PageRecord]], vendor_ctx: VendorContext | None,
