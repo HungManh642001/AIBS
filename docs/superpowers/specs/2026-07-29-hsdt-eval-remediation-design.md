@@ -317,3 +317,28 @@ chữa**, không mất tín hiệu nào.
 Phần 3 → Phần 1 → Phần 2. Phần 3 rẻ nhất, độc lập hoàn toàn, và làm mọi lần chạy thử sau đó nhanh
 hơn (bớt OCR lại). Phần 1 đụng decompose nên cần re-run decompose để nghiệm thu đầy đủ. Phần 2
 nặng nhất về prompt và test fixture.
+
+## Nợ kỹ thuật còn lại (đã triển khai xong, cố ý hoãn — ghi lại để lần sau khỏi phát hiện lại)
+
+Review cuối nhánh (2026-07-30) nêu và chủ dự án đồng ý hoãn:
+
+1. **`khop_phap_nhan` không gộp khoảng trắng GIỮA** (`rules/chu_ky_khop_dkkd.py`). Docstring nói
+   guard chống lệch "khoảng trắng" nhưng `_norm(...).strip()` chỉ cắt hai đầu. Cùng lớp lỗi với
+   phép so tên người đã sửa, nhưng bán kính là **mọi** phép so pháp nhân ở cả nhánh ĐKKD lẫn liên
+   danh — quá rộng cho một đợt fix đang khép lại. Ưu tiên cao nhất trong danh sách này.
+2. **Phân xử luật chạy TRƯỚC gate "không áp dụng"** (`evaluate/evaluate.py`). Nội dung đã bị
+   `_gate_khong_ap_dung` loại vẫn tính là ứng viên và có thể THẮNG phân xử, khiến nội dung còn
+   sống mất luật và rơi xuống eval chung. Xác suất thấp; lọc `nds` đã-gated ra khỏi
+   `_phan_luat_cho_nd` là rẻ.
+3. **`_bo_ho_so_nd` dùng `_norm` chứ không `artifact_catalog.resolve_code`**. LLM khai
+   `hsdt_doi_chieu=["Kết quả mở thầu"]` (alias hợp lệ) sẽ trượt tầng 1 — tầng 2 cứu được nên không
+   gấp. Lưu ý khi sửa: `resolve_code` có khớp substring hai chiều, dễ over-match.
+4. **Verdict fallback ở `rules/registry.py` mang nhãn ĐKKD cho nhà thầu liên danh.** Khi handler
+   ném exception, verdict dùng `skill.ten` và `nguon_doc=[don_du_thau, dang_ky_kinh_doanh]` kể cả
+   khi nhánh liên danh chưa hề đọc ĐKKD. Cùng loại vi phạm audit với lỗi đã sửa, nhưng chỉ xảy ra
+   ở đường lỗi.
+5. **`rules/chu_ky_khop_dkkd.py` nay ~700 dòng**, 4 system prompt + 2 luồng nghiệp vụ độc lập
+   (ĐKKD và liên danh). Tách file khi đụng lại lần sau; tách ngay lúc này chỉ làm nhiễu diff.
+6. Chưa có test: ca "nhiều luật cùng nhắm một nội dung" trong `_phan_luat_cho_nd` (thứ tự registry
+   quyết, giống semantics cũ nên không phải hồi quy); `_xet_uy_quyen_lien_danh` ở mức async với
+   ≥2 khối chữ ký lệch cùng lúc (mức hàm thuần đã phủ).
