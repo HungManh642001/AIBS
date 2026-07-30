@@ -1,7 +1,9 @@
-"""Trang scan: phát hiện bóc thiếu rồi thử lại ĐÚNG CÁCH, vẫn thiếu thì cảnh báo (không im lặng).
+"""Trang scan: phát hiện bóc thiếu -> cảnh báo (không im lặng); chỉ đọc lại khi CHẠM TRẦN TOKEN.
 
-Với seed cố định, thử lại y nguyên tham số sẽ ra y hệt — nên mỗi kiểu nghi ngờ phải đổi thứ khác
-nhau: bị cắt -> tăng max_tokens; lệch cấu trúc -> đổi seed.
+Nghi ngờ do lệch cấu trúc (kiem_tra_bang) không còn kéo theo đọc lại: seed đã cố định nên gọi lại
+chỉ đổi được seed, mà đo trên hồ sơ thật là 21 lần thử lại chỉ cứu được 1 — không đáng 2x call. Chỉ
+chạm trần token (finish_reason == 'length') mới thử lại, vì tăng max_tokens là một call thực sự
+khác, có cơ hội lấy lại phần bị cắt.
 """
 import fitz
 
@@ -45,28 +47,65 @@ async def test_bi_cat_thi_thu_lai_voi_nhieu_token_hon():
     assert pages[0].canh_bao == ""                  # thử lại xong hết nghi ngờ
 
 
-async def test_lech_cau_truc_thi_thu_lai_voi_seed_khac():
-    """Cùng seed thì model trả y hệt -> thử lại phải ĐỔI SEED mới có cơ hội khác."""
-    vision = VisionGhiNhan([{"text": _BANG_LECH}, {"text": _BANG_DU}])
+async def test_lech_cau_truc_chi_canh_bao_khong_doc_lai():
+    """Nghi bóc thiếu -> CHỈ cảnh báo. Đo thực tế: thử lại cứu được ~5%, không đáng 2x call."""
+    vision = VisionGhiNhan([{"text": _BANG_LECH}])
     pages = await ingest_hsdt([("bg.pdf", "bang_gia", _pdf_scan())], vision, dpi=72)
-    assert len(vision.calls) == 2
-    assert vision.calls[1]["seed"] is not None and vision.calls[1]["seed"] != vision.calls[0]["seed"]
-    assert pages[0].text == _BANG_DU and pages[0].canh_bao == ""
-
-
-async def test_van_lech_sau_khi_thu_lai_thi_canh_bao():
-    vision = VisionGhiNhan([{"text": _BANG_LECH}])   # lần nào cũng lệch
-    pages = await ingest_hsdt([("bg.pdf", "bang_gia", _pdf_scan())], vision, dpi=72)
-    assert len(vision.calls) == 2                    # thử lại đúng 1 lần rồi thôi
+    assert len(vision.calls) == 1                    # KHÔNG đọc lại
     assert "cột" in pages[0].canh_bao
     assert pages[0].text == _BANG_LECH               # vẫn giữ phần đọc được
 
 
-async def test_trang_co_canh_bao_thi_khong_ghi_cache():
-    """Không đóng băng một trang đọc lỗi — lần sau còn cơ hội đọc lại."""
+async def test_trang_co_canh_bao_van_duoc_ghi_cache():
+    """Cảnh báo là thông tin, không phải lỗi -> vẫn cache (kèm theo canh_bao), khỏi OCR lại cả file."""
     class Store:
         def __init__(self):
-            self.puts = []
+            self.puts: list[tuple[str, list[dict]]] = []
+
+        def get(self, key):
+            return None
+
+        def put(self, key, pages):
+            self.puts.append((key, pages))
+
+    store = Store()
+    vision = VisionGhiNhan([{"text": _BANG_LECH}])
+    await ingest_hsdt([("bg.pdf", "bang_gia", _pdf_scan())], vision, dpi=72, cache=store)
+    assert len(store.puts) == 1
+    assert "cột" in store.puts[0][1][0]["canh_bao"]   # cảnh báo phải nằm TRONG payload cache
+
+
+async def test_giu_ban_it_van_de_hon():
+    """Thử lại (do chạm trần) tệ hơn -> giữ bản ĐẦU, không mù quáng lấy bản cuối."""
+    vision = VisionGhiNhan([{"text": _BANG_LECH, "finish_reason": "length"},
+                            {"text": "STT | Ten\n1 | ... \n2"}])   # lệch + tóm tắt
+    pages = await ingest_hsdt([("bg.pdf", "bang_gia", _pdf_scan())], vision, dpi=72)
+    assert len(vision.calls) == 2
+    assert pages[0].text == _BANG_LECH
+
+
+async def test_text_thuong_khong_bi_thu_lai():
+    vision = VisionGhiNhan([{"text": "ĐƠN DỰ THẦU\nKính gửi bên mời thầu"}])
+    pages = await ingest_hsdt([("don.pdf", "don_du_thau", _pdf_scan())], vision, dpi=72)
+    assert len(vision.calls) == 1 and pages[0].canh_bao == ""
+
+
+async def test_trang_loi_vision_van_khong_ghi_cache():
+    """Bất biến #1 giữ nguyên: LỖI vision không bao giờ được đóng băng vào cache."""
+    from services.ai_client import AiOutcome
+
+    class VisionLoi:
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        async def __call__(self, system, prompt, images=(), validate=None, max_tokens=None,
+                           seed=None, **kw):
+            self.calls.append({"max_tokens": max_tokens})
+            return AiOutcome("error", None, "fake", error="proxy hỏng")
+
+    class Store:
+        def __init__(self):
+            self.puts: list[str] = []
 
         def get(self, key):
             return None
@@ -75,20 +114,50 @@ async def test_trang_co_canh_bao_thi_khong_ghi_cache():
             self.puts.append(key)
 
     store = Store()
-    vision = VisionGhiNhan([{"text": _BANG_LECH}])
-    await ingest_hsdt([("bg.pdf", "bang_gia", _pdf_scan())], vision, dpi=72, cache=store)
+    await ingest_hsdt([("bg.pdf", "bang_gia", _pdf_scan())], VisionLoi(), dpi=72, cache=store)
     assert store.puts == []
 
 
-async def test_giu_ban_it_van_de_hon():
-    """Thử lại tệ hơn -> giữ bản ĐẦU (chọn theo số vấn đề, không mù quáng lấy bản cuối)."""
-    vision = VisionGhiNhan([{"text": _BANG_LECH},
-                            {"text": "STT | Ten\n1 | ... \n2"}])   # lệch + tóm tắt
-    pages = await ingest_hsdt([("bg.pdf", "bang_gia", _pdf_scan())], vision, dpi=72)
-    assert pages[0].text == _BANG_LECH
+async def test_canh_bao_khoi_phuc_dung_khi_doc_tu_cache():
+    """Cache mà nuốt mất canh_bao thì lần chấm thứ hai luật hết thấy cảnh báo -> sai âm thầm."""
+    class Store:
+        def __init__(self):
+            self.data: dict[str, list[dict]] = {}
+
+        def get(self, key):
+            return self.data.get(key)
+
+        def put(self, key, pages):
+            self.data[key] = pages
+
+    store = Store()
+    pdf = _pdf_scan()
+    v1 = VisionGhiNhan([{"text": _BANG_LECH}])
+    p1 = await ingest_hsdt([("bg.pdf", "bang_gia", pdf)], v1, dpi=72, cache=store)
+    v2 = VisionGhiNhan([{"text": _BANG_LECH}])
+    p2 = await ingest_hsdt([("bg.pdf", "bang_gia", pdf)], v2, dpi=72, cache=store)
+    assert v2.calls == []                            # lần 2 đọc cache, 0 call
+    assert p2[0].canh_bao == p1[0].canh_bao and "cột" in p2[0].canh_bao
 
 
-async def test_text_thuong_khong_bi_thu_lai():
-    vision = VisionGhiNhan([{"text": "ĐƠN DỰ THẦU\nKính gửi bên mời thầu"}])
-    pages = await ingest_hsdt([("don.pdf", "don_du_thau", _pdf_scan())], vision, dpi=72)
-    assert len(vision.calls) == 1 and pages[0].canh_bao == ""
+async def test_entry_cache_cu_khong_co_khoa_canh_bao_van_doc_duoc():
+    """Tương thích ngược: entry ghi trước thay đổi này không có khoá canh_bao -> ra '', không nổ."""
+    from experiment.evaluate.ingest import ingest_cache_key
+
+    pdf = _pdf_scan()
+    key = ingest_cache_key(pdf, 72)
+
+    class Store:
+        def __init__(self):
+            self.data = {key: [{"trang": 1, "text": "text cũ", "co_chu_ky": False,
+                                "co_dau": False, "nguon_trich": "vision"}]}
+
+        def get(self, k):
+            return self.data.get(k)
+
+        def put(self, k, pages):
+            self.data[k] = pages
+
+    vision = VisionGhiNhan([{"text": _BANG_DU}])
+    pages = await ingest_hsdt([("bg.pdf", "bang_gia", pdf)], vision, dpi=72, cache=Store())
+    assert vision.calls == [] and pages[0].text == "text cũ" and pages[0].canh_bao == ""

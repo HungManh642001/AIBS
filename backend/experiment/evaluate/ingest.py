@@ -17,7 +17,9 @@ prompt ingest, nên:
 
 Hai bất biến của cache:
 1. TRANG LỖI VISION KHÔNG BAO GIỜ ĐƯỢC GHI CACHE — proxy hỏng 1 lần mà cache lại thì text rỗng
-   đóng băng vĩnh viễn, tệ hơn hẳn việc OCR lại.
+   đóng băng vĩnh viễn, tệ hơn hẳn việc OCR lại. Trang chỉ có CẢNH BÁO (nghi bóc thiếu) thì
+   NGƯỢC LẠI: vẫn cache, kèm cả chuỗi `canh_bao` — cảnh báo là thông tin để chuyên gia soi, không
+   phải lỗi cần chữa; khóa cache theo FILE nên chặn một trang là bắt OCR lại cả file mỗi lần chấm.
 2. Ảnh PNG KHÔNG nằm trong cache (nặng, và không có consumer nào ngoài ingest) — khi hit vẫn
    render lại từ PDF bằng pdf_to_images: rẻ, không tốn LLM, nên PageRecord luôn đủ field.
 """
@@ -72,11 +74,15 @@ def _record(name: str, loai_ho_so: str, trang: int, d: dict[str, Any], png: byte
 
 
 async def _doc_trang_vision(name: str, png: bytes, vision_fn: VisionFn) -> tuple[Any, list[str]]:
-    """Đọc 1 trang bằng vision + tự kiểm; nghi ngờ thì thử lại ĐÚNG MỘT lần, đúng cách.
+    """Đọc 1 trang bằng vision + tự kiểm. CHỈ thử lại khi text bị CẮT (chạm trần token).
 
-    Seed đã cố định nên thử lại y nguyên tham số sẽ ra y hệt — vô ích. Mỗi kiểu nghi ngờ đổi một
-    thứ khác nhau: bị cắt (finish_reason='length') -> tăng max_tokens; lệch cấu trúc -> đổi seed.
-    Giữ bản ÍT vấn đề hơn, không mù quáng lấy bản cuối.
+    Nghi bóc thiếu do `kiem_tra_bang` (lệch cột, dấu hiệu tóm tắt) thì CHỈ cảnh báo: seed đã cố
+    định nên gọi lại chỉ đổi được seed, mà đo trên hồ sơ thật (logs/evaluate.log) là 21 lần thử
+    lại chỉ cứu được 1 — không đáng 2x call. Cảnh báo vẫn đi trọn đường vào `PageRecord.canh_bao`
+    -> `pages_text` -> prompt luật/eval -> `EvalResult.canh_bao_doc`, nên không mất tín hiệu nào.
+
+    Chạm trần thì khác hẳn: tăng gấp đôi max_tokens là một call THỰC SỰ khác, có cơ hội lấy lại
+    phần bị cắt. Giữ bản ÍT vấn đề hơn, không mù quáng lấy bản cuối.
     """
     out = await vision_fn(SYS_INGEST, ingest_prompt(), images=[png],
                           validate=validate_ingest_page, max_tokens=_MAX_TOKENS_INGEST,
@@ -84,24 +90,24 @@ async def _doc_trang_vision(name: str, png: bytes, vision_fn: VisionFn) -> tuple
     if out.status != "ok":
         return out, []
 
-    bi_cat = out.finish_reason == "length"
     van_de = kiem_tra_bang((out.data or {}).get("text", ""))
-    if not bi_cat and not van_de:
-        return out, []
+    if out.finish_reason != "length":
+        if van_de:
+            log.warning("[ingest] %s: nghi bóc thiếu (%s) — chỉ cảnh báo, KHÔNG đọc lại",
+                        name, "; ".join(van_de))
+        return out, van_de
 
-    log.warning("[ingest] %s: nghi bóc thiếu (%s) — thử lại 1 lần", name,
-                "chạm trần token" if bi_cat else "; ".join(van_de))
-    lai = await vision_fn(
-        SYS_INGEST, ingest_prompt(), images=[png], validate=validate_ingest_page,
-        max_tokens=_MAX_TOKENS_INGEST * 2 if bi_cat else _MAX_TOKENS_INGEST,
-        seed=get_settings().ai_seed if bi_cat else get_settings().ai_seed + 1)
+    log.warning("[ingest] %s: chạm trần token — thử lại 1 lần với max_tokens gấp đôi", name)
+    lai = await vision_fn(SYS_INGEST, ingest_prompt(), images=[png],
+                          validate=validate_ingest_page, max_tokens=_MAX_TOKENS_INGEST * 2,
+                          seed=get_settings().ai_seed)
     if lai.status != "ok":
         return out, van_de
 
     van_de_lai = kiem_tra_bang((lai.data or {}).get("text", ""))
     if lai.finish_reason == "length":
         van_de_lai = van_de_lai + ["vẫn chạm trần token — text có thể bị cắt"]
-    if bi_cat and not van_de_lai:
+    if not van_de_lai:
         return lai, []
     return (lai, van_de_lai) if len(van_de_lai) < len(van_de) else (out, van_de)
 
@@ -110,7 +116,8 @@ async def _doc_file(name: str, loai_ho_so: str, data: bytes, vision_fn: VisionFn
                     dpi: int) -> tuple[list[PageRecord], bool]:
     """Đọc từng trang: có text nhúng -> TẤT ĐỊNH (0 call); còn lại -> vision đọc ảnh.
 
-    Trả (records, du_de_cache); du_de_cache=False nếu có BẤT KỲ trang vision nào lỗi.
+    Trả (records, du_de_cache); du_de_cache=False nếu có BẤT KỲ trang vision nào LỖI (cảnh báo
+    không tính — cảnh báo vẫn được cache kèm theo).
     """
     records: list[PageRecord] = []
     du_de_cache = True
@@ -127,11 +134,10 @@ async def _doc_file(name: str, loai_ho_so: str, data: bytes, vision_fn: VisionFn
             out, van_de = await _doc_trang_vision(f"{name} tr{i}", png, vision_fn)
             if out.status == "ok":
                 if van_de:
-                    # KHÔNG im lặng: luật đọc thấy cảnh báo trong text và hạ kết luận xuống 'cần
-                    # làm rõ'; cũng KHÔNG cache để lần sau còn cơ hội đọc lại.
-                    du_de_cache = False
-                    log.warning("[ingest] %s tr%d vẫn nghi bóc thiếu: %s", name, i,
-                                "; ".join(van_de))
+                    # KHÔNG im lặng: cảnh báo vào text để luật/eval hạ kết luận xuống 'cần làm rõ'.
+                    # Nhưng KHÔNG chặn cache: cache theo FILE, một trang cảnh báo mà chặn thì mọi
+                    # lần chấm sau phải OCR lại toàn bộ file.
+                    log.warning("[ingest] %s tr%d nghi bóc thiếu: %s", name, i, "; ".join(van_de))
                 records.append(_record(name, loai_ho_so, i, out.data, png,
                                        canh_bao="; ".join(van_de)))
             else:
@@ -169,6 +175,10 @@ async def ingest_hsdt(
         if luu is not None:
             log.info("[ingest] %s (%s): %d trang — dùng cache (0 call vision)", name, loai_ho_so,
                      len(luu))
+            for d in luu:
+                if d.get("canh_bao"):
+                    log.warning("[ingest] %s tr%s (cache) nghi bóc thiếu: %s", name,
+                                d.get("trang", "?"), d["canh_bao"])
             anh = _anh_theo_trang(
                 data, [int(d.get("trang", i)) for i, d in enumerate(luu, 1)
                        if d.get("nguon_trich", NGUON_VISION) == NGUON_VISION], dpi)
@@ -181,5 +191,6 @@ async def ingest_hsdt(
         records.extend(recs)
         if cache is not None and du_de_cache and recs:
             cache.put(key, [{"trang": r.trang, "text": r.text, "co_chu_ky": r.co_chu_ky,
-                             "co_dau": r.co_dau, "nguon_trich": r.nguon_trich} for r in recs])
+                             "co_dau": r.co_dau, "nguon_trich": r.nguon_trich,
+                             "canh_bao": r.canh_bao} for r in recs])
     return records
