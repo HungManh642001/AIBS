@@ -162,8 +162,8 @@ SYS_RULE_UY_QUYEN_LIEN_DANH = (
 
 def uy_quyen_lien_danh_prompt(guq_text: str, lech: list[ChuKyLech]) -> str:
     khoi = "\n".join(
-        f"- Thành viên liên danh: {l.phap_nhan} | người đã ký đơn: {l.nguoi_ky} | "
-        f"đại diện theo thỏa thuận liên danh: {l.nguoi_dai_dien}" for l in lech)
+        f"- Thành viên liên danh: {ck_lech.phap_nhan} | người đã ký đơn: {ck_lech.nguoi_ky} | "
+        f"đại diện theo thỏa thuận liên danh: {ck_lech.nguoi_dai_dien}" for ck_lech in lech)
     return (
         "[RULE:chu_ky_lien_danh_uy_quyen]\n"
         f"CÁC KHỐI CHỮ KÝ CẦN THẨM ĐỊNH ỦY QUYỀN:\n{khoi}\n\n"
@@ -317,6 +317,27 @@ def khop_phap_nhan(ten_don: str, ten_kia: str, llm_noi_khop: bool) -> bool | Non
     return True if a == b else llm_noi_khop
 
 
+_TIEN_TO_TEN = {"ong", "ba", "mr", "ms", "mrs"}   # đã bỏ dấu: 'ông'->'ong', 'bà'->'ba'
+
+
+def _norm_ten_nguoi(s: str) -> str:
+    """Chuẩn hoá TÊN NGƯỜI để so sánh. Hàm THUẦN.
+
+    `_norm` trần KHÔNG đủ cho phép so tên người — nó chỉ hạ hoa/thường, bỏ dấu và đổi 'đ'->'d'.
+    Ca thật: thỏa thuận liên danh (bảng scan) ghi 'Ông Nguyễn Hồng Sơn' còn đơn dự thầu ghi
+    'Nguyễn Hồng Sơn', hoặc OCR chèn double-space 'Nguyễn  Hồng Sơn' — cả hai đều bị `_norm` coi
+    là LỆCH và kéo thẳng verdict xuống 'không đạt'. Quy kết một nhà thầu hợp lệ vì một dấu cách là
+    đúng loại lỗi luật này sinh ra để diệt.
+
+    Chỉ gộp khoảng trắng + bỏ tiền tố xưng hô ở ĐẦU tên. KHÔNG nới thêm (bỏ tên đệm, so gần đúng):
+    nới tới mức nuốt mất phát hiện thật thì luật vô dụng.
+    """
+    tu = _norm(str(s or "")).split()
+    while tu and tu[0].rstrip(".") in _TIEN_TO_TEN:
+        tu = tu[1:]
+    return " ".join(tu)
+
+
 def _tra_thanh_vien(tvs: list[dict[str, Any]], ck: dict[str, Any]) -> dict[str, Any] | None:
     """Khối chữ ký -> thành viên trong TTLD. None = pháp nhân KHÔNG có trong thỏa thuận.
 
@@ -377,11 +398,20 @@ def doi_chieu_chu_ky_lien_danh(
                 "không đọc được tên pháp nhân trên một hoặc nhiều khối chữ ký của đơn dự thầu — "
                 "chưa đối chiếu được với thỏa thuận liên danh", [])
 
-    la = [str(ck.get("phap_nhan") or "(không rõ)") for ck, tv in cap if tv is None]
-    if la:
-        return (KET_QUA_KHONG, bang_chung,
-                f"đơn dự thầu có chữ ký đứng tên pháp nhân KHÔNG có trong thỏa thuận liên danh: "
-                f"{', '.join(la)}", [])
+    # CHƯA TRA ĐƯỢC (đọc được tên pháp nhân nhưng không khớp thành viên nào) -> SOI, KHÔNG quy kết.
+    # Phép tra là so chuỗi chuẩn hoá TUYỆT ĐỐI, nên tên VIẾT TẮT trên khối chữ ký ('Cty CP Tập đoàn
+    # OSB') không khớp tên đầy đủ trong thỏa thuận ('Công ty cổ phần Tập đoàn OSB') — đúng ca mà
+    # `khop_phap_nhan` tồn tại để chặn, nhưng ở đây không có LLM phán nên code không phân biệt được
+    # 'viết tắt' với 'pháp nhân lạ'. Hệ thống KHÔNG tự kết luận loại nhà thầu: trình đủ hai vế
+    # (tên trên đơn + danh sách thành viên trong thỏa thuận) cho chuyên gia quyết.
+    chua_tra = [str(ck.get("phap_nhan") or "(không rõ)") for ck, tv in cap if tv is None]
+    if chua_tra:
+        ten_tv = ", ".join(str(tv.get("ten_phap_nhan", "")) for tv in tvs)
+        return (KET_QUA_SOI,
+                f"{bang_chung}; thành viên nêu trong thỏa thuận liên danh: {ten_tv}",
+                f"chưa đối chiếu được khối chữ ký đứng tên '{', '.join(chua_tra)}' về thành viên "
+                f"nào trong thỏa thuận liên danh (thành viên nêu trong thỏa thuận: {ten_tv}) — có "
+                f"thể do tên VIẾT TẮT, hoặc do thỏa thuận liên danh không có thành viên đó", [])
 
     ten_ky = {_norm(str(tv.get("ten_phap_nhan", ""))) for _, tv in cap}
     ten_tv = {_norm(str(tv.get("ten_phap_nhan", ""))) for tv in tvs}
@@ -419,7 +449,8 @@ def doi_chieu_chu_ky_lien_danh(
                       nguoi_ky=str(ck.get("nguoi_ky", "")),
                       nguoi_dai_dien=str(tv.get("nguoi_dai_dien", "")))
             for ck, tv in cap
-            if _norm(str(ck.get("nguoi_ky", ""))) != _norm(str(tv.get("nguoi_dai_dien", "")))]
+            if _norm_ten_nguoi(str(ck.get("nguoi_ky", "")))
+            != _norm_ten_nguoi(str(tv.get("nguoi_dai_dien", "")))]
     if lech:
         return "", bang_chung, "", lech
     return KET_QUA_DAT, bang_chung, f"đơn dự thầu hợp lệ theo hình thức: {hinh_thuc}", []
@@ -525,7 +556,11 @@ async def _xet_lien_danh(by_type: dict[str, list[PageRecord]], vision_fn: Any) -
     trang = [int(t) for t in d.get("trang", []) if str(t).isdigit()]
     do_tin = float(d.get("do_tin", 0.0) or 0.0)
     ket_qua, bang_chung, ghi_chu, lech = doi_chieu_chu_ky_lien_danh(d)
-    bang_chung = bang_chung or d.get("bang_chung", "")
+    # GHÉP, không `or`: `doi_chieu_chu_ky_lien_danh` gần như luôn trả chuỗi suy diễn khác rỗng nên
+    # `or` sẽ vứt sạch phần LLM TRÍCH NGUYÊN VĂN (câu chữ ký trên đơn + phần nêu thành viên trong
+    # thỏa thuận, kèm số trang) — chuyên gia chỉ còn suy diễn, mất câu gốc để đối chiếu. Suy diễn
+    # đứng trước vì nó là kết luận có cấu trúc; nguyên văn theo sau làm căn cứ.
+    bang_chung = "; ".join(x for x in (bang_chung, str(d.get("bang_chung", "") or "").strip()) if x)
     if ket_qua:
         return _verdict_ld(ket_qua, bang_chung=bang_chung, trang=trang, do_tin=do_tin,
                            ghi_chu=ghi_chu)
@@ -540,8 +575,8 @@ async def _xet_uy_quyen_lien_danh(by_type: dict[str, list[PageRecord]], vision_f
     Gộp mọi khối lệch vào MỘT call — giấy ủy quyền của liên danh thường nằm chung một file, tách
     nhiều call chỉ tốn thêm mà không thêm bằng chứng.
     """
-    mo_ta = "; ".join(f"{l.phap_nhan}: đơn do {l.nguoi_ky} ký, thỏa thuận liên danh ghi đại diện "
-                      f"là {l.nguoi_dai_dien}" for l in lech)
+    mo_ta = "; ".join(f"{ck_lech.phap_nhan}: đơn do {ck_lech.nguoi_ky} ký, thỏa thuận liên danh "
+                      f"ghi đại diện là {ck_lech.nguoi_dai_dien}" for ck_lech in lech)
     if not by_type.get(_GUQ):
         return _verdict_ld(KET_QUA_KHONG, bang_chung=bang_chung_1, trang=trang_1,
                            ghi_chu=f"người ký đơn khác đại diện nêu trong thỏa thuận liên danh và "

@@ -329,3 +329,107 @@ def test_guard_phap_nhan_mot_chieu_trong_nhanh_uy_quyen():
     kq, gc = ket_luan_uy_quyen_lien_danh(
         _LECH, [_muc(_OSB, phap_nhan_uy_quyen=_OSB.lower(), phap_nhan_khop=False)])
     assert kq == KET_QUA_DAT and gc == ""
+
+
+# --- Fix wave, finding 1: verdict phải giữ CẢ suy diễn LẪN trích dẫn nguyên văn của LLM ---
+
+async def test_verdict_lien_danh_giu_ca_suy_dien_va_trich_dan_nguyen_van():
+    """`bang_chung` phải TRÍCH ĐƯỢC: chuỗi suy diễn (kết luận có cấu trúc) đứng trước, nguyên văn
+    tài liệu do LLM trích đứng sau. Bỏ một trong hai là chuyên gia mất câu gốc để đối chiếu."""
+    trich = "Đơn tr.3: 'ĐẠI DIỆN HỢP PHÁP CỦA NHÀ THẦU LIÊN DANH — Nguyễn Hồng Sơn'; TTLD tr.2"
+    v = ScriptedVision({"[RULE:chu_ky_lien_danh]": {
+        "thanh_vien": [_tv(_OSB, "Nguyễn Hồng Sơn", dung_dau=True), _tv(_OHT, "Trần Vũ Thường")],
+        "chu_ky": [_ck(_OSB, "Nguyễn Hồng Sơn")],
+        "bang_chung": trich, "trang": [3], "do_tin": 0.9}})
+    verdict = await SKILL.handler(_BT_LD, None, {}, v)
+    assert verdict.ket_qua == KET_QUA_DAT
+    assert "thỏa thuận liên danh ghi đại diện là" in verdict.bang_chung   # chuỗi suy diễn
+    assert trich in verdict.bang_chung                                    # nguyên văn LLM trích
+    assert verdict.bang_chung.index("thỏa thuận") < verdict.bang_chung.index(trich)
+
+
+async def test_verdict_lien_danh_khong_lap_dau_cham_phay_khi_llm_khong_trich():
+    """LLM để `bang_chung` rỗng -> chỉ còn chuỗi suy diễn, không dính dấu phân cách thừa."""
+    v = ScriptedVision({"[RULE:chu_ky_lien_danh]": {
+        "thanh_vien": [_tv(_OSB, "Nguyễn Hồng Sơn", dung_dau=True)],
+        "chu_ky": [_ck(_OSB, "Nguyễn Hồng Sơn")], "bang_chung": "", "trang": [1]}})
+    verdict = await SKILL.handler(_BT_LD, None, {}, v)
+    assert verdict.ket_qua == KET_QUA_DAT
+    assert not verdict.bang_chung.endswith("; ") and "; ;" not in verdict.bang_chung
+
+
+# --- Fix wave, finding 2: so TÊN NGƯỜI phải chuẩn hoá xưng hô + khoảng trắng ---
+
+def test_norm_ten_nguoi_bo_xung_ho_va_gop_khoang_trang():
+    from experiment.evaluate.rules.chu_ky_khop_dkkd import _norm_ten_nguoi
+
+    goc = _norm_ten_nguoi("Nguyễn Hồng Sơn")
+    assert _norm_ten_nguoi("Ông Nguyễn Hồng Sơn") == goc
+    assert _norm_ten_nguoi("Bà  Nguyễn   Hồng Sơn") == goc     # gộp khoảng trắng + bỏ 'Bà'
+    assert _norm_ten_nguoi("Nguyễn  Hồng   Sơn") == goc
+    assert _norm_ten_nguoi("  NGUYỄN HỒNG SƠN  ") == goc
+    assert _norm_ten_nguoi("Mr. Nguyễn Hồng Sơn") == goc
+    assert _norm_ten_nguoi("Trần Vũ Thường") != goc            # tên THẬT SỰ khác vẫn khác
+
+
+def test_ttld_ghi_xung_ho_ong_ma_don_khong_ghi_thi_van_dat():
+    """TTLD (bảng scan) hay ghi 'Ông Nguyễn Hồng Sơn', đơn chỉ ghi tên — KHÔNG được coi là lệch."""
+    kq, bc, gc, lech = doi_chieu_chu_ky_lien_danh({
+        "thanh_vien": [_tv(_OSB, "Ông Nguyễn Hồng Sơn", dung_dau=True)],
+        "chu_ky": [_ck(_OSB, "Nguyễn Hồng Sơn")]})
+    assert kq == KET_QUA_DAT and lech == []
+
+
+def test_ocr_chen_double_space_hoac_lech_hoa_thuong_van_dat():
+    kq, bc, gc, lech = doi_chieu_chu_ky_lien_danh({
+        "thanh_vien": [_tv(_OSB, "Nguyễn Hồng Sơn", dung_dau=True)],
+        "chu_ky": [_ck(_OSB, "NGUYỄN  HỒNG SƠN")]})
+    assert kq == KET_QUA_DAT and lech == []
+
+
+def test_ten_nguoi_that_su_khac_van_phai_ra_lech_khong_bi_nuot():
+    """Nới lỏng tới mức nuốt mất phát hiện thật thì luật vô dụng — ca lệch người vẫn phải lệch."""
+    kq, bc, gc, lech = doi_chieu_chu_ky_lien_danh({
+        "thanh_vien": [_tv(_OSB, "Ông Nguyễn Hồng Sơn", dung_dau=True),
+                       _tv(_OHT, "Trần Vũ Thường")],
+        "chu_ky": [_ck(_OSB, "Trần Vũ Thường")]})
+    assert kq == "" and len(lech) == 1
+    assert lech[0].nguoi_ky == "Trần Vũ Thường"
+
+
+# --- Fix wave, finding 3: tên VIẾT TẮT không tra được thành viên -> SOI, không quy kết ---
+
+def test_ten_viet_tat_khong_tra_duoc_thanh_vien_thi_soi_khong_quy_ket_la():
+    """Spec dòng 293-294: 'Cty CP Tập đoàn OSB' trên đơn = 'Công ty cổ phần Tập đoàn OSB' trong
+    TTLD. LLM để `thanh_vien_ttld` rỗng -> code không tra được, nhưng KHÔNG được kết luận đây là
+    pháp nhân lạ: hệ thống trình bằng chứng, chuyên gia quyết."""
+    kq, bc, gc, lech = doi_chieu_chu_ky_lien_danh({
+        "thanh_vien": [_tv("Công ty cổ phần Tập đoàn OSB", "Nguyễn Hồng Sơn", dung_dau=True)],
+        "chu_ky": [{"phap_nhan": "Cty CP Tập đoàn OSB", "nguoi_ky": "Nguyễn Hồng Sơn",
+                    "thanh_vien_ttld": ""}]})
+    assert kq == KET_QUA_SOI and lech == []
+    assert "Cty CP Tập đoàn OSB" in gc                       # tên trên đơn
+    assert "Công ty cổ phần Tập đoàn OSB" in gc              # danh sách thành viên trong TTLD
+    assert "Công ty cổ phần Tập đoàn OSB" in bc
+    assert "viết tắt" in gc.lower()
+
+
+def test_ca_khong_ro_ten_phap_nhan_van_giu_ghi_chu_rieng():
+    """Hai ca SOI KHÁC nhau: 'không đọc được tên' vs 'đọc được nhưng chưa tra được thành viên'."""
+    gc_mo_ho = doi_chieu_chu_ky_lien_danh({
+        "thanh_vien": [_tv(_OSB, "Nguyễn Hồng Sơn", dung_dau=True)],
+        "chu_ky": [{"phap_nhan": "", "nguoi_ky": "X", "thanh_vien_ttld": ""}]})[2]
+    gc_viet_tat = doi_chieu_chu_ky_lien_danh({
+        "thanh_vien": [_tv(_OSB, "Nguyễn Hồng Sơn", dung_dau=True)],
+        "chu_ky": [{"phap_nhan": "CÔNG TY LẠ", "nguoi_ky": "X", "thanh_vien_ttld": ""}]})[2]
+    assert "không đọc được" in gc_mo_ho and "không đọc được" not in gc_viet_tat
+    assert gc_mo_ho != gc_viet_tat
+
+
+def test_tra_thanh_vien_uu_tien_thanh_vien_ttld_hon_phap_nhan():
+    """Hai khoá trỏ về HAI thành viên khác nhau -> phần gán của LLM (`thanh_vien_ttld`) thắng."""
+    from experiment.evaluate.rules.chu_ky_khop_dkkd import _tra_thanh_vien
+
+    tvs = [_tv(_OSB, "Nguyễn Hồng Sơn", dung_dau=True), _tv(_OHT, "Trần Vũ Thường")]
+    tv = _tra_thanh_vien(tvs, {"phap_nhan": _OHT, "nguoi_ky": "X", "thanh_vien_ttld": _OSB})
+    assert tv is not None and tv["ten_phap_nhan"] == _OSB
