@@ -666,4 +666,5 @@ async def test_phan_xu_canh_bao_khi_tang_1_khong_thu_hep_con_hai_ung_vien(caplog
     assert [v.ket_qua for v in ce.verdicts] == [KET_QUA_DAT, KET_QUA_DAT]
     assert vision.calls == []             # cả hai đều đi luật, 0 call eval chung
     assert "luat_gia" in caplog.text       # id luật
-    assert "2" in caplog.text              # số ứng viên còn lại sau phân xử
+    # Cụm ĐẦY ĐỦ: '2' trần khớp cả số trang, id, timestamp — không chứng minh được điều gì.
+    assert "còn 2 nội dung ứng viên sau phân xử, giữ tất cả" in caplog.text
