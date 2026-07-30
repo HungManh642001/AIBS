@@ -227,9 +227,11 @@ def struct_prompt(crit: dict[str, Any]) -> str:
         "CHÚ Ý mệnh đề 2 có chữ 'hoặc' -> hai vế là hai cách ký ĐỀU HỢP LỆ, gộp làm MỘT nội dung và "
         "chép đủ cả hai; tách đôi sẽ đánh trượt nhà thầu chỉ dùng một cách:\n"
         '  [{"noi_dung_kiem_tra":"Đơn ký bởi đại diện hợp pháp","hsdt_kiem_tra":"don_du_thau",'
+        '"hsdt_doi_chieu":[],'
         '"yeu_cau":"Đơn được đại diện hợp pháp của nhà thầu ký tên, đóng dấu",'
         '"can_lam_ro":"","can_tra_cuu":false,"ap_dung":""},\n'
         '   {"noi_dung_kiem_tra":"Liên danh: cách ký đơn hợp lệ","hsdt_kiem_tra":"don_du_thau",'
+        '"hsdt_doi_chieu":["thoa_thuan_lien_danh"],'
         '"yeu_cau":"Đơn do đại diện hợp pháp của TỪNG thành viên liên danh ký tên, đóng dấu (nếu '
         'có) HOẶC thành viên đứng đầu liên danh thay mặt liên danh ký theo phân công trách nhiệm '
         'trong thỏa thuận liên danh — thoả MỘT trong hai là đạt",'

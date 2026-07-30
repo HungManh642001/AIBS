@@ -282,3 +282,17 @@ def test_sys_struct_day_khai_hsdt_doi_chieu():
 
     assert "hsdt_doi_chieu" in SYS_STRUCT
     assert "webform" in SYS_STRUCT                 # có ví dụ cụ thể, không chỉ nêu tên field
+
+
+def test_struct_prompt_vi_du_3_day_hsdt_doi_chieu_ca_hai_chieu():
+    """VÍ DỤ 3 (trộn chung + liên danh) là ví dụ DUY NHẤT diễn giải khái niệm hsdt_doi_chieu —
+
+    phải khai đủ CẢ HAI chiều cạnh nhau: nội dung chỉ soi hồ sơ chính -> [], nội dung phải đối
+    chiếu với thỏa thuận liên danh -> ['thoa_thuan_lien_danh']. Để trống ở đây là dạy model bỏ
+    trống field cho đúng ca liên danh mà các bước sau xây trên đó.
+    """
+    from experiment.decompose.prompts import struct_prompt
+
+    p = struct_prompt({"ten": "Đơn dự thầu", "nhom": "hop_le"})
+    assert '"hsdt_doi_chieu":[]' in p.replace(" ", "")
+    assert '"hsdt_doi_chieu":["thoa_thuan_lien_danh"]' in p.replace(" ", "")
