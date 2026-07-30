@@ -5,6 +5,8 @@ chỉ đổi được seed, mà đo trên hồ sơ thật là 21 lần thử l�
 chạm trần token (finish_reason == 'length') mới thử lại, vì tăng max_tokens là một call thực sự
 khác, có cơ hội lấy lại phần bị cắt.
 """
+import logging
+
 import fitz
 
 from experiment.evaluate.ingest import ingest_hsdt
@@ -56,6 +58,16 @@ async def test_lech_cau_truc_chi_canh_bao_khong_doc_lai():
     assert pages[0].text == _BANG_LECH               # vẫn giữ phần đọc được
 
 
+async def test_nghi_boc_thieu_chi_log_MOT_lan_cho_moi_trang(caplog):
+    """Log này là NGUỒN SỐ LIỆU đo tỷ lệ bóc thiếu — bắn hai lần cho một trang là lệch phép đo."""
+    vision = VisionGhiNhan([{"text": _BANG_LECH}])
+    with caplog.at_level(logging.WARNING, logger="EVALUATE"):
+        await ingest_hsdt([("bg.pdf", "bang_gia", _pdf_scan())], vision, dpi=72)
+    dong = [r for r in caplog.records if "nghi bóc thiếu" in r.getMessage()]
+    assert len(dong) == 1
+    assert "bg.pdf" in dong[0].getMessage() and "tr1" in dong[0].getMessage()
+
+
 async def test_trang_co_canh_bao_van_duoc_ghi_cache():
     """Cảnh báo là thông tin, không phải lỗi -> vẫn cache (kèm theo canh_bao), khỏi OCR lại cả file."""
     class Store:
@@ -82,6 +94,18 @@ async def test_giu_ban_it_van_de_hon():
     pages = await ingest_hsdt([("bg.pdf", "bang_gia", _pdf_scan())], vision, dpi=72)
     assert len(vision.calls) == 2
     assert pages[0].text == _BANG_LECH
+
+
+async def test_giu_ban_da_cham_tran_thi_van_canh_bao_bi_cat():
+    """Cùng lỗ hổng với ca thử lại LỖI: giữ bản ĐÃ CHẠM TRẦN mà `canh_bao` rỗng thì text thiếu bị
+    đóng băng vào cache. Bản đầu ở đây sạch theo `kiem_tra_bang` nên nếu không gắn cảnh báo cắt,
+    trang ra `canh_bao=''` y như trang đọc tốt."""
+    vision = VisionGhiNhan([{"text": _BANG_DU, "finish_reason": "length"},
+                            {"text": "STT | Ten\n1 | ... \n2"}])   # thử lại còn tệ hơn
+    pages = await ingest_hsdt([("bg.pdf", "bang_gia", _pdf_scan())], vision, dpi=72)
+    assert len(vision.calls) == 2
+    assert pages[0].text == _BANG_DU                  # vẫn giữ bản đầu (ít vấn đề hơn)
+    assert "chạm trần token" in pages[0].canh_bao
 
 
 async def test_text_thuong_khong_bi_thu_lai():
@@ -138,6 +162,43 @@ async def test_canh_bao_khoi_phuc_dung_khi_doc_tu_cache():
     p2 = await ingest_hsdt([("bg.pdf", "bang_gia", pdf)], v2, dpi=72, cache=store)
     assert v2.calls == []                            # lần 2 đọc cache, 0 call
     assert p2[0].canh_bao == p1[0].canh_bao and "cột" in p2[0].canh_bao
+
+
+async def test_cham_tran_ma_thu_lai_loi_thi_van_canh_bao_text_bi_cat():
+    """Chạm trần token + lần thử lại LỖI -> trang BỊ CẮT vẫn được cache (cảnh báo không chặn cache),
+    nên cảnh báo 'chạm trần token' PHẢI được ghi kèm; thiếu nó là đóng băng text thiếu vĩnh viễn."""
+    class VisionCatRoiLoi:
+        """Call 1: ok mà chạm trần (text SẠCH nên kiem_tra_bang không bắt gì). Call 2: lỗi."""
+
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        async def __call__(self, system, prompt, images=(), validate=None, max_tokens=None,
+                           seed=None, **kw):
+            self.calls.append({"max_tokens": max_tokens})
+            if len(self.calls) == 1:
+                data = {"text": _BANG_DU, "co_chu_ky": False, "co_dau": False}
+                return AiOutcome("ok", validate(data) if validate else data, "fake",
+                                 finish_reason="length")
+            return AiOutcome("error", None, "fake", error="proxy hỏng")
+
+    class Store:
+        def __init__(self):
+            self.puts: list[list[dict]] = []
+
+        def get(self, key):
+            return None
+
+        def put(self, key, pages):
+            self.puts.append(pages)
+
+    store = Store()
+    vision = VisionCatRoiLoi()
+    pages = await ingest_hsdt([("bg.pdf", "bang_gia", _pdf_scan())], vision, dpi=72, cache=store)
+    assert len(vision.calls) == 2
+    assert pages[0].text == _BANG_DU                    # giữ phần đọc được của call 1
+    assert "chạm trần token" in pages[0].canh_bao       # KHÔNG im lặng
+    assert "chạm trần token" in store.puts[0][0]["canh_bao"]   # cảnh báo theo vào cache
 
 
 async def test_entry_cache_cu_khong_co_khoa_canh_bao_van_doc_duoc():

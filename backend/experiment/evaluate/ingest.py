@@ -48,6 +48,8 @@ log = setup_logger('EVALUATE', 'evaluate.log')
 DPI_MAC_DINH = 200
 TRICH_VERSION = "t2"    # đổi khi sửa logic trích -> khóa cache đổi, không ăn lại text cách cũ
 _MAX_TOKENS_INGEST = 8192   # trang bảng dày chạm trần là model tự kết thúc sớm -> THIẾU DÒNG
+# Một nguồn sự thật cho cảnh báo 'text bị cắt' — dùng ở cả nhánh thử lại lỗi và nhánh vẫn chạm trần.
+_CANH_BAO_CAT = "chạm trần token — text có thể bị cắt"
 
 
 class PageCache(Protocol):
@@ -83,6 +85,10 @@ async def _doc_trang_vision(name: str, png: bytes, vision_fn: VisionFn) -> tuple
 
     Chạm trần thì khác hẳn: tăng gấp đôi max_tokens là một call THỰC SỰ khác, có cơ hội lấy lại
     phần bị cắt. Giữ bản ÍT vấn đề hơn, không mù quáng lấy bản cuối.
+
+    Hễ GIỮ LẠI bản đã chạm trần (thử lại lỗi, hoặc thử lại còn tệ hơn) thì BẮT BUỘC kèm
+    `_CANH_BAO_CAT`: cảnh báo không còn chặn cache, nên trang bị cắt mà `canh_bao` rỗng là đóng
+    băng text thiếu vào cache vĩnh viễn — im lặng đúng thứ mà chuyên gia cần biết nhất.
     """
     out = await vision_fn(SYS_INGEST, ingest_prompt(), images=[png],
                           validate=validate_ingest_page, max_tokens=_MAX_TOKENS_INGEST,
@@ -92,9 +98,9 @@ async def _doc_trang_vision(name: str, png: bytes, vision_fn: VisionFn) -> tuple
 
     van_de = kiem_tra_bang((out.data or {}).get("text", ""))
     if out.finish_reason != "length":
-        if van_de:
-            log.warning("[ingest] %s: nghi bóc thiếu (%s) — chỉ cảnh báo, KHÔNG đọc lại",
-                        name, "; ".join(van_de))
+        # KHÔNG log ở đây: `_doc_file` đã bắn đúng một WARNING 'nghi bóc thiếu' kèm tên file + số
+        # trang cho MỌI trang có cảnh báo. Log này chính là nguồn số liệu đo tỷ lệ bóc thiếu /
+        # cứu được — bắn hai lần cho một trang là làm lệch phép đo lần sau.
         return out, van_de
 
     log.warning("[ingest] %s: chạm trần token — thử lại 1 lần với max_tokens gấp đôi", name)
@@ -102,14 +108,19 @@ async def _doc_trang_vision(name: str, png: bytes, vision_fn: VisionFn) -> tuple
                           validate=validate_ingest_page, max_tokens=_MAX_TOKENS_INGEST * 2,
                           seed=get_settings().ai_seed)
     if lai.status != "ok":
-        return out, van_de
+        # Thử lại LỖI -> giữ bản đầu, vốn ĐÃ bị cắt. Cảnh báo không chặn cache nữa, nên không kèm
+        # `_CANH_BAO_CAT` ở đây là đóng băng text thiếu vào cache với canh_bao rỗng vĩnh viễn.
+        return out, van_de + [_CANH_BAO_CAT]
 
     van_de_lai = kiem_tra_bang((lai.data or {}).get("text", ""))
     if lai.finish_reason == "length":
-        van_de_lai = van_de_lai + ["vẫn chạm trần token — text có thể bị cắt"]
+        van_de_lai = van_de_lai + ["vẫn " + _CANH_BAO_CAT]
     if not van_de_lai:
         return lai, []
-    return (lai, van_de_lai) if len(van_de_lai) < len(van_de) else (out, van_de)
+    # Giữ bản đầu (đã chạm trần) -> gắn cảnh báo LÚC TRẢ VỀ, không gắn trước phép so: so trên danh
+    # sách đã cộng thêm sẽ đổi luôn nghĩa của 'bản ít vấn đề hơn'.
+    return ((lai, van_de_lai) if len(van_de_lai) < len(van_de)
+            else (out, van_de + [_CANH_BAO_CAT]))
 
 
 async def _doc_file(name: str, loai_ho_so: str, data: bytes, vision_fn: VisionFn,
