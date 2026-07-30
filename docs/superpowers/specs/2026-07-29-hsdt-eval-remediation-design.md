@@ -290,8 +290,18 @@ chữa**, không mất tín hiệu nào.
 - Người ký lệch + không có GUQ → 'không đạt', 1 call.
 - Ca OSB gói 54 (fixture từ log): người ký lệch + GUQ từ thành viên KHÔNG đứng đầu → 'không đạt'
   với `ghi_chu` nêu đúng lý do.
-- `khop_phap_nhan` guard: TTLD ghi "Cty CP Tập đoàn OSB", đơn ghi "Công ty cổ phần Tập đoàn OSB" →
-  vẫn coi là một pháp nhân.
+- Tên viết tắt (TTLD ghi "Công ty cổ phần Tập đoàn OSB", đơn ghi "Cty CP Tập đoàn OSB"): đường xử
+  lý đúng là **LLM gán `thanh_vien_ttld`** — `_tra_thanh_vien` thử khoá đó TRƯỚC khi so tên thô,
+  nên khớp được. Test khoá đường này bằng cách đặt `thanh_vien_ttld` và `phap_nhan` trỏ về hai
+  thành viên KHÁC nhau, khẳng định `thanh_vien_ttld` thắng.
+
+  **Đánh đổi đã chốt (2026-07-30, chủ dự án quyết sau review cuối nhánh):** khi LLM bỏ trống
+  `thanh_vien_ttld`, tên viết tắt và pháp nhân LẠ tới hàm phán quyết dưới dạng dữ liệu **giống hệt
+  nhau** — không có trường nào phân biệt. Hệ thống chọn giữ **'không đạt'** (ưu tiên không bỏ sót
+  phát hiện thật: pháp nhân ngoài liên danh ký đơn), chấp nhận rủi ro đánh trượt oan tên viết tắt
+  trong ca LLM bóc thiếu. Phương án thay thế đã cân nhắc và loại: thêm cờ `thuoc_ttld` để LLM
+  khẳng định tường minh (giữ được cả hai, nhưng tốn thêm một vòng prompt + schema + test).
+  Ca "không đọc được tên pháp nhân" thì vẫn là 'cần làm rõ' — khác hẳn, đừng gộp.
 
 **Phần 3**
 - Trang có `van_de` từ `kiem_tra_bang`, không chạm trần → **đúng 1** call vision, `canh_bao` được
