@@ -1,3 +1,5 @@
+import logging
+
 from experiment.evaluate.evaluate import eval_noi_dung, evaluate_criterion
 from experiment.evaluate.vision import ScriptedVision
 from experiment.evaluate.schema import PageRecord, KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_THIEU
@@ -649,3 +651,19 @@ async def test_mot_noi_dung_duy_nhat_khong_bi_phan_xu():
     ce = await evaluate_criterion(crit, [_page("bang_gia", "1.2 tỷ")], vision,
                                   registry=_reg_gia(KET_QUA_DAT))
     assert ce.ket_qua == KET_QUA_DAT and vision.calls == []
+
+
+async def test_phan_xu_canh_bao_khi_tang_1_khong_thu_hep_con_hai_ung_vien(caplog):
+    """Tầng 1 (metadata) LỌC chứ không ĐẢM BẢO còn đúng 1 ứng viên: nếu cả hai nội dung cùng
+    khai đủ hsdt_doi_chieu của luật (ca thật: 2 nội dung cùng "biết" phải đối chiếu webform),
+    tầng 1 không thu hẹp được gì — hệ quả giữ NHIỀU nội dung y hệt fail-safe tầng 3, nên PHẢI
+    có warning y hệt, không chỉ nhánh else của tầng 3."""
+    crit = _crit_54(nd1_extra={"hsdt_doi_chieu": ["webform"]},
+                    nd2_extra={"hsdt_doi_chieu": ["webform"]})
+    vision = ScriptedVision({})
+    with caplog.at_level(logging.WARNING, logger="EVALUATE"):
+        ce = await _chay_54(crit, vision)
+    assert [v.ket_qua for v in ce.verdicts] == [KET_QUA_DAT, KET_QUA_DAT]
+    assert vision.calls == []             # cả hai đều đi luật, 0 call eval chung
+    assert "luat_gia" in caplog.text       # id luật
+    assert "2" in caplog.text              # số ứng viên còn lại sau phân xử

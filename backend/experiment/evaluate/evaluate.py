@@ -162,6 +162,13 @@ def _phan_luat_cho_nd(skills: list[RuleSkill],
     là tài liệu đối chiếu — rơi xuống eval chung thì prompt nuốt webform của MỌI nhà thầu).
     Từ HAI ứng viên -> phân xử 3 tầng: metadata nội dung tự khai -> từ khóa nhắc tài liệu đối
     chiếu -> fail-safe giữ tất cả (thà thừa còn hơn âm thầm mất luật).
+
+    BẤT BIẾN cảnh báo: fail-safe không được im lặng. Tầng 1 và tầng 2 chỉ LỌC (không đảm bảo
+    lọc còn đúng 1) — luật `ho_so_can` một phần tử hoặc tiêu chí mà >=2 nội dung cùng khai đủ
+    `hsdt_doi_chieu` vẫn có thể thoát tầng 1/2 với >1 ứng viên, y hệt hiệu ứng của fail-safe tầng
+    3. Vì vậy warning được bắn SAU khi đã chạy xong cả 3 tầng, dựa trên kết quả CUỐI CÙNG — bất kể
+    tầng nào tạo ra nó — chứ không đặt riêng trong nhánh fail-safe. Đây thuần là quan sát để soi
+    log, không đổi verdict hay ánh xạ `gan`.
     """
     gan: dict[int, RuleSkill] = {}
     for s in skills:
@@ -172,9 +179,10 @@ def _phan_luat_cho_nd(skills: list[RuleSkill],
                 loc = [i for i in ung_vien if _nd_nhac_doi_chieu(s, nds[i])]
             if loc:
                 ung_vien = loc
-            else:
-                log.warning("  [eval] luật %s có %d nội dung ứng viên nhưng không phân xử được — "
-                            "giữ tất cả", s.id, len(ung_vien))
+            if len(ung_vien) > 1:
+                nd_ten = [f"{i}:{nds[i].get('noi_dung_kiem_tra', '')}" for i in ung_vien]
+                log.warning("  [eval] luật %s còn %d nội dung ứng viên sau phân xử, giữ tất cả: %s",
+                            s.id, len(ung_vien), nd_ten)
         for i in ung_vien:
             gan.setdefault(i, s)
     return gan
