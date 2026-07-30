@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from services import artifact_catalog
+
 from experiment.evaluate.prompts import SYS_EVAL, eval_prompt
 from experiment.evaluate.route import _norm, loc_dung_chung, pages_by_type, pages_text, route_pages
 from experiment.evaluate.rules.registry import RuleRegistry, RuleSkill, run_skill
@@ -130,6 +132,54 @@ def _skill_cho_nd(skills: list[RuleSkill], nd: dict[str, Any]) -> RuleSkill | No
     return None
 
 
+def _bo_ho_so_nd(nd: dict[str, Any]) -> set[str]:
+    """Bộ hồ sơ mà NỘI DUNG này tự khai: hồ sơ chính + tài liệu đối chiếu riêng của nó."""
+    bo = {_norm(str(t)) for t in (nd.get("hsdt_doi_chieu") or [])}
+    bo.add(_norm(nd.get("hsdt_kiem_tra", "")))
+    return bo - {""}
+
+
+def _nd_nhac_doi_chieu(skill: RuleSkill, nd: dict[str, Any]) -> bool:
+    """Nội dung có NHẮC mọi tài liệu đối chiếu của luật (ngoài hồ sơ chính của chính nó) không?"""
+    chinh = _norm(nd.get("hsdt_kiem_tra", ""))
+    khac = [h for h in skill.ho_so_can if _norm(h) != chinh]
+    if not khac:
+        return True
+    text = f"{nd.get('noi_dung_kiem_tra', '')} {nd.get('yeu_cau', '')}"
+    return all(artifact_catalog.nhac_toi(text, str(h)) for h in khac)
+
+
+def _phan_luat_cho_nd(skills: list[RuleSkill],
+                      nds: list[dict[str, Any]]) -> dict[int, RuleSkill]:
+    """Chỉ số nội dung -> luật phục vụ nó. Chỉ PHÂN XỬ khi một luật có NHIỀU ứng viên.
+
+    Một yêu cầu gốc của HSMT có thể sinh nhiều nội dung trên CÙNG hồ sơ chính (gói 54: "phải nộp
+    Bảng chào giá đúng Mẫu 05C.1" + "giá phải phù hợp webform" đều route tới bang_gia). Khớp theo
+    thành viên `ho_so_can` thì cả hai cùng dính luật -> nội dung mẫu biểu bị chấm bằng phép so giá,
+    và `thong_tin_bo_sung` (chuẩn 14 cột đã resolve từ HSMT) bị vứt bỏ.
+
+    Chỉ có MỘT ứng viên -> KHÔNG đụng gì, giữ nguyên hành vi (kể cả khi STRUCT chọn hsdt_kiem_tra
+    là tài liệu đối chiếu — rơi xuống eval chung thì prompt nuốt webform của MỌI nhà thầu).
+    Từ HAI ứng viên -> phân xử 3 tầng: metadata nội dung tự khai -> từ khóa nhắc tài liệu đối
+    chiếu -> fail-safe giữ tất cả (thà thừa còn hơn âm thầm mất luật).
+    """
+    gan: dict[int, RuleSkill] = {}
+    for s in skills:
+        ung_vien = [i for i, nd in enumerate(nds) if _skill_cho_nd([s], nd) is not None]
+        if len(ung_vien) > 1:
+            loc = [i for i in ung_vien if set(_norm(h) for h in s.ho_so_can) <= _bo_ho_so_nd(nds[i])]
+            if not loc:
+                loc = [i for i in ung_vien if _nd_nhac_doi_chieu(s, nds[i])]
+            if loc:
+                ung_vien = loc
+            else:
+                log.warning("  [eval] luật %s có %d nội dung ứng viên nhưng không phân xử được — "
+                            "giữ tất cả", s.id, len(ung_vien))
+        for i in ung_vien:
+            gan.setdefault(i, s)
+    return gan
+
+
 async def eval_noi_dung(nd: dict[str, Any], pages: list[PageRecord], vision_fn: VisionFn,
                         *, extra_types: list[str] | None = None,
                         vendor_ctx: VendorContext | None = None,
@@ -210,13 +260,14 @@ async def evaluate_criterion(crit: dict[str, Any], pages: list[PageRecord],
     nds = crit.get("noi_dung_can_kiem_tra", [])
     ten_nds = [str(n.get("noi_dung_kiem_tra", "")) for n in nds]
     skills = registry.matching(crit) if registry is not None else []
+    luat_cho_nd = _phan_luat_cho_nd(skills, nds)
     by_type_ = by_type if by_type is not None else pages_by_type(pages)
     for i, nd in enumerate(nds):
         gated = _gate_khong_ap_dung(nd, profile, crit)   # N/A trước luật: khỏi tốn call
         if gated is not None:
             verdicts.append(gated)
             continue
-        skill = _skill_cho_nd(skills, nd)
+        skill = luat_cho_nd.get(i)
         if skill is not None:
             verdicts.append(await run_skill(skill, by_type_, vendor_ctx, crit, vision_fn, nd=nd))
             continue

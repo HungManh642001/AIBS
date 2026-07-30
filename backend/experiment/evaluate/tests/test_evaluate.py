@@ -579,3 +579,73 @@ async def test_rule_verdict_khong_dat_marks_loai_on_its_own_criterion():
     ce = await evaluate_criterion(crit, [_page("bang_gia", "1.5 tỷ")], ScriptedVision({}),
                                   registry=_reg_gia(KET_QUA_KHONG))
     assert ce.ket_qua == KET_QUA_KHONG
+
+
+def _crit_54(nd1_extra: dict | None = None, nd2_extra: dict | None = None):
+    """Đúng hình dạng tiêu chí gói 54: 1 yêu cầu gốc -> 2 nội dung CÙNG hsdt_kiem_tra='bang_gia'."""
+    # Gộp bằng {**a, **b} chứ KHÔNG dùng dict(a, k=v, **b): nd_extra có thể chứa lại 'yeu_cau'
+    # -> dict() sẽ nổ TypeError "got multiple values for keyword argument".
+    nd1 = {**_nd("Bảng chào giá chi tiết theo Mẫu số 05C.1", "bang_gia"),
+           "yeu_cau": "Phải nộp Bảng chào giá chi tiết theo đúng Mẫu số 05C.1 Chương V",
+           **(nd1_extra or {})}
+    nd2 = {**_nd("Giá dự thầu phù hợp giữa Webform và Bảng giá", "bang_gia"),
+           "yeu_cau": "Giá dự thầu trong Bảng chào giá chi tiết phải phù hợp với giá dự thầu "
+                      "trên webform",
+           **(nd2_extra or {})}
+    return {"nhom": "hop_le", "ten": "Bảng giá và phù hợp webform",
+            "hsdt_can_kiem_tra": ["bang_gia", "webform"],
+            "noi_dung_can_kiem_tra": [nd1, nd2]}
+
+
+async def _chay_54(crit, vision):
+    return await evaluate_criterion(
+        crit, [_page("bang_gia", "bảng chào giá 05C.1 — tổng 48.909.420.000")], vision,
+        registry=_reg_gia(KET_QUA_DAT),
+        by_type={"bang_gia": [_page("bang_gia", "48.909.420.000")],
+                 "webform": [_page("webform", "OSB 48.909.420.000")]})
+
+
+async def test_phan_xu_tang_2_tu_khoa_chi_noi_dung_nhac_webform_dung_luat():
+    """Ca gói 54 với dữ liệu decompose CŨ: chỉ nội dung nhắc webform mới đi qua luật."""
+    vision = ScriptedVision({"[EV:Bảng chào giá chi tiết theo Mẫu số 05C.1]":
+                             {"ket_qua": "đạt", "bang_chung": "đủ 14 cột"}})
+    ce = await _chay_54(_crit_54(), vision)
+    assert [v.ket_qua for v in ce.verdicts] == [KET_QUA_DAT, KET_QUA_DAT]
+    # nội dung 1 PHẢI đi eval chung (có call [EV:...]), nội dung 2 PHẢI không
+    assert any("[EV:Bảng chào giá chi tiết theo Mẫu số 05C.1]" in hay for hay, _ in vision.calls)
+    assert not any("[EV:Giá dự thầu phù hợp giữa Webform và Bảng giá]" in hay
+                   for hay, _ in vision.calls)
+
+
+async def test_phan_xu_tang_1_metadata_thang_tu_khoa():
+    """Có hsdt_doi_chieu -> metadata quyết, KHÔNG cần tới từ khóa (nội dung 1 dù nhắc webform)."""
+    crit = _crit_54(nd1_extra={"yeu_cau": "Bảng chào giá đúng mẫu 05C.1, đối chiếu webform sau"},
+                    nd2_extra={"hsdt_doi_chieu": ["webform"]})
+    vision = ScriptedVision({"[EV:Bảng chào giá chi tiết theo Mẫu số 05C.1]":
+                             {"ket_qua": "đạt", "bang_chung": "đủ 14 cột"}})
+    ce = await _chay_54(crit, vision)
+    assert [v.ket_qua for v in ce.verdicts] == [KET_QUA_DAT, KET_QUA_DAT]
+    assert any("[EV:Bảng chào giá chi tiết theo Mẫu số 05C.1]" in hay for hay, _ in vision.calls)
+    assert not any("[EV:Giá dự thầu phù hợp giữa Webform và Bảng giá]" in hay
+                   for hay, _ in vision.calls)
+
+
+async def test_phan_xu_tang_3_fail_safe_giu_nguyen_moi_ung_vien():
+    """Không phân xử được -> GIỮ hành vi hôm nay (cả hai dùng luật), thà thừa còn hơn mất luật."""
+    crit = _crit_54(nd1_extra={"yeu_cau": "Bảng chào giá đúng mẫu"},
+                    nd2_extra={"noi_dung_kiem_tra": "Giá dự thầu", "yeu_cau": "Giá phải phù hợp"})
+    vision = ScriptedVision({})          # không kịch bản [EV:...] -> eval chung sẽ nổ thành 'lỗi'
+    ce = await _chay_54(crit, vision)
+    assert [v.ket_qua for v in ce.verdicts] == [KET_QUA_DAT, KET_QUA_DAT]
+    assert vision.calls == []             # cả hai đều đi luật, 0 call eval chung
+
+
+async def test_mot_noi_dung_duy_nhat_khong_bi_phan_xu():
+    """Hồi quy: tiêu chí 1 nội dung -> giữ NGUYÊN hành vi cũ dù không nhắc webform."""
+    crit = {"nhom": "hop_le", "ten": "Giá khớp webform",
+            "hsdt_can_kiem_tra": ["bang_gia", "webform"],
+            "noi_dung_can_kiem_tra": [_nd("Bảng chào giá đúng mẫu", "bang_gia")]}
+    vision = ScriptedVision({})
+    ce = await evaluate_criterion(crit, [_page("bang_gia", "1.2 tỷ")], vision,
+                                  registry=_reg_gia(KET_QUA_DAT))
+    assert ce.ket_qua == KET_QUA_DAT and vision.calls == []
