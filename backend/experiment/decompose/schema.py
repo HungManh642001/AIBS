@@ -58,6 +58,7 @@ class NoiDungKiemTra(_Base):
     """Một nội dung cần kiểm trên HSDT — đủ để bước chấm thầu đọc & đối chiếu."""
     noi_dung_kiem_tra: str = ""   # Nội dung kiểm tra trên HSDT
     hsdt_kiem_tra: str = ""       # 1 loại HSDT cần xem (từ hsdt_can_kiem_tra của tiêu chí)
+    hsdt_doi_chieu: list[str] = []   # tài liệu ĐỐI CHIẾU riêng cho nội dung này (ngoài hồ sơ chính)
     yeu_cau: str = ""             # Yêu cầu cần đáp ứng (theo yeu_cau_goc) — LUÔN có
     can_lam_ro: str = ""          # Thông tin cần làm rõ (chưa rõ trong yeu_cau); '' nếu không
     can_tra_cuu: bool = False     # = (can_lam_ro != '') -> step 3 tra cứu

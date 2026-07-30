@@ -257,3 +257,28 @@ async def test_search_scan_appendix_resolves_without_hits():
     resolves = [c for c in llm.calls if "[TAG:RESOLVE:" in c]
     assert resolves and "PHỤ LỤC — THÔNG BÁO MỜI THẦU" in resolves[0]
     assert "09 giờ 00" in resolves[0]           # nguyên văn TBMT có mặt trong bằng chứng
+
+
+def test_noi_dung_co_field_hsdt_doi_chieu():
+    """Tài liệu ĐỐI CHIẾU khai ở CẤP NỘI DUNG -> luật biết nội dung nào cần phép đối chiếu."""
+    from experiment.decompose.schema import validate_criterion
+
+    out = validate_criterion({
+        "ten": "Bảng giá và phù hợp webform",
+        "hsdt_can_kiem_tra": ["bang_gia", "webform"],
+        "noi_dung_can_kiem_tra": [
+            {"noi_dung_kiem_tra": "Bảng chào giá đúng Mẫu 05C.1", "hsdt_kiem_tra": "bang_gia"},
+            {"noi_dung_kiem_tra": "Giá phù hợp webform", "hsdt_kiem_tra": "bang_gia",
+             "hsdt_doi_chieu": ["webform"]},
+        ],
+    })
+    nds = out["noi_dung_can_kiem_tra"]
+    assert nds[0]["hsdt_doi_chieu"] == []          # mặc định rỗng, tương thích dữ liệu cũ
+    assert nds[1]["hsdt_doi_chieu"] == ["webform"]
+
+
+def test_sys_struct_day_khai_hsdt_doi_chieu():
+    from experiment.decompose.prompts import SYS_STRUCT
+
+    assert "hsdt_doi_chieu" in SYS_STRUCT
+    assert "webform" in SYS_STRUCT                 # có ví dụ cụ thể, không chỉ nêu tên field

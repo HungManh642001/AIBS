@@ -61,6 +61,13 @@ SYS_STRUCT = (
     "— phải là hồ sơ CỦA NHÀ THẦU đang BỊ CHẤM (hồ sơ chính, thường đứng đầu hsdt_can_kiem_tra), "
     "KHÔNG PHẢI TÀI LIỆU ĐỐI CHIẾU. Vd 'giá bảng giá phải khớp webform' -> hsdt_kiem_tra='bang_gia' "
     "(chấm bảng giá của nhà thầu), KHÔNG phải 'webform'.\n"
+    "- hsdt_doi_chieu: các loại hồ sơ KHÁC (chọn trong hsdt_can_kiem_tra của tiêu chí) mà RIÊNG "
+    "nội dung này phải đem ra so sánh mới kết luận được. Nội dung chỉ cần đọc hồ sơ chính -> để "
+    "MẢNG RỖNG. Ví dụ MỘT yêu cầu gốc sinh hai nội dung cùng nằm trên bang_gia: 'phải nộp Bảng "
+    "chào giá theo đúng Mẫu số 05C.1' -> hsdt_doi_chieu=[] (chỉ soi mẫu biểu); 'giá trong Bảng "
+    "chào giá phải phù hợp giá trên webform' -> hsdt_doi_chieu=['webform'] (phải so hai tài "
+    "liệu). Khai đúng field này quyết định nội dung nào được chấm bằng phép đối chiếu chuyên "
+    "dụng — khai thừa sẽ làm nội dung soi mẫu biểu bị chấm nhầm bằng phép so giá.\n"
     "- yeu_cau: YÊU CẦU nội dung này phải đáp ứng, diễn giải từ yeu_cau_goc (vd 'Phải bảo đảm tư cách hợp "
     "lệ theo Mục 5 A-CDNT', 'Thỏa mãn giá trị bảo lãnh theo HSMT'). LUÔN điền.\n"
     "Diển giải để RÕ NGHĨA, không siết chặt hơn, yeu_cau_goc không nêu thì đừng tự nêu.\n"
@@ -157,7 +164,8 @@ def anchors_prompt(body: str) -> str:
 # Schema step structure/resolve — noi_dung_can_kiem_tra là ô hạng nhất.
 _CRIT_SCHEMA = (
     '{"nhom","ten","yeu_cau_goc","hsdt_can_kiem_tra":[...],'
-    '"noi_dung_can_kiem_tra":[{"noi_dung_kiem_tra","hsdt_kiem_tra","yeu_cau","can_lam_ro",'
+    '"noi_dung_can_kiem_tra":[{"noi_dung_kiem_tra","hsdt_kiem_tra","hsdt_doi_chieu":[...],'
+    '"yeu_cau","can_lam_ro",'
     '"can_tra_cuu":false,"ap_dung":"",'
     '"dieu_kien_ap_dung":{"dai_luong":"","phep_so_sanh":"","nguong":""}}]}'
 )
