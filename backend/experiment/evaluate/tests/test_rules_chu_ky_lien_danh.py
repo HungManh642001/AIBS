@@ -397,33 +397,43 @@ def test_ten_nguoi_that_su_khac_van_phai_ra_lech_khong_bi_nuot():
     assert lech[0].nguoi_ky == "Trần Vũ Thường"
 
 
-# --- Fix wave, finding 3: tên VIẾT TẮT không tra được thành viên -> SOI, không quy kết ---
+# --- Fix wave, finding 3: LLM bỏ trống `thanh_vien_ttld` -> tên viết tắt đi chung nhánh 'lạ' ---
 
-def test_ten_viet_tat_khong_tra_duoc_thanh_vien_thi_soi_khong_quy_ket_la():
-    """Spec dòng 293-294: 'Cty CP Tập đoàn OSB' trên đơn = 'Công ty cổ phần Tập đoàn OSB' trong
-    TTLD. LLM để `thanh_vien_ttld` rỗng -> code không tra được, nhưng KHÔNG được kết luận đây là
-    pháp nhân lạ: hệ thống trình bằng chứng, chuyên gia quyết."""
+def test_ten_viet_tat_ma_llm_bo_trong_thanh_vien_ttld_van_ra_khong_dat():
+    """ĐÁNH ĐỔI CÓ CHỦ ĐÍCH (chủ dự án quyết) — test này là TÀI LIỆU SỐNG của quyết định đó.
+
+    Ca spec dòng 293-294: đơn ghi tắt 'Cty CP Tập đoàn OSB', TTLD ghi đầy đủ 'Công ty cổ phần Tập
+    đoàn OSB'. Khi LLM bỏ trống `thanh_vien_ttld`, code chỉ còn phép so chuỗi chuẩn hoá TUYỆT ĐỐI
+    nên KHÔNG phân biệt được 'viết tắt cùng một pháp nhân' với 'pháp nhân lạ ký đơn liên danh'.
+    Đứng trước hai lựa chọn không phân biệt được, hệ thống GIỮ PHÁT HIỆN THẬT -> 'không đạt'.
+
+    Đường xử lý ĐÚNG cho tên viết tắt không nằm ở đây mà ở khoá `thanh_vien_ttld`:
+    `SYS_RULE_LIEN_DANH_KY` bắt LLM chép đúng ten_phap_nhan của thành viên mà khối chữ ký thuộc về,
+    và `_tra_thanh_vien` thử khoá đó TRƯỚC `phap_nhan` —
+    `test_tra_thanh_vien_uu_tien_thanh_vien_ttld_hon_phap_nhan` là chỗ khoá đường đó lại.
+    Nhánh này chỉ với tới khi LLM bỏ trống CẢ HAI khoá, tức dữ liệu bóc đã hỏng.
+    """
     kq, bc, gc, lech = doi_chieu_chu_ky_lien_danh({
         "thanh_vien": [_tv("Công ty cổ phần Tập đoàn OSB", "Nguyễn Hồng Sơn", dung_dau=True)],
         "chu_ky": [{"phap_nhan": "Cty CP Tập đoàn OSB", "nguoi_ky": "Nguyễn Hồng Sơn",
                     "thanh_vien_ttld": ""}]})
-    assert kq == KET_QUA_SOI and lech == []
-    assert "Cty CP Tập đoàn OSB" in gc                       # tên trên đơn
-    assert "Công ty cổ phần Tập đoàn OSB" in gc              # danh sách thành viên trong TTLD
-    assert "Công ty cổ phần Tập đoàn OSB" in bc
-    assert "viết tắt" in gc.lower()
+    assert kq == KET_QUA_KHONG and lech == []
+    assert "Cty CP Tập đoàn OSB" in gc                       # nêu đúng tên đọc được trên đơn
+    assert "Cty CP Tập đoàn OSB" in bc and "Nguyễn Hồng Sơn" in bc   # bằng chứng vẫn trích được
 
 
-def test_ca_khong_ro_ten_phap_nhan_van_giu_ghi_chu_rieng():
-    """Hai ca SOI KHÁC nhau: 'không đọc được tên' vs 'đọc được nhưng chưa tra được thành viên'."""
-    gc_mo_ho = doi_chieu_chu_ky_lien_danh({
+def test_ca_khong_ro_ten_phap_nhan_khong_bi_gop_vao_nhanh_phap_nhan_la():
+    """Hai ca KHÁC hẳn nhau: 'không đọc được tên' -> SOI (thiếu căn cứ, không được quy kết bằng một
+    cái tên rỗng); 'đọc được tên nhưng không có trong TTLD' -> 'không đạt'."""
+    kq_mo_ho, _, gc_mo_ho, _ = doi_chieu_chu_ky_lien_danh({
         "thanh_vien": [_tv(_OSB, "Nguyễn Hồng Sơn", dung_dau=True)],
-        "chu_ky": [{"phap_nhan": "", "nguoi_ky": "X", "thanh_vien_ttld": ""}]})[2]
-    gc_viet_tat = doi_chieu_chu_ky_lien_danh({
+        "chu_ky": [{"phap_nhan": "", "nguoi_ky": "X", "thanh_vien_ttld": ""}]})
+    kq_la, _, gc_la, _ = doi_chieu_chu_ky_lien_danh({
         "thanh_vien": [_tv(_OSB, "Nguyễn Hồng Sơn", dung_dau=True)],
-        "chu_ky": [{"phap_nhan": "CÔNG TY LẠ", "nguoi_ky": "X", "thanh_vien_ttld": ""}]})[2]
-    assert "không đọc được" in gc_mo_ho and "không đọc được" not in gc_viet_tat
-    assert gc_mo_ho != gc_viet_tat
+        "chu_ky": [{"phap_nhan": "CÔNG TY LẠ", "nguoi_ky": "X", "thanh_vien_ttld": ""}]})
+    assert kq_mo_ho == KET_QUA_SOI and kq_la == KET_QUA_KHONG
+    assert "không đọc được" in gc_mo_ho and "không đọc được" not in gc_la
+    assert gc_mo_ho != gc_la
 
 
 def test_tra_thanh_vien_uu_tien_thanh_vien_ttld_hon_phap_nhan():

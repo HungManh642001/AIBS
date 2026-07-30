@@ -398,20 +398,19 @@ def doi_chieu_chu_ky_lien_danh(
                 "không đọc được tên pháp nhân trên một hoặc nhiều khối chữ ký của đơn dự thầu — "
                 "chưa đối chiếu được với thỏa thuận liên danh", [])
 
-    # CHƯA TRA ĐƯỢC (đọc được tên pháp nhân nhưng không khớp thành viên nào) -> SOI, KHÔNG quy kết.
-    # Phép tra là so chuỗi chuẩn hoá TUYỆT ĐỐI, nên tên VIẾT TẮT trên khối chữ ký ('Cty CP Tập đoàn
-    # OSB') không khớp tên đầy đủ trong thỏa thuận ('Công ty cổ phần Tập đoàn OSB') — đúng ca mà
-    # `khop_phap_nhan` tồn tại để chặn, nhưng ở đây không có LLM phán nên code không phân biệt được
-    # 'viết tắt' với 'pháp nhân lạ'. Hệ thống KHÔNG tự kết luận loại nhà thầu: trình đủ hai vế
-    # (tên trên đơn + danh sách thành viên trong thỏa thuận) cho chuyên gia quyết.
-    chua_tra = [str(ck.get("phap_nhan") or "(không rõ)") for ck, tv in cap if tv is None]
-    if chua_tra:
-        ten_tv = ", ".join(str(tv.get("ten_phap_nhan", "")) for tv in tvs)
-        return (KET_QUA_SOI,
-                f"{bang_chung}; thành viên nêu trong thỏa thuận liên danh: {ten_tv}",
-                f"chưa đối chiếu được khối chữ ký đứng tên '{', '.join(chua_tra)}' về thành viên "
-                f"nào trong thỏa thuận liên danh (thành viên nêu trong thỏa thuận: {ten_tv}) — có "
-                f"thể do tên VIẾT TẮT, hoặc do thỏa thuận liên danh không có thành viên đó", [])
+    # PHÁP NHÂN LẠ (đọc được tên nhưng không tra được về thành viên nào) -> 'không đạt'.
+    # ĐÁNH ĐỔI CÓ CHỦ ĐÍCH (chủ dự án quyết): phép tra là so chuỗi chuẩn hoá TUYỆT ĐỐI nên tên VIẾT
+    # TẮT ('Cty CP Tập đoàn OSB' vs 'Công ty cổ phần Tập đoàn OSB') cũng rơi vào đây, không phân
+    # biệt được với pháp nhân lạ thật. Chấp nhận vì đường xử lý ĐÚNG cho tên viết tắt nằm ở khoá
+    # `thanh_vien_ttld` — `_tra_thanh_vien` thử khoá đó TRƯỚC, và `SYS_RULE_LIEN_DANH_KY` đã bắt
+    # LLM chép đúng ten_phap_nhan của thành viên mà khối chữ ký thuộc về. Chỉ khi LLM bỏ trống CẢ
+    # HAI khoá mới tới nhánh này, và khi đó giữ phát hiện thật (pháp nhân lạ ký đơn liên danh) được
+    # ưu tiên hơn việc nương tay cho một ca bóc dữ liệu hỏng.
+    la = [str(ck.get("phap_nhan") or "(không rõ)") for ck, tv in cap if tv is None]
+    if la:
+        return (KET_QUA_KHONG, bang_chung,
+                f"đơn dự thầu có chữ ký đứng tên pháp nhân KHÔNG có trong thỏa thuận liên danh: "
+                f"{', '.join(la)}", [])
 
     ten_ky = {_norm(str(tv.get("ten_phap_nhan", ""))) for _, tv in cap}
     ten_tv = {_norm(str(tv.get("ten_phap_nhan", ""))) for tv in tvs}
