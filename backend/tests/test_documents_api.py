@@ -237,3 +237,18 @@ def test_doi_loai_ho_so_tren_file_co_text_van_kiem_nhu_cu(client, monkeypatch):
     assert r.status_code == 200
     assert goi == ["bao_dam_du_thau"]
     assert r.json()["data"]["artifact_validation"]["match"] is True
+
+
+def test_upload_giu_nguyen_ten_file_co_dau(client):
+    """Tên file hiện trên UI lấy từ file_path — bóp mất dấu là chuyên gia không nhận ra file."""
+    p = client.post("/api/v1/packages",
+                    json={"ma_so": "G-VN", "ten": "G", "vendors": ["A"]}).json()["data"]
+    pid, vid = p["id"], p["vendors"][0]["id"]
+    ten = "1. ĐƠN DỰ THẦU - PGĐ ký.pdf"
+    r = client.post(f"/api/v1/packages/{pid}/documents",
+                    files={"file": (ten, _text_pdf("Đơn dự thầu"), "application/pdf")},
+                    data={"loai": "HSDT", "vendor_id": str(vid),
+                          "artifact_type": "don_du_thau"})
+    assert r.status_code == 200
+    assert r.json()["data"]["file_name"] == ten
+    assert client.get(f"/api/v1/packages/{pid}/documents").json()["data"][0]["file_name"] == ten
