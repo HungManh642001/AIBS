@@ -25,6 +25,7 @@ Hai bất biến của cache:
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from typing import Any, Protocol
 
@@ -125,38 +126,53 @@ async def _doc_trang_vision(name: str, png: bytes, vision_fn: VisionFn) -> tuple
 
 async def _doc_file(name: str, loai_ho_so: str, data: bytes, vision_fn: VisionFn,
                     dpi: int) -> tuple[list[PageRecord], bool]:
-    """Đọc từng trang: có text nhúng -> TẤT ĐỊNH (0 call); còn lại -> vision đọc ảnh.
+    """Đọc từng trang: có text nhúng -> TẤT ĐỊNH (0 call); còn lại -> vision đọc ảnh SONG SONG.
+
+    HAI PHA, và ranh giới này là BẮT BUỘC: `fitz` (PyMuPDF) KHÔNG an toàn đa luồng, nên toàn bộ
+    việc đụng tới `doc`/`page` (kể cả render PNG) phải xong hết ở pha 1 — chạy tuần tự trên thread
+    của event loop — trước khi pha 2 thả các lời gọi vision chạy chồng nhau.
 
     Trả (records, du_de_cache); du_de_cache=False nếu có BẤT KỲ trang vision nào LỖI (cảnh báo
     không tính — cảnh báo vẫn được cache kèm theo).
     """
-    records: list[PageRecord] = []
-    du_de_cache = True
+    # Pha 1 (đồng bộ, đụng fitz): quyết định đường đọc từng trang + render sẵn PNG cho trang vision.
+    ket_qua: list[PageRecord | None] = []
+    can_vision: list[tuple[int, bytes]] = []      # (chỉ số trong ket_qua, png)
     doc = fitz.open(stream=data, filetype="pdf")
     try:
         for i, page in enumerate(doc, 1):
             tat_dinh = trich_trang_tat_dinh(page)
             if tat_dinh is not None:
                 # Không render ảnh: trang này không cần vision, cũng không cần cờ thị giác.
-                records.append(_record(name, loai_ho_so, i, {"text": tat_dinh}, b"",
+                ket_qua.append(_record(name, loai_ho_so, i, {"text": tat_dinh}, b"",
                                        NGUON_PDF_TEXT))
                 continue
-            png = page_to_png(page, dpi=dpi)
-            out, van_de = await _doc_trang_vision(f"{name} tr{i}", png, vision_fn)
-            if out.status == "ok":
-                if van_de:
-                    # KHÔNG im lặng: cảnh báo vào text để luật/eval hạ kết luận xuống 'cần làm rõ'.
-                    # Nhưng KHÔNG chặn cache: cache theo FILE, một trang cảnh báo mà chặn thì mọi
-                    # lần chấm sau phải OCR lại toàn bộ file.
-                    log.warning("[ingest] %s tr%d nghi bóc thiếu: %s", name, i, "; ".join(van_de))
-                records.append(_record(name, loai_ho_so, i, out.data, png,
-                                       canh_bao="; ".join(van_de)))
-            else:
-                log.warning("[ingest] %s tr%d lỗi vision: %s", name, i, out.error)
-                du_de_cache = False
-                records.append(_record(name, loai_ho_so, i, {}, png))
+            can_vision.append((len(ket_qua), page_to_png(page, dpi=dpi)))
+            ket_qua.append(None)                  # giữ chỗ, điền ở pha 2
     finally:
         doc.close()
+
+    # Pha 2 (song song, KHÔNG đụng fitz): gather giữ nguyên thứ tự nên khớp lại theo chỉ số.
+    outs = await asyncio.gather(*(
+        _doc_trang_vision(f"{name} tr{vi + 1}", png, vision_fn) for vi, png in can_vision))
+
+    du_de_cache = True
+    for (vi, png), (out, van_de) in zip(can_vision, outs):
+        trang = vi + 1
+        if out.status == "ok":
+            if van_de:
+                # KHÔNG im lặng: cảnh báo vào text để luật/eval hạ kết luận xuống 'cần làm rõ'.
+                # Nhưng KHÔNG chặn cache: cache theo FILE, một trang cảnh báo mà chặn thì mọi
+                # lần chấm sau phải OCR lại toàn bộ file.
+                log.warning("[ingest] %s tr%d nghi bóc thiếu: %s", name, trang, "; ".join(van_de))
+            ket_qua[vi] = _record(name, loai_ho_so, trang, out.data, png,
+                                  canh_bao="; ".join(van_de))
+        else:
+            log.warning("[ingest] %s tr%d lỗi vision: %s", name, trang, out.error)
+            du_de_cache = False
+            ket_qua[vi] = _record(name, loai_ho_so, trang, {}, png)
+
+    records = [r for r in ket_qua if r is not None]
     n_td = sum(1 for r in records if r.nguon_trich == NGUON_PDF_TEXT)
     log.info("[ingest] %s (%s): %d trang — %d đọc thẳng từ PDF, %d qua vision",
              name, loai_ho_so, len(records), n_td, len(records) - n_td)
