@@ -61,3 +61,31 @@ async def test_validate_failure_becomes_error(monkeypatch):
 
     out = await ai_client.ai_call("sys", "p", mock_key="validate_artifact", validate=validate)
     assert out.status == "error"
+
+
+async def test_ai_call_khong_chen_event_loop(monkeypatch):
+    """Call LLM đồng bộ nằm trong async def sẽ chẹn loop -> mọi gather thành tuần tự.
+
+    Đo bằng chính triệu chứng: hai call chạy chồng nhau thì tổng thời gian phải xấp xỉ MỘT call,
+    không phải hai.
+    """
+    import asyncio
+    import time
+
+    import config
+    from services import ai_client
+
+    monkeypatch.setenv("ABES_AI_SONG_SONG", "4")
+    config.get_settings.cache_clear()
+    monkeypatch.setattr(ai_client.settings, "ai_mock", False)
+
+    def cham(system, prompt, max_tokens=None):
+        time.sleep(0.20)                      # ĐỒNG BỘ, đúng như litellm.completion
+        return '{"ok": 1}'
+
+    monkeypatch.setattr(ai_client, "_litellm_completion", cham)
+    t0 = time.perf_counter()
+    await asyncio.gather(ai_client.ai_call("s", "p", mock_key="k"),
+                         ai_client.ai_call("s", "p2", mock_key="k"))
+    trong = time.perf_counter() - t0
+    assert trong < 0.35, f"hai call mất {trong:.2f}s — vẫn đang tuần tự"

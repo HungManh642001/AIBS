@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     ai_seed: int = 42
     ai_max_tokens: int = 4096
     ai_max_tokens_extract: int = 8192
+    # Trần số call LLM ĐANG BAY cùng lúc (mọi đường: chấm, ingest, decompose).
+    # Mặc định thấp vì không biết sức chứa của vLLM/LiteLLM phía sau — xem mục "Vận hành" trong
+    # spec để dò tăng dần. Phải <= 32: asyncio.to_thread dùng executor mặc định min(32, cpu+4).
+    ai_song_song: int = 4
     ai_chunk_chars: int = 120000
     ai_chunk_overlap: int = 800
 

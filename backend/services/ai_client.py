@@ -1,5 +1,6 @@
 """Client gọi LiteLLM proxy -> Qwen3 27B, tự động fallback sang mock JSON."""
 from __future__ import annotations
+import asyncio
 import copy
 import logging
 import os
@@ -7,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from services.json_utils import extract_json
+from services.llm_gate import cong
 
 # Dùng model cost map đóng gói sẵn, KHÔNG fetch từ internet (server on-premise).
 # Phải đặt trước khi import litellm (litellm đọc biến này lúc import).
@@ -57,6 +59,21 @@ def _litellm_completion(system: str, prompt: str, max_tokens: int | None = None)
     return resp["choices"][0]["message"]["content"]
 
 
+async def _goi_llm(system: str, prompt: str, max_tokens: int | None = None) -> str:
+    """Chạy lời gọi ĐỒNG BỘ của litellm trong thread để không chẹn event loop.
+
+    Chỉ bọc đúng lời gọi HTTP: mọi thao tác DB/cache phải ở lại thread của event loop vì
+    SQLAlchemy Session dùng chung không an toàn đa luồng.
+
+    Giữ semaphore ở phạm vi MỘT LƯỢT gọi (hàm này), không bao cả vòng retry của `ai_call`: mỗi
+    lượt có timeout=300s, ôm cổng qua hai lượt là một call hỏng giữ chỗ tới 600s và bỏ đói call khác.
+
+    (`litellm.acompletion` là hướng sạch hơn khi nào muốn bỏ hẳn thread pool.)
+    """
+    async with cong():
+        return await asyncio.to_thread(_litellm_completion, system, prompt, max_tokens)
+
+
 @dataclass
 class AiOutcome:
     """Kết quả 1 lượt gọi AI. status='error' nghĩa là KHÔNG có dữ liệu thật (không bịa mock)."""
@@ -92,7 +109,7 @@ async def ai_call(
     last_err = ""
     for attempt in range(2):  # lần đầu + 1 retry
         try:
-            raw = _litellm_completion(system, prompt, max_tokens=max_tokens)
+            raw = await _goi_llm(system, prompt, max_tokens=max_tokens)
             data = extract_json(raw)
             if validate is not None:
                 data = validate(data)

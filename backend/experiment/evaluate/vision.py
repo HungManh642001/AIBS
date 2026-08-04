@@ -5,6 +5,7 @@ no-silent-mock: proxy lỗi -> AiOutcome(status='error'), KHÔNG bịa.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 from typing import Any, Awaitable, Callable
 
@@ -13,6 +14,7 @@ import fitz  # PyMuPDF
 from config import get_settings
 from services.ai_client import AiOutcome  # read-only reuse
 from services.json_utils import extract_json
+from services.llm_gate import cong
 
 from experiment.logger_config import setup_logger
 log = setup_logger('EVALUATE', 'evaluate.log')
@@ -47,6 +49,30 @@ def _content(prompt: str, images: list[bytes]) -> Any:
     return parts
 
 
+def _completion_sync(system: str, prompt: str, images: list[bytes],
+                     max_tokens: int | None, seed: int | None) -> Any:
+    """Lời gọi litellm ĐỒNG BỘ. `import litellm` để TRONG hàm — test thay sys.modules['litellm']."""
+    import litellm
+
+    settings = get_settings()
+    model = settings.ai_model
+    if "/" not in model:
+        model = f"openai/{model}"
+    return litellm.completion(
+        model=model, api_base=settings.ai_base_url,
+        api_key=settings.ai_api_key or "sk-no-key",
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": _content(prompt, list(images))},
+        ],
+        temperature=settings.ai_temperature,
+        seed=settings.ai_seed if seed is None else seed,   # xem chú thích ai_seed (config)
+        top_p=1.0,
+        max_tokens=max_tokens or settings.ai_max_tokens,
+        timeout=300,
+    )
+
+
 async def default_vision_fn(
     system: str, prompt: str, images: list[bytes] = (), validate=None,
     max_tokens: int | None = None, seed: int | None = None,
@@ -59,27 +85,12 @@ async def default_vision_fn(
         return AiOutcome(status="error", data=None, model="mock",
                          error="Chế độ mock không đọc được ảnh — cần bật AI thật để chấm HSDT")
 
-    import litellm
-
-    model = settings.ai_model
-    if "/" not in model:
-        model = f"openai/{model}"
     last_err = ""
     for _ in range(2):  # lần đầu + 1 retry
         try:
-            resp = litellm.completion(
-                model=model, api_base=settings.ai_base_url,
-                api_key=settings.ai_api_key or "sk-no-key",
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": _content(prompt, list(images))},
-                ],
-                temperature=settings.ai_temperature,
-                seed=settings.ai_seed if seed is None else seed,   # xem chú thích ai_seed (config)
-                top_p=1.0,
-                max_tokens=max_tokens or settings.ai_max_tokens,
-                timeout=300,
-            )
+            async with cong():   # cổng ở phạm vi MỘT lượt, nhả trước khi retry
+                resp = await asyncio.to_thread(_completion_sync, system, prompt, list(images),
+                                               max_tokens, seed)
             data = extract_json(resp["choices"][0]["message"]["content"])
             log.info(f"VISION: {data}")
             if validate is not None:

@@ -57,3 +57,29 @@ def test_seed_co_trong_cau_hinh():
     """Đặt được qua biến môi trường để đổi seed khi muốn lấy 'góc nhìn' khác của model."""
     config.get_settings.cache_clear()
     assert isinstance(config.get_settings().ai_seed, int)
+
+
+async def test_vision_khong_chen_event_loop(monkeypatch):
+    """Đường vision cũng phải nhả loop — nó là đường tốn nhất (ingest từng trang)."""
+    import asyncio
+    import sys
+    import time
+
+    import config
+    from experiment.evaluate import vision
+
+    class _Cham:
+        @staticmethod
+        def completion(**kw):
+            time.sleep(0.20)
+            return {"choices": [{"message": {"content": '{"text": "x"}'}, "finish_reason": "stop"}]}
+
+    monkeypatch.setitem(sys.modules, "litellm", _Cham)
+    monkeypatch.setenv("ABES_AI_MOCK", "false")
+    monkeypatch.setenv("ABES_AI_SONG_SONG", "4")
+    config.get_settings.cache_clear()
+
+    t0 = time.perf_counter()
+    await asyncio.gather(vision.default_vision_fn("s", "p"), vision.default_vision_fn("s", "p2"))
+    trong = time.perf_counter() - t0
+    assert trong < 0.35, f"hai call vision mất {trong:.2f}s — vẫn đang tuần tự"
