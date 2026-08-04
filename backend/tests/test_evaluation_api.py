@@ -1101,18 +1101,31 @@ def test_rollup_router_uu_tien_thieu_ho_so():
 
 
 def _fake_eval_du_nam_loai():
-    """evaluate_vendor giả: 5 tiêu chí, mỗi tiêu chí một loại kết quả."""
+    """evaluate_vendor giả: 5 tiêu chí đơn loại + 1 tiêu chí verdict TRỘN {không đạt, thiếu hồ sơ}.
+
+    `ket_qua` mỗi tiêu chí tính bằng `_rollup` THẬT (routers.evaluation._rollup) trên verdict giả,
+    KHÔNG đặt tay `ket_qua`. Đặt tay (như bản cũ của fake này) làm test không còn phân biệt được
+    code roll-up cũ/mới khi ai đó lỡ revert — xem docstring `test_tong_nam_o_bang_dung_so_tieu_chi`
+    để hiểu vì sao cả việc gọi `_rollup` thật LẪN tiêu chí trộn TC5 đều bắt buộc.
+    """
+    from routers.evaluation import _rollup
+
+    to_hop_verdict = [["đạt"], ["không đạt"], ["cần làm rõ"], ["thiếu hồ sơ"], ["không áp dụng"],
+                      ["không đạt", "thiếu hồ sơ"]]
+
     async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
                    registry=None, pkg_ctx=None, cache=None, call_cache=None):
         r = EvalResult(doc=doc, vendor=vendor_ctx,
                        vendor_profile=VendorProfile(hinh_thuc="độc lập", nguon="khai báo"),
                        ho_so_nhan_duoc=[HoSoNhanDuoc("don_du_thau", ["don.pdf"], 1)])
-        for i, kq in enumerate(["đạt", "không đạt", "cần làm rõ", "thiếu hồ sơ", "không áp dụng"]):
-            v = Verdict(noi_dung_kiem_tra=f"nd{i}", hsdt_kiem_tra="don_du_thau", yeu_cau="",
-                        thong_tin_bo_sung="", ket_qua=kq, bang_chung="", trang=[], do_tin=0.0,
-                        ghi_chu="", nguon_doc=[])
-            r.criteria.append(CriterionEval(nhom="hop_le", ten=f"TC{i}", ket_qua=kq,
-                                            verdicts=[v], yeu_cau_goc=""))
+        for i, kqs in enumerate(to_hop_verdict):
+            verds = [Verdict(noi_dung_kiem_tra=f"nd{i}_{j}", hsdt_kiem_tra="don_du_thau",
+                             yeu_cau="", thong_tin_bo_sung="", ket_qua=kq, bang_chung="",
+                             trang=[], do_tin=0.0, ghi_chu="", nguon_doc=[])
+                     for j, kq in enumerate(kqs)]
+            ket_qua = _rollup({v.ket_qua for v in verds})
+            r.criteria.append(CriterionEval(nhom="hop_le", ten=f"TC{i}", ket_qua=ket_qua,
+                                            verdicts=verds, yeu_cau_goc=""))
         return r
     return fake
 
@@ -1122,6 +1135,17 @@ def test_tong_nam_o_bang_dung_so_tieu_chi(client, monkeypatch):
 
     Trước đây bảng hiện '4 đạt, 5 không đạt, 1 cần làm rõ, 1 thiếu hồ sơ' trên 10 tiêu chí —
     cộng ra 11 vì 'thiếu hồ sơ' là lát cắt chồng lấn chứ không phải ô đếm.
+
+    TC5 (verdict TRỘN {không đạt, thiếu hồ sơ}) là MẤU CHỐT, ĐỪNG dọn đi tưởng là thừa: cả
+    `_rollup` cũ lẫn mới đều cho TC5 ra 'không đạt' (nhánh 'không đạt' luôn được xét trước tiên,
+    không đổi giữa hai bản) nên bản thân TC5 không lộ được nếu `_rollup` bị revert riêng — phải
+    nhờ 5 tiêu chí đơn-loại-verdict (đặc biệt TC3 chỉ có verdict 'thiếu hồ sơ') làm việc đó. Nhưng
+    TC5 lại là tiêu chí DUY NHẤT lộ được nếu `_summary` bị revert riêng về công thức lát cắt cũ
+    (đếm 'tiêu chí có BẤT KỲ verdict thiếu hồ sơ'): công thức cũ vẫn xếp TC5 vào `n_thieu_ho_so`
+    dù `ket_qua` của nó đã là 'không đạt', còn công thức mới chỉ đếm theo `ket_qua` cấp tiêu chí.
+    Thiếu TC5, 5 tiêu chí đơn-loại-verdict cho ra CÙNG một bộ số dù `_summary` cũ hay mới (mỗi
+    tiêu chí một verdict nên "có chứa verdict X" trùng "ket_qua == X") — test sẽ không phân biệt
+    được code cũ/mới dù mang tên khoá bất biến chính (từng bị phát hiện qua code review).
     """
     import routers.evaluation as re_
 
@@ -1132,12 +1156,13 @@ def test_tong_nam_o_bang_dung_so_tieu_chi(client, monkeypatch):
          "noi_dung_can_kiem_tra": [{
              "noi_dung_kiem_tra": f"nd{i}", "hsdt_kiem_tra": "don_du_thau", "yeu_cau": "có",
              "can_lam_ro": "", "can_tra_cuu": False, "thong_tin_bo_sung": "", "nguon": "",
-             "can_review": False}]} for i in range(5)]})
+             "can_review": False}]} for i in range(6)]})
     monkeypatch.setattr(re_, "evaluate_vendor", _fake_eval_du_nam_loai())
     assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
 
     s = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]["summary"]
+    # TC5 rơi vào n_khong_dat (roll-up ưu tiên 'không đạt' cao nhất) -> n_khong_dat = 2 (TC1 + TC5).
     assert (s["n_dat"], s["n_khong_dat"], s["n_can_lam_ro"],
-            s["n_thieu_ho_so"], s["n_khong_ap_dung"]) == (1, 1, 1, 1, 1)
+            s["n_thieu_ho_so"], s["n_khong_ap_dung"]) == (1, 2, 1, 1, 1)
     assert s["n_tieu_chi"] == (s["n_dat"] + s["n_khong_dat"] + s["n_can_lam_ro"]
                                + s["n_thieu_ho_so"] + s["n_khong_ap_dung"])
