@@ -2,7 +2,9 @@ import logging
 
 from experiment.evaluate.evaluate import eval_noi_dung, evaluate_criterion
 from experiment.evaluate.vision import ScriptedVision
-from experiment.evaluate.schema import PageRecord, KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_THIEU
+from experiment.evaluate.schema import (
+    PageRecord, KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_LOI, KET_QUA_THIEU,
+)
 
 
 def _page(loai, text, image=b"\x89PNG", co_chu_ky=False):
@@ -668,3 +670,53 @@ async def test_phan_xu_canh_bao_khi_tang_1_khong_thu_hep_con_hai_ung_vien(caplog
     assert "luat_gia" in caplog.text       # id luật
     # Cụm ĐẦY ĐỦ: '2' trần khớp cả số trang, id, timestamp — không chứng minh được điều gì.
     assert "còn 2 nội dung ứng viên sau phân xử, giữ tất cả" in caplog.text
+
+
+async def test_eval_noi_dung_unexpected_exception_becomes_loi():
+    """Exception ngoài dự kiến (vd proxy rớt kết nối, không phải AiOutcome status='error') từ
+    vision_fn -> verdict 'lỗi' mang đúng danh tính nội dung, KHÔNG ném ra ngoài. Đối xứng
+    run_skill: shield này chặn exception xuyên qua `asyncio.gather` ở evaluate_criterion."""
+    async def _no(*_a, **_kw):
+        raise RuntimeError("kết nối proxy rớt giữa chừng")
+
+    v = await eval_noi_dung(_nd("Giá trị bảo lãnh", "bao_dam_du_thau"),
+                            [_page("bao_dam_du_thau", "bảo lãnh 6.100.000 VNĐ")], _no)
+    assert v.ket_qua == KET_QUA_LOI
+    assert v.noi_dung_kiem_tra == "Giá trị bảo lãnh"     # danh tính nội dung không mất -> audit
+    assert "kết nối proxy rớt giữa chừng" in v.bang_chung  # nguyên văn lỗi, không bịa
+
+
+async def test_criterion_mot_noi_dung_no_khong_keo_domino_noi_dung_khac():
+    """Ca finding chính: TRONG CÙNG 1 tiêu chí, 1 nội dung nổ exception giữa `gather` song song
+    -> các nội dung anh em vẫn ra đúng verdict của chúng, evaluate_criterion không ném exception
+    ra ngoài (trước khi có shield: gather không return_exceptions -> 1 nổ là mất cả loạt)."""
+    async def _hon_hop(system: str, prompt: str, *a, **kw):
+        if "[EV:Nội dung nổ]" in f"{system}\n{prompt}":
+            raise RuntimeError("lỗi ngoài dự kiến")
+        script = ScriptedVision({"[EV:Nội dung ổn]":
+                                 {"ket_qua": "đạt", "bang_chung": "ok", "trang": [1]}})
+        return await script(system, prompt, *a, **kw)
+
+    crit = {"nhom": "hop_le", "ten": "Tiêu chí hỗn hợp",
+            "noi_dung_can_kiem_tra": [_nd("Nội dung nổ", "don_du_thau"),
+                                       _nd("Nội dung ổn", "don_du_thau")]}
+    ce = await evaluate_criterion(crit, [_page("don_du_thau", "đơn dự thầu hợp lệ")], _hon_hop)
+    ket_qua = {v.noi_dung_kiem_tra: v.ket_qua for v in ce.verdicts}
+    assert ket_qua == {"Nội dung nổ": KET_QUA_LOI, "Nội dung ổn": KET_QUA_DAT}
+
+
+async def test_eval_noi_dung_shield_khong_nuot_out_status_error():
+    """Hồi quy: nhánh AiOutcome status='error' (KHÔNG phải exception ngoài dự kiến) vẫn phải giữ
+    NGUYÊN hành vi cũ — verdict 'lỗi' với thông điệp 'AI lỗi: ...' — không bị shield đè lên."""
+    v = await eval_noi_dung(_nd("Giá trị bảo lãnh", "bao_dam_du_thau"),
+                            [_page("bao_dam_du_thau", "bảo lãnh 6.100.000 VNĐ")],
+                            ScriptedVision({}))     # không kịch bản khớp -> AiOutcome status='error'
+    assert v.ket_qua == KET_QUA_LOI
+    assert v.bang_chung.startswith("AI lỗi:")
+
+
+async def test_eval_noi_dung_shield_khong_nuot_thieu_ho_so():
+    """Hồi quy: nhánh thiếu hồ sơ vẫn ra KET_QUA_THIEU, không bị shield đổi thành 'lỗi'."""
+    v = await eval_noi_dung(_nd("Giá trị bảo lãnh", "bao_dam_du_thau"),
+                            [_page("don_du_thau", "đơn")], ScriptedVision({}))
+    assert v.ket_qua == KET_QUA_THIEU

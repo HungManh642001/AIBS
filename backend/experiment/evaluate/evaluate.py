@@ -194,7 +194,29 @@ async def eval_noi_dung(nd: dict[str, Any], pages: list[PageRecord], vision_fn: 
                         vendor_ctx: VendorContext | None = None,
                         profile: VendorProfile | None = None,
                         yeu_cau_goc: str = "", anh_em: list[str] | None = None) -> Verdict:
-    """1 nội dung kiểm tra -> verdict (route + đối chiếu THUẦN TEXT; chữ ký/dấu đã có trong text ingest).
+    """1 nội dung kiểm tra -> verdict. Tấm chắn NGOÀI CÙNG, đối xứng `run_skill`: exception ngoài
+    dự kiến từ `_eval_noi_dung_impl` (kể cả lỗi không phải AI, vd DB) -> verdict 'lỗi' mang đúng
+    danh tính nội dung, KHÔNG xuyên qua `asyncio.gather` ở evaluate_criterion. Không có tấm chắn
+    này thì 1 nội dung nổ giữa gather song song sẽ ném ngay, trong khi các coroutine anh em vẫn
+    đang giữ slot semaphore/thread tới khi xong rồi bị vứt kết quả — lãng phí, và nếu lỗi gốc là
+    lỗi DB dùng chung Session thì còn domino sang các nội dung anh em gọi cache sau đó.
+    """
+    try:
+        return await _eval_noi_dung_impl(nd, pages, vision_fn, extra_types=extra_types,
+                                         vendor_ctx=vendor_ctx, profile=profile,
+                                         yeu_cau_goc=yeu_cau_goc, anh_em=anh_em)
+    except Exception as exc:  # no-silent-mock: lộ lỗi thành verdict 'lỗi'
+        ten = nd.get("noi_dung_kiem_tra", "")
+        log.warning("  [eval] %s -> lỗi ngoài dự kiến: %s", ten, exc)
+        return _verdict(nd, KET_QUA_LOI, bang_chung=f"lỗi ngoài dự kiến: {exc}", ghi_chu="cần soi lại")
+
+
+async def _eval_noi_dung_impl(nd: dict[str, Any], pages: list[PageRecord], vision_fn: VisionFn,
+                              *, extra_types: list[str] | None = None,
+                              vendor_ctx: VendorContext | None = None,
+                              profile: VendorProfile | None = None,
+                              yeu_cau_goc: str = "", anh_em: list[str] | None = None) -> Verdict:
+    """Thân thật của eval_noi_dung (route + đối chiếu THUẦN TEXT; chữ ký/dấu đã có trong text ingest).
 
     extra_types (need doi_chieu_hsdt): các loại hồ sơ khác của tiêu chí để đối chiếu chéo trong HSDT.
     profile: hình thức dự thầu -> gate 'không áp dụng' (đặt TRƯỚC can_review: N/A thông tin hơn).
