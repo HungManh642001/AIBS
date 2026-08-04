@@ -19,12 +19,15 @@ const KQ_OPTS = [
   { value: "không áp dụng", label: "Không áp dụng" },
 ];
 
-// Chỉ dùng cho pill cấp TIÊU CHÍ, nên không có nhánh "thiếu hồ sơ" (xem KQ_OPTS ở trên).
+// Pill cấp TIÊU CHÍ. Tiêu chí nay CÓ thể kết luận "thiếu hồ sơ" (xem _rollup ở backend), nên
+// nhánh đó phải có màu riêng — dùng chung màu cam với "cần làm rõ" thì chuyên gia không phân
+// biệt được "nhà thầu không nộp" với "AI chưa đủ căn cứ", hai việc cần hai hành động khác nhau.
 function pillClass(kq: string): string {
   if (kq === "đạt") return "dat";
   if (kq === "không đạt") return "khong-dat";
   if (kq === "lỗi") return "loi";
   if (kq === "không áp dụng") return "khong-ap-dung";   // trung tính (xám), khác cam "cần làm rõ"
+  if (kq === "thiếu hồ sơ") return "thieu-ho-so";
   return "can-lam-ro";
 }
 
@@ -151,12 +154,8 @@ function SummaryChips({ v }: { v: VendorEval }) {
       <Tag color={s.n_dat > 0 ? "green" : undefined}>{s.n_dat} đạt</Tag>
       <Tag color={s.n_khong_dat > 0 ? "red" : undefined}>{s.n_khong_dat} không đạt</Tag>
       <Tag color={s.n_can_lam_ro > 0 ? "orange" : undefined}>{s.n_can_lam_ro} cần làm rõ</Tag>
-      {/* Lát cắt ĐỘC LẬP, không phải con của "cần làm rõ" — có thể xuất hiện ở tiêu chí đã
-          "không đạt" (xem docstring _summary), nên đặt Tag riêng thay vì lồng vào Tag trên.
-          color="blue" -> ánh xạ sang --teal qua .ant-tag-blue override (index.css), không
-          hardcode màu mới. */}
       {(s.n_thieu_ho_so ?? 0) > 0 &&
-        <Tag color="blue">{s.n_thieu_ho_so} tiêu chí vướng thiếu hồ sơ</Tag>}
+        <Tag color="blue">{s.n_thieu_ho_so} thiếu hồ sơ</Tag>}
       {(s.n_khong_ap_dung ?? 0) > 0 && <Tag>{s.n_khong_ap_dung} không áp dụng</Tag>}
     </div>
   );
@@ -378,7 +377,9 @@ function SummaryTable({ vendors, onOpen }: { vendors: VendorEval[]; onOpen: (vid
               ? <Tag color="volcano">Có tiêu chí không đạt</Tag>
               : v.summary.n_can_lam_ro > 0
                 ? <Tag color="orange">Cần làm rõ</Tag>
-                : <Tag color="green">Đạt toàn bộ</Tag> },
+                : (v.summary.n_thieu_ho_so ?? 0) > 0
+                  ? <Tag color="blue">Thiếu hồ sơ</Tag>
+                  : <Tag color="green">Đạt toàn bộ</Tag> },
         { title: "Đạt", width: 70, align: "center", render: (_, v) => v.summary.n_dat },
         { title: "Không đạt", width: 100, align: "center",
           render: (_, v) => v.summary.n_khong_dat > 0
@@ -386,8 +387,8 @@ function SummaryTable({ vendors, onOpen }: { vendors: VendorEval[]; onOpen: (vid
         { title: "Cần làm rõ", width: 105, align: "center",
           render: (_, v) => v.summary.n_can_lam_ro > 0
             ? <span style={{ color: "var(--partial)", fontWeight: 600 }}>{v.summary.n_can_lam_ro}</span> : 0 },
-        /* Lát cắt ĐỘC LẬP với "Cần làm rõ" — số tiêu chí vướng ít nhất một nội dung thiếu hồ sơ,
-           kể cả những tiêu chí đã roll-up thành "không đạt" (xem docstring _summary backend). */
+        /* Một trong năm ô loại trừ nhau — tiêu chí kết luận "thiếu hồ sơ" (ưu tiên dưới
+           "cần làm rõ", xem _rollup ở backend). */
         { title: "Thiếu hồ sơ", width: 105, align: "center",
           render: (_, v) => {
             const n = v.summary.n_thieu_ho_so ?? 0;

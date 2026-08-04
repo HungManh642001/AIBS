@@ -286,9 +286,7 @@ body {
 .verdict-result-pill.can-lam-ro   { background: var(--partial-bg); color: var(--partial); }
 .verdict-result-pill.khong-ap-dung{ background: #F0F0F0;           color: var(--ink-muted); }
 .verdict-result-pill.loi          { background: #FBE3E1;           color: var(--seal); }
-/* Không có biến thể "thiếu hồ sơ": pill chỉ dùng ở cấp TIÊU CHÍ, mà _rollup luôn cuộn "thiếu hồ
-   sơ" thành "cần làm rõ" nên tiêu chí không bao giờ mang giá trị đó. Nó chỉ xuất hiện ở cấp
-   verdict — trình bày ở ô Select (KQ_OPTS trong Evaluation.tsx), không phải ở đây. */
+.verdict-result-pill.thieu-ho-so  { background: var(--teal-tint);  color: var(--teal); }
 
 /* ── AntD global overrides ──────────────────────────────── */
 
