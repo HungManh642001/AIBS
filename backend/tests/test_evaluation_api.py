@@ -503,8 +503,11 @@ def test_summary_dem_rieng_thieu_ho_so(client, monkeypatch):
     v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
     s = v["summary"]
     assert s["n_thieu_ho_so"] == 1
-    assert s["n_thieu_ho_so"] <= s["n_can_lam_ro"]        # là khoản mục CON, không ngang hàng
-    # Đẳng thức tổng KHÔNG được vỡ khi thêm ô đếm mới.
+    # LÁT CẮT ĐỘC LẬP trên cùng tập tiêu chí, KHÔNG phải khoản mục con của n_can_lam_ro (nó có thể
+    # lớn hơn n_can_lam_ro — xem test_thieu_ho_so_trong_tieu_chi_da_khong_dat_van_dem). Cận trên
+    # duy nhất đúng là tổng số tiêu chí.
+    assert s["n_thieu_ho_so"] <= s["n_tieu_chi"]
+    # Đẳng thức tổng KHÔNG được vỡ khi thêm ô đếm mới (n_thieu_ho_so đứng NGOÀI đẳng thức này).
     assert s["n_tieu_chi"] == (s["n_dat"] + s["n_khong_dat"]
                                + s["n_can_lam_ro"] + s["n_khong_ap_dung"])
 
@@ -776,3 +779,163 @@ def test_ho_so_chua_nop_giu_loai_khi_mot_trong_hai_tieu_chi_ap_dung_moi_hinh_thu
     assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
     v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
     assert "giay_uy_quyen" in [x["loai_ho_so"] for x in v["ho_so_chua_nop"]]
+
+
+def test_ho_so_chua_nop_im_lang_khi_nha_thau_chua_cham(client):
+    """Chưa chấm lần nào -> KHÔNG có căn cứ gì về hồ sơ đã nhận, banner phải IM LẶNG.
+
+    Có endpoint chấm riêng từng nhà thầu nên ca "nhà thầu chưa tới lượt chấm" là bình thường.
+    Khi đó `ho_so_nhan_duoc` chưa tồn tại, không phải vì nhà thầu không nộp mà vì chưa ai chấm —
+    liệt kê MỌI loại hồ sơ yêu cầu thành "chưa nộp" là khẳng định SAI SỰ THẬT về nhà thầu, ngay
+    trên màn hình ra quyết định.
+    """
+    pid = _seed_hai_loai(client)
+    v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+    assert v["criteria"] == []            # đúng là chưa chấm
+    assert v["ho_so_chua_nop"] == []      # nên không được nói gì về hồ sơ chưa nộp
+
+
+def test_ho_so_chua_nop_van_bao_khi_da_cham_ma_khong_nhan_duoc_gi(client, monkeypatch):
+    """Đối chứng cho ca trên: ĐÃ chấm mà `ho_so_nhan_duoc` rỗng -> nhà thầu thật sự không nộp gì.
+
+    Hai ca này khác nhau về CĂN CỨ, không chỉ về dữ liệu rỗng: ở đây đã có kết quả chấm nên việc
+    báo thiếu là một phát hiện thật, phải giữ.
+    """
+    import routers.evaluation as re_
+
+    async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
+                   registry=None, pkg_ctx=None, cache=None, call_cache=None):
+        r = EvalResult(doc=doc, vendor=vendor_ctx,
+                       vendor_profile=VendorProfile(hinh_thuc="độc lập", nguon="khai báo"),
+                       ho_so_nhan_duoc=[])
+        for c in criteria:
+            r.criteria.append(CriterionEval(nhom=c["nhom"], ten=c["ten"], ket_qua="đạt",
+                                            verdicts=[], yeu_cau_goc=""))
+        return r
+
+    pid = _seed_hai_loai(client)
+    monkeypatch.setattr(re_, "evaluate_vendor", fake)
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+    loais = [x["loai_ho_so"] for x in v["ho_so_chua_nop"]]
+    assert "don_du_thau" in loais and "bang_gia" in loais
+
+
+def _seed_uy_quyen_lien_danh(client, ma_so: str, them_noi_dung_chung: bool) -> int:
+    """Tiêu chí "Ủy quyền ký thỏa thuận liên danh": `giay_uy_quyen` chỉ vào `hsdt_can_kiem_tra`
+    với vai trò TÀI LIỆU ĐỐI CHIẾU (không nội dung nào trỏ tới nó).
+
+    `them_noi_dung_chung=True` thêm một nội dung `ap_dung=""` -> tiêu chí trộn nội dung chung với
+    nội dung điều kiện liên danh, không còn "toàn lệch hình thức".
+    """
+    pid = client.post("/api/v1/packages",
+                      json={"ma_so": ma_so, "ten": "g", "vendors": ["A"]}).json()["data"]["id"]
+    nds = [{"noi_dung_kiem_tra": "Người ký thỏa thuận có ủy quyền",
+            "hsdt_kiem_tra": "thoa_thuan_lien_danh", "yeu_cau": "có", "can_lam_ro": "",
+            "can_tra_cuu": False, "thong_tin_bo_sung": "", "nguon": "", "can_review": False,
+            "ap_dung": "lien_danh"}]
+    if them_noi_dung_chung:
+        nds.append({"noi_dung_kiem_tra": "Đơn có chữ ký hợp lệ", "hsdt_kiem_tra": "don_du_thau",
+                    "yeu_cau": "có", "can_lam_ro": "", "can_tra_cuu": False,
+                    "thong_tin_bo_sung": "", "nguon": "", "can_review": False, "ap_dung": ""})
+    client.put(f"/api/v1/packages/{pid}/rubric", json={"criteria": [
+        {"nhom": "hop_le", "ten": "Ủy quyền ký thỏa thuận liên danh", "yeu_cau_goc": "Có ủy quyền",
+         "hsdt_can_kiem_tra": ["thoa_thuan_lien_danh", "giay_uy_quyen"],
+         "noi_dung_can_kiem_tra": nds},
+    ]})
+    return pid
+
+
+def test_ho_so_chua_nop_bo_tai_lieu_doi_chieu_cua_tieu_chi_toan_lech_hinh_thuc(client, monkeypatch):
+    """Tiêu chí ra verdict "không áp dụng" thì tài liệu ĐỐI CHIẾU của nó cũng không được vào banner.
+
+    `giay_uy_quyen` không có nội dung nào trỏ tới -> `nds` rỗng -> rơi vào fail-safe "không đủ
+    thông tin, cứ giữ". Nhưng MỌI nội dung của tiêu chí đều chỉ áp dụng liên danh, mà nhà thầu này
+    độc lập: tiêu chí không đóng góp gì cho nhà thầu này, nên nó cũng không được kéo tài liệu đối
+    chiếu vào danh sách thiếu — nếu không, banner nói "chưa nộp Giấy ủy quyền" ngay cạnh verdict
+    "không áp dụng" của chính tiêu chí đó.
+    """
+    import routers.evaluation as re_
+
+    pid = _seed_uy_quyen_lien_danh(client, "G-UQ1", them_noi_dung_chung=False)
+    monkeypatch.setattr(re_, "evaluate_vendor", _fake_eval_nhan_don("độc lập"))
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+    loais = [x["loai_ho_so"] for x in v["ho_so_chua_nop"]]
+    assert "giay_uy_quyen" not in loais
+    assert "thoa_thuan_lien_danh" not in loais
+
+
+def test_ho_so_chua_nop_giu_tai_lieu_doi_chieu_khi_tron_noi_dung_chung(client, monkeypatch):
+    """Đối chứng: tiêu chí trộn một nội dung `ap_dung=""` -> vẫn áp dụng cho nhà thầu độc lập, nên
+    tài liệu đối chiếu của nó KHÔNG được giấu đi (fail-safe hình thức không được nới thành lỗ hổng).
+    """
+    import routers.evaluation as re_
+
+    pid = _seed_uy_quyen_lien_danh(client, "G-UQ2", them_noi_dung_chung=True)
+    monkeypatch.setattr(re_, "evaluate_vendor", _fake_eval_nhan_don("độc lập"))
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+    assert "giay_uy_quyen" in [x["loai_ho_so"] for x in v["ho_so_chua_nop"]]
+
+
+def test_ho_so_chua_nop_alias_tai_lieu_dung_chung_van_bi_loai(client, monkeypatch):
+    """`ket_qua_mo_thau` là alias của `webform` — tài liệu do BÊN MỜI THẦU công bố.
+
+    `hsdt_can_kiem_tra` do LLM sinh nên viết alias là chuyện thường. Không ép về mã catalog thì
+    `la_dung_chung` trượt và hệ thống quy kết nhà thầu "chưa nộp kết quả mở thầu" — đúng thứ phép
+    trừ tài liệu dùng chung sinh ra để chặn.
+    """
+    import routers.evaluation as re_
+
+    pid = client.post("/api/v1/packages",
+                      json={"ma_so": "G-ALS1", "ten": "g", "vendors": ["A"]}).json()["data"]["id"]
+    client.put(f"/api/v1/packages/{pid}/rubric", json={"criteria": [
+        {"nhom": "hop_le", "ten": "Giá khớp kết quả mở thầu", "yeu_cau_goc": "Giá khớp",
+         "hsdt_can_kiem_tra": ["ket_qua_mo_thau"],
+         "noi_dung_can_kiem_tra": [{
+             "noi_dung_kiem_tra": "Giá khớp", "hsdt_kiem_tra": "ket_qua_mo_thau", "yeu_cau": "khớp",
+             "can_lam_ro": "", "can_tra_cuu": False, "thong_tin_bo_sung": "", "nguon": "",
+             "can_review": False}]},
+    ]})
+    monkeypatch.setattr(re_, "evaluate_vendor", _fake_eval_nhan_don("độc lập"))
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+    loais = [x["loai_ho_so"] for x in v["ho_so_chua_nop"]]
+    assert "ket_qua_mo_thau" not in loais and "webform" not in loais
+
+
+def test_ho_so_chua_nop_alias_khop_voi_ho_so_da_nop(client, monkeypatch):
+    """Tiêu chí khai `bao_lanh_du_thau`, nhà thầu đã nộp `bao_dam_du_thau` — cùng một loại hồ sơ.
+
+    `ho_so_nhan_duoc.loai_ho_so` luôn là mã chuẩn (chọn từ dropdown catalog), còn vế yêu cầu là mã
+    LLM sinh. Không ép cả hai về catalog trước khi so tập thì sinh ra "chưa nộp" giả, và mã thô còn
+    lọt ra UI vì không tra được nhãn.
+    """
+    import routers.evaluation as re_
+
+    pid = client.post("/api/v1/packages",
+                      json={"ma_so": "G-ALS2", "ten": "g", "vendors": ["A"]}).json()["data"]["id"]
+    client.put(f"/api/v1/packages/{pid}/rubric", json={"criteria": [
+        {"nhom": "hop_le", "ten": "Bảo lãnh dự thầu", "yeu_cau_goc": "Có bảo lãnh",
+         "hsdt_can_kiem_tra": ["bao_lanh_du_thau"],
+         "noi_dung_can_kiem_tra": [{
+             "noi_dung_kiem_tra": "Có bảo lãnh", "hsdt_kiem_tra": "bao_lanh_du_thau",
+             "yeu_cau": "có", "can_lam_ro": "", "can_tra_cuu": False, "thong_tin_bo_sung": "",
+             "nguon": "", "can_review": False}]},
+    ]})
+
+    async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
+                   registry=None, pkg_ctx=None, cache=None, call_cache=None):
+        r = EvalResult(doc=doc, vendor=vendor_ctx,
+                       vendor_profile=VendorProfile(hinh_thuc="độc lập", nguon="khai báo"),
+                       ho_so_nhan_duoc=[HoSoNhanDuoc("bao_dam_du_thau", ["bl.pdf"], 2)])
+        for c in criteria:
+            r.criteria.append(CriterionEval(nhom=c["nhom"], ten=c["ten"], ket_qua="đạt",
+                                            verdicts=[], yeu_cau_goc=""))
+        return r
+
+    monkeypatch.setattr(re_, "evaluate_vendor", fake)
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+    assert v["ho_so_chua_nop"] == []

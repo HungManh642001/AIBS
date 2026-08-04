@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -64,9 +65,27 @@ def _thieu_loai_ho_so(pkg: models.ProcurementPackage, vendor_id: int) -> list[st
             for d in _ho_so_cua_vendor(pkg, vendor_id) if not d.artifact_type]
 
 
-def _ho_so_chua_nop(db: Session, package_id: int,
+def _ma_catalog(raw: Any) -> str:
+    """Ép 1 mã loại hồ sơ về code catalog; không tra được -> giữ nguyên mã gốc.
+
+    `hsdt_can_kiem_tra` / `hsdt_kiem_tra` do LLM sinh nên hay là alias ('ket_qua_mo_thau',
+    'bao_lanh_du_thau'), trong khi `ho_so_nhan_duoc.loai_ho_so` luôn là mã chuẩn (chọn từ dropdown
+    catalog). Không quy về một mối thì `la_dung_chung` trượt (quy kết nhà thầu chưa nộp tài liệu
+    của BÊN MỜI THẦU), phép so tập sinh "chưa nộp" giả, và mã thô lọt ra UI vì không tra được nhãn.
+    Giữ mã gốc khi tra hụt để loại hồ sơ lạ vẫn hiện ra chứ không biến mất im lặng (no-silent-mock).
+    """
+    s = str(raw or "").strip()
+    return artifact_catalog.resolve_code(s) or s
+
+
+def _ho_so_chua_nop(crits: Sequence[models.RubricCriterion],
                     ve: models.HsdtVendorEval | None) -> list[dict[str, Any]]:
     """Loại hồ sơ HSMT đòi mà nhà thầu CHƯA NỘP, kèm tiêu chí bị ảnh hưởng.
+
+    CHƯA CHẤM thì im lặng. `ve is None` nghĩa là nhà thầu chưa được chấm lần nào (bình thường:
+    có endpoint chấm riêng từng nhà thầu), nên KHÔNG có căn cứ nào về hồ sơ đã nhận — hồ sơ có thể
+    đã tải lên đủ. Khác hẳn ca `ve` tồn tại mà `ho_so_nhan_duoc` rỗng: ở đó đã chấm rồi, rỗng là
+    một phát hiện thật (nhà thầu không nộp gì) và vẫn phải báo.
 
     Khác `_thieu_loai_ho_so` (file đã tải nhưng chưa gán loại) — đây là loại hồ sơ hoàn toàn vắng
     mặt. Trừ hai nhóm khỏi tập yêu cầu:
@@ -81,33 +100,41 @@ def _ho_so_chua_nop(db: Session, package_id: int,
       quên gán cờ sẽ khiến banner báo "chưa nộp" ngay trong khi verdict trên cùng trang đã "không
       áp dụng", hai tín hiệu mâu thuẫn nhau trước mắt chuyên gia.
 
+    Không nội dung nào trỏ tới loại đó (`nds` rỗng — loại chỉ đóng vai TÀI LIỆU ĐỐI CHIẾU) thì lùi
+    lên xét CẢ TIÊU CHÍ: mọi nội dung của tiêu chí đều lệch hình thức -> tiêu chí ấy không đóng góp
+    gì cho nhà thầu này (verdict của nó là "không áp dụng"), nên nó cũng không được kéo tài liệu
+    đối chiếu vào banner. Tiêu chí trộn nội dung chung với nội dung điều kiện liên danh thì VẪN
+    giữ loại — không được giấu phát hiện thật.
+
     Chưa dò được hình thức -> KHÔNG trừ theo hình thức (fail-safe: thà báo thừa còn hơn giấu mất
     một loại hồ sơ thật sự thiếu).
 
-    So tập bằng `_norm` vì `ho_so_nhan_duoc.loai_ho_so` đã được inventory_pages chuẩn hoá, còn
-    `hsdt_can_kiem_tra` là mã catalog nguyên bản. Giữ mã gốc để hiển thị nhãn.
+    So tập sau khi ép mã về catalog (`_ma_catalog`) rồi `_norm` như lõi eval vẫn dùng — cùng một
+    quy tắc khớp, không sinh nguồn sự thật thứ hai. Ép mã cũng gộp các alias của cùng một loại
+    thành MỘT dòng banner.
     """
-    crits = db.scalars(select(models.RubricCriterion).where(
-        models.RubricCriterion.package_id == package_id)
-        .order_by(models.RubricCriterion.thu_tu)).all()
-    hinh_thuc = (ve.hinh_thuc if ve else "") or ""
-    da_nhan = {_norm(str(h.get("loai_ho_so", ""))) for h in ((ve.ho_so_nhan_duoc if ve else []) or [])}
+    if ve is None:
+        return []
+    hinh_thuc = ve.hinh_thuc or ""
+    da_nhan = {_norm(_ma_catalog(h.get("loai_ho_so", ""))) for h in (ve.ho_so_nhan_duoc or [])}
 
-    # mã gốc -> {"tieu_chi": [...], "chi_hinh_thuc_khac": bool}
+    # mã catalog -> {"tieu_chi": [...], "chi_hinh_thuc_khac": bool}
     can: dict[str, dict[str, Any]] = {}
     for c in crits:
+        noi_dung = list(c.noi_dung)
         for raw in (c.hsdt_can_kiem_tra or []):
-            ma = str(raw).strip()
+            ma = _ma_catalog(raw)
             if not ma or artifact_catalog.la_dung_chung(_norm(ma)):
                 continue
             muc = can.setdefault(ma, {"tieu_chi": [], "chi_hinh_thuc_khac": True})
             if c.ten not in muc["tieu_chi"]:
                 muc["tieu_chi"].append(c.ten)
             # Loại này còn "áp dụng" nếu có ÍT NHẤT MỘT nội dung không bị lệch hình thức.
-            nds = [n for n in c.noi_dung if _norm(n.hsdt_kiem_tra) == _norm(ma)]
-            if not nds or not hinh_thuc:
+            nds = [n for n in noi_dung if _norm(_ma_catalog(n.hsdt_kiem_tra)) == _norm(ma)]
+            xet = nds or noi_dung        # nds rỗng -> lùi lên xét cả tiêu chí (tài liệu đối chiếu)
+            if not hinh_thuc or not xet:
                 muc["chi_hinh_thuc_khac"] = False
-            elif any(not _lech_hinh_thuc(n, hinh_thuc) for n in nds):
+            elif any(not _lech_hinh_thuc(n, hinh_thuc) for n in xet):
                 muc["chi_hinh_thuc_khac"] = False
 
     return [{"loai_ho_so": ma, "tieu_chi": muc["tieu_chi"]}
@@ -339,6 +366,11 @@ async def results(package_id: int, db: Session = Depends(get_db)):
     pkg = db.get(models.ProcurementPackage, package_id)
     if not pkg:
         return fail("Không tìm thấy gói thầu", 404)
+    # Rubric là CHUNG cả gói -> lấy một lần cho mọi nhà thầu, thay vì truy vấn lại + lazy-load
+    # `.noi_dung` cho từng nhà thầu.
+    crits: Sequence[models.RubricCriterion] = db.scalars(select(models.RubricCriterion).where(
+        models.RubricCriterion.package_id == package_id)
+        .order_by(models.RubricCriterion.thu_tu)).all()
     vendors_out = []
     for v in pkg.vendors:
         evals = db.scalars(select(models.HsdtCriterionEval).where(
@@ -354,7 +386,7 @@ async def results(package_id: int, db: Session = Depends(get_db)):
             "summary": _summary(evals), "criteria": crit_out,
             "vendor_profile": _profile_out(ve),
             "ho_so_nhan_duoc": ve.ho_so_nhan_duoc if ve else [],
-            "ho_so_chua_nop": _ho_so_chua_nop(db, package_id, ve)})
+            "ho_so_chua_nop": _ho_so_chua_nop(crits, ve)})
     return ok({"vendors": vendors_out})
 
 
