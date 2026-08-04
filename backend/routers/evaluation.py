@@ -181,8 +181,14 @@ def _rollup(kqs: set[str]) -> str:
     """Roll-up ket_qua tiêu chí — PHẢI khớp từng ly `experiment.evaluate.evaluate_criterion`.
 
     Ưu tiên CAO -> THẤP: không đạt > cần làm rõ > thiếu hồ sơ > đạt; N/A trung tính; 'lỗi' gộp
-    vào 'cần làm rõ'. Đây là hai cài đặt của CÙNG một luật (bản kia chạy lúc chấm, bản này chạy
-    khi chuyên gia ghi đè verdict) — sửa lệch nhau là chấm ra một kiểu, ghi đè xong ra kiểu khác.
+    vào 'cần làm rõ'. Đây là HAI cài đặt của CÙNG một luật mà lõi eval trực tiếp gọi/đối chiếu
+    (bản kia chạy lúc chấm — `experiment.evaluate.evaluate.evaluate_criterion`, bản này chạy khi
+    chuyên gia ghi đè verdict) — sửa lệch nhau là chấm ra một kiểu, ghi đè xong ra kiểu khác.
+
+    Còn một bản THỨ BA, KHÔNG đồng bộ với hai bản trên: `backend/scripts/seed_demo.py::_eval`
+    (script viết thẳng vào DB để dựng demo khi không có proxy). Bản đó hiện chưa có nhánh THIEU
+    (chưa reachable vì seeder chỉ dùng 4 giá trị kia) — sửa luật roll-up ở đây, nhớ kiểm tra luôn
+    chỗ đó kẻo lần chạy demo tiếp theo lại lệch luật.
     """
     xet = kqs - {KET_QUA_KHONG_AP_DUNG}
     if KET_QUA_KHONG in xet:
@@ -206,6 +212,15 @@ def _summary(evals: list[models.HsdtCriterionEval]) -> dict[str, int]:
     Được vậy vì `_rollup` nay cho `"thiếu hồ sơ"` là một KẾT LUẬN cấp tiêu chí (ưu tiên dưới
     'cần làm rõ'), thay vì cuộn nó vào 'cần làm rõ' rồi đếm bằng một lát cắt chồng lấn — cách cũ
     làm bảng tổng hợp cộng ra thừa so với số tiêu chí và không đọc được.
+
+    'lỗi' GỘP vào n_can_lam_ro ở tầng ĐẾM này, KHÔNG sửa `ket_qua` đã lưu trong DB: kiểm tra
+    thường trực (`_thanh_tieu_chi` phía experiment) copy thẳng ket_qua của verdict thành tiêu chí,
+    KHÔNG qua roll-up, nên khi proxy/AI hỏng giữa lượt chấm, `ev.ket_qua` có thể là "lỗi" thẳng —
+    một giá trị NGOÀI năm ô nếu không gộp ở đây, làm tổng năm ô < n_tieu_chi (và trên bảng tổng
+    hợp, nhà thầu chỉ có tiêu chí "lỗi" sẽ rơi nhầm vào nhánh "Đạt toàn bộ" vì n_khong_dat =
+    n_can_lam_ro = n_thieu_ho_so = 0). Giữ bản ghi verdict nguyên "lỗi" để pill cấp tiêu chí vẫn
+    hiện đúng "Lỗi AI" cho chuyên gia; chỉ số đếm coi nó cùng nhóm "chưa kết luận được" với
+    "cần làm rõ".
     """
     tc = list(evals)
 
@@ -213,7 +228,7 @@ def _summary(evals: list[models.HsdtCriterionEval]) -> dict[str, int]:
         return sum(1 for e in tc if e.ket_qua == k)
     return {
         "n_tieu_chi": len(tc), "n_dat": cnt(KET_QUA_DAT), "n_khong_dat": cnt(KET_QUA_KHONG),
-        "n_can_lam_ro": cnt(KET_QUA_SOI), "n_thieu_ho_so": cnt(KET_QUA_THIEU),
+        "n_can_lam_ro": cnt(KET_QUA_SOI) + cnt(KET_QUA_LOI), "n_thieu_ho_so": cnt(KET_QUA_THIEU),
         "n_khong_ap_dung": cnt(KET_QUA_KHONG_AP_DUNG),
     }
 

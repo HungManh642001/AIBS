@@ -67,6 +67,37 @@ def test_summary_counts_khong_ap_dung_separately():
     assert s["n_khong_ap_dung"] == 1
 
 
+def test_summary_counts_thieu_ho_so_separately():
+    """'thiếu hồ sơ' cấp TIÊU CHÍ có ô đếm RIÊNG (n_thieu_ho_so) — một trong NĂM ô loại trừ nhau,
+    cộng đúng bằng n_tieu_chi. Trước Finding 1, `_tong_ket` của report.py bỏ sót ô này khỏi bảng
+    markdown (đúng triệu chứng chủ dự án phàn nàn: 10 tiêu chí, bảng cộng ra 11 / thiếu ở đây)."""
+    from experiment.evaluate.schema import KET_QUA_THIEU
+
+    def _ce(ket_qua):
+        return CriterionEval(nhom="hop_le", ten=ket_qua, ket_qua=ket_qua, verdicts=[_v(ket_qua)])
+    r = EvalResult(doc="A", criteria=[_ce(KET_QUA_DAT), _ce(KET_QUA_THIEU)])
+    s = r.summary
+    assert s["n_thieu_ho_so"] == 1
+    assert s["n_tieu_chi"] == (s["n_dat"] + s["n_khong_dat"] + s["n_can_lam_ro"]
+                               + s["n_thieu_ho_so"] + s["n_khong_ap_dung"])
+
+
+def test_summary_loi_gop_vao_can_lam_ro():
+    """Kiểm tra thường trực (`pipeline._thanh_tieu_chi`) copy thẳng ket_qua của verdict thành tiêu
+    chí, KHÔNG qua roll-up -> khi proxy/AI hỏng, ket_qua tiêu chí có thể là "lỗi" thẳng. Tầng ĐẾM
+    phải gộp "lỗi" vào n_can_lam_ro, nếu không tổng năm ô < n_tieu_chi (Finding 2) và nhà thầu chỉ
+    có tiêu chí "lỗi" sẽ rơi nhầm vào nhánh "Đạt toàn bộ" trên UI."""
+    from experiment.evaluate.schema import KET_QUA_LOI
+
+    def _ce(ket_qua):
+        return CriterionEval(nhom="hop_le", ten=ket_qua, ket_qua=ket_qua, verdicts=[_v(ket_qua)])
+    r = EvalResult(doc="A", criteria=[_ce(KET_QUA_DAT), _ce(KET_QUA_LOI)])
+    s = r.summary
+    assert s["n_can_lam_ro"] == 1                        # 'lỗi' được đếm vào đây
+    assert s["n_tieu_chi"] == (s["n_dat"] + s["n_khong_dat"] + s["n_can_lam_ro"]
+                               + s["n_thieu_ho_so"] + s["n_khong_ap_dung"])
+
+
 def test_result_to_json_carries_vendor_and_inventory():
     """Đầu báo cáo cần: danh tính nhà thầu, hình thức + căn cứ, danh mục hồ sơ nhận được."""
     from experiment.evaluate.schema import HINH_THUC_DOC_LAP, HoSoNhanDuoc, VendorProfile

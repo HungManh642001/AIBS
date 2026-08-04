@@ -198,11 +198,17 @@ class EvalResult:
         # bên thì xem lại bên kia. Năm ô loại trừ nhau, cộng đúng bằng n_tieu_chi.
         def cnt(k: str) -> int:
             return sum(1 for c in self.criteria if c.ket_qua == k)
+        # 'lỗi' GỘP vào n_can_lam_ro ở tầng ĐẾM này, KHÔNG sửa ket_qua đã lưu: kiểm tra thường trực
+        # (`pipeline._thanh_tieu_chi`) copy thẳng ket_qua của verdict thành tiêu chí, không qua
+        # roll-up, nên khi proxy/AI hỏng giữa lượt chấm, tiêu chí đó mang ket_qua="lỗi" thẳng —
+        # một giá trị NGOÀI năm ô nếu không gộp, làm tổng năm ô < n_tieu_chi. Giữ verdict con là
+        # "lỗi" (không đổi thành "cần làm rõ") để pill cấp tiêu chí vẫn hiện đúng "Lỗi AI" cho
+        # chuyên gia thấy; chỉ số đếm coi nó cùng nhóm "chưa kết luận được" với "cần làm rõ".
         return {
             "n_tieu_chi": len(self.criteria),
             "n_dat": cnt(KET_QUA_DAT),
             "n_khong_dat": cnt(KET_QUA_KHONG),
-            "n_can_lam_ro": cnt(KET_QUA_SOI),
+            "n_can_lam_ro": cnt(KET_QUA_SOI) + cnt(KET_QUA_LOI),
             "n_thieu_ho_so": cnt(KET_QUA_THIEU),
             "n_khong_ap_dung": cnt(KET_QUA_KHONG_AP_DUNG),
         }

@@ -12,12 +12,12 @@ from experiment.evaluate.schema import (
 )
 
 _CAN_XU_LY = {KET_QUA_KHONG, KET_QUA_SOI, KET_QUA_THIEU, KET_QUA_LOI}
-_THU_TU = {KET_QUA_KHONG: 1, KET_QUA_SOI: 2, KET_QUA_THIEU: 2, KET_QUA_LOI: 2, KET_QUA_DAT: 3}
+_THU_TU = {KET_QUA_KHONG: 1, KET_QUA_SOI: 2, KET_QUA_LOI: 2, KET_QUA_THIEU: 3, KET_QUA_DAT: 4}
 
 
 def _rank(c: CriterionEval) -> int:
-    """Không đạt > cần làm rõ > đạt — thứ tự người review muốn đọc."""
-    return _THU_TU.get(c.ket_qua, 4)
+    """Không đạt > cần làm rõ > thiếu hồ sơ > đạt — thứ tự người review muốn đọc."""
+    return _THU_TU.get(c.ket_qua, 5)
 
 
 def _files_map(r: EvalResult) -> dict[str, list[str]]:
@@ -83,7 +83,8 @@ def _ho_so(r: EvalResult) -> list[str]:
 def _tong_ket(r: EvalResult) -> list[str]:
     s = r.summary
     nhan = [("Tổng tiêu chí", "n_tieu_chi"), ("Đạt", "n_dat"), ("Không đạt", "n_khong_dat"),
-            ("Cần làm rõ", "n_can_lam_ro"), ("Không áp dụng", "n_khong_ap_dung")]
+            ("Cần làm rõ", "n_can_lam_ro"), ("Thiếu hồ sơ", "n_thieu_ho_so"),
+            ("Không áp dụng", "n_khong_ap_dung")]
     return ["## Tổng kết", "", "| Chỉ số | SL |", "|---|---|"] + \
            [f"| {ten} | {s[k]} |" for ten, k in nhan] + [""]
 

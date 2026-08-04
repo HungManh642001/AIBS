@@ -1,8 +1,8 @@
 from experiment.evaluate.report import to_markdown
 from experiment.evaluate.schema import (
-    HINH_THUC_DOC_LAP, KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_KHONG_AP_DUNG, KET_QUA_SOI,
-    NGUON_DON_DU_THAU, CriterionEval, EvalResult, HoSoNhanDuoc, VendorContext, VendorProfile,
-    Verdict,
+    HINH_THUC_DOC_LAP, KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_KHONG_AP_DUNG, KET_QUA_LOI,
+    KET_QUA_SOI, KET_QUA_THIEU, NGUON_DON_DU_THAU, CriterionEval, EvalResult, HoSoNhanDuoc,
+    VendorContext, VendorProfile, Verdict,
 )
 
 
@@ -138,6 +138,41 @@ def test_markdown_shows_ghi_chu_for_diagnosis():
 def test_markdown_summary_counts():
     md = to_markdown(_result())
     assert "Tổng tiêu chí" in md and "Không áp dụng" in md
+
+
+def test_markdown_tong_ket_co_du_nam_o_va_khong_danh_roi_thieu_ho_so():
+    """Bảng 'Tổng kết' phải có đủ NĂM ô đếm — đây đúng là triệu chứng chủ dự án phàn nàn tái xuất
+    trên CLI: thiếu ô 'Thiếu hồ sơ' làm 4 ô hiển thị cộng < Tổng tiêu chí. 'lỗi' cũng phải gộp vào
+    'Cần làm rõ' ở tầng đếm (Finding 2) để tổng 5 ô luôn khớp Tổng tiêu chí."""
+    r = _result(criteria=[
+        _ce(ten="Đạt tuốt", ket_qua=KET_QUA_DAT, verdicts=[_v(ket_qua=KET_QUA_DAT)]),
+        _ce(ten="Thiếu hồ sơ đây", ket_qua=KET_QUA_THIEU, verdicts=[_v(ket_qua=KET_QUA_THIEU)]),
+        _ce(ten="Lỗi AI đây", ket_qua=KET_QUA_LOI, verdicts=[_v(ket_qua=KET_QUA_LOI)]),
+    ])
+    md = to_markdown(r)
+    tong_ket = md[md.index("## Tổng kết"):md.index("## ⚠️ CẦN XỬ LÝ")]
+    assert "| Tổng tiêu chí | 3 |" in tong_ket
+    assert "| Thiếu hồ sơ | 1 |" in tong_ket
+    assert "| Cần làm rõ | 1 |" in tong_ket        # 'lỗi' gộp vào đây
+    # Vị trí: 'Thiếu hồ sơ' đứng sau 'Cần làm rõ', trước 'Không áp dụng' — khớp thang ưu tiên mới
+    # (không đạt > cần làm rõ > thiếu hồ sơ > đạt).
+    assert (tong_ket.index("Cần làm rõ") < tong_ket.index("Thiếu hồ sơ")
+            < tong_ket.index("Không áp dụng"))
+
+    s = r.summary
+    assert s["n_tieu_chi"] == (s["n_dat"] + s["n_khong_dat"] + s["n_can_lam_ro"]
+                               + s["n_thieu_ho_so"] + s["n_khong_ap_dung"])
+
+
+def test_markdown_chi_tiet_sap_xep_thieu_ho_so_giua_can_lam_ro_va_dat():
+    """`_rank` mới: không đạt > cần làm rõ > thiếu hồ sơ > đạt."""
+    md = to_markdown(_result(criteria=[
+        _ce(ten="Đạt tuốt", ket_qua=KET_QUA_DAT, verdicts=[_v(ket_qua=KET_QUA_DAT)]),
+        _ce(ten="Thiếu hồ sơ đây", ket_qua=KET_QUA_THIEU, verdicts=[_v(ket_qua=KET_QUA_THIEU)]),
+        _ce(ten="Cần soi", ket_qua=KET_QUA_SOI, verdicts=[_v(ket_qua=KET_QUA_SOI)]),
+    ]))
+    chi_tiet = md[md.index("Chi tiết theo tiêu chí"):]
+    assert chi_tiet.index("Cần soi") < chi_tiet.index("Thiếu hồ sơ đây") < chi_tiet.index("Đạt tuốt")
 
 
 def test_to_markdown_does_not_mutate_criteria_order():

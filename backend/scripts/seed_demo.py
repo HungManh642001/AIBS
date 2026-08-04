@@ -26,7 +26,7 @@ import storage
 from database import SessionLocal, init_db
 from experiment.evaluate.schema import (
     HINH_THUC_DOC_LAP, HINH_THUC_LIEN_DANH,
-    KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_KHONG_AP_DUNG, KET_QUA_LOI, KET_QUA_SOI,
+    KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_KHONG_AP_DUNG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU,
 )
 
 MA_SO = "DEMO-2026-001"
@@ -75,13 +75,20 @@ def _crit(db, pkg_id: int, thu_tu: int, ten: str, yeu_cau_goc: str, ho_so: list[
 
 
 def _eval(db, pkg_id: int, vendor_id: int, thu_tu: int, ten: str, yeu_cau_goc: str, verdicts: list[dict], nhom: str = "hop_le") -> None:
-    """1 tiêu chí đã chấm + các verdict con; ket_qua tiêu chí roll-up từ verdict."""
+    """1 tiêu chí đã chấm + các verdict con; ket_qua tiêu chí roll-up từ verdict.
+
+    PHẢI khớp luật ở `routers.evaluation._rollup` / `experiment.evaluate.evaluate.evaluate_criterion`
+    (xem docstring `_rollup`) — đây là bản THỨ BA của cùng luật, script viết tay chứ không gọi lại
+    hai bản kia (không import được routers ở đây khi chạy độc lập ngoài app).
+    """
     kqs = {v["ket_qua"] for v in verdicts}
     xet = kqs - {KET_QUA_KHONG_AP_DUNG}
     if KET_QUA_KHONG in xet:
         ket_qua = KET_QUA_KHONG
     elif xet & {KET_QUA_SOI, KET_QUA_LOI}:
         ket_qua = KET_QUA_SOI
+    elif KET_QUA_THIEU in xet:
+        ket_qua = KET_QUA_THIEU
     elif xet == {KET_QUA_DAT}:
         ket_qua = KET_QUA_DAT
     else:

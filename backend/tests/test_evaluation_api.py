@@ -1100,6 +1100,21 @@ def test_rollup_router_uu_tien_thieu_ho_so():
     assert _rollup({"thiếu hồ sơ", "không áp dụng"}) == "thiếu hồ sơ"   # N/A vẫn trung tính
 
 
+def test_summary_loi_gop_vao_can_lam_ro():
+    """`_summary` (router, đọc từ DB) phải gộp 'lỗi' vào n_can_lam_ro, y hệt bản
+    `EvalResult.summary` của đường experiment (Finding 2). Không gộp -> tổng năm ô < n_tieu_chi
+    khi kiểm tra thường trực ra 'lỗi' (proxy/AI hỏng), và ở SummaryTable nhà thầu chỉ có tiêu chí
+    'lỗi' sẽ rơi nhầm vào nhánh 'Đạt toàn bộ' (n_khong_dat = n_can_lam_ro = n_thieu_ho_so = 0)."""
+    import models
+    from routers.evaluation import _summary
+
+    evals = [models.HsdtCriterionEval(ket_qua="đạt"), models.HsdtCriterionEval(ket_qua="lỗi")]
+    s = _summary(evals)
+    assert s["n_can_lam_ro"] == 1                        # 'lỗi' được đếm vào đây
+    assert s["n_tieu_chi"] == (s["n_dat"] + s["n_khong_dat"] + s["n_can_lam_ro"]
+                               + s["n_thieu_ho_so"] + s["n_khong_ap_dung"])
+
+
 def _fake_eval_du_nam_loai():
     """evaluate_vendor giả: 5 tiêu chí đơn loại + 1 tiêu chí verdict TRỘN {không đạt, thiếu hồ sơ}.
 

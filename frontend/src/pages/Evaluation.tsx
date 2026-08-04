@@ -7,10 +7,11 @@ import type { CriterionEval, EvalResultsPayload, Verdict, VendorEval } from "../
 import { useArtifactLabel } from "../api/artifacts";
 import Loader from "../components/Loader";
 
-// Giá trị ket_qua cấp VERDICT (nội dung kiểm tra). Phải có "thiếu hồ sơ": lõi eval phát verdict
-// này thật, và đây là chỗ DUY NHẤT chuyên gia nhìn thấy nó — cấp tiêu chí không bao giờ mang giá
-// trị này vì _rollup cuộn nó thành "cần làm rõ". Thiếu trong danh sách thì ô Select hiện chữ trần
-// không nhãn, và mở ra chỉ thấy 4 giá trị khác -> chuyên gia không đặt lại được đúng giá trị cũ.
+// Tập giá trị ket_qua mà chuyên gia được PHÉP ĐẶT khi ghi đè verdict (ô Select bên dưới). Phải có
+// "thiếu hồ sơ": lõi eval phát verdict này thật, VÀ nay nó cũng là kết luận cấp TIÊU CHÍ (không
+// còn bị _rollup cuộn thành "cần làm rõ" — xem pillClass ngay dưới đây và _rollup ở backend,
+// routers/evaluation.py). Thiếu trong danh sách thì ô Select hiện chữ trần không nhãn, và mở ra
+// chỉ thấy 4 giá trị khác -> chuyên gia không đặt lại được đúng giá trị cũ.
 const KQ_OPTS = [
   { value: "đạt", label: "Đạt" },
   { value: "không đạt", label: "Không đạt" },
