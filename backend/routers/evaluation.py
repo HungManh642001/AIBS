@@ -178,12 +178,19 @@ def _hsdt_files(pkg: models.ProcurementPackage,
 
 
 def _rollup(kqs: set[str]) -> str:
-    """Roll-up ket_qua tiêu chí — đồng bộ experiment.evaluate.evaluate_criterion (N/A trung tính)."""
+    """Roll-up ket_qua tiêu chí — PHẢI khớp từng ly `experiment.evaluate.evaluate_criterion`.
+
+    Ưu tiên CAO -> THẤP: không đạt > cần làm rõ > thiếu hồ sơ > đạt; N/A trung tính; 'lỗi' gộp
+    vào 'cần làm rõ'. Đây là hai cài đặt của CÙNG một luật (bản kia chạy lúc chấm, bản này chạy
+    khi chuyên gia ghi đè verdict) — sửa lệch nhau là chấm ra một kiểu, ghi đè xong ra kiểu khác.
+    """
     xet = kqs - {KET_QUA_KHONG_AP_DUNG}
     if KET_QUA_KHONG in xet:
         return KET_QUA_KHONG
-    if xet & {KET_QUA_SOI, KET_QUA_THIEU, KET_QUA_LOI}:
+    if xet & {KET_QUA_SOI, KET_QUA_LOI}:
         return KET_QUA_SOI
+    if KET_QUA_THIEU in xet:
+        return KET_QUA_THIEU
     if xet == {KET_QUA_DAT}:
         return KET_QUA_DAT
     if kqs and not xet:                 # có verdict nhưng TẤT CẢ N/A
@@ -194,16 +201,11 @@ def _rollup(kqs: set[str]) -> str:
 def _summary(evals: list[models.HsdtCriterionEval]) -> dict[str, int]:
     """Đếm MỌI tiêu chí — kiểm tra thường trực của hệ thống có trọng số ngang tiêu chí HSMT.
 
-    `n_thieu_ho_so` là một LÁT CẮT ĐỘC LẬP trên cùng tập tiêu chí, KHÔNG phải tập con của
-    `n_can_lam_ro`: một tiêu chí có thể có verdict 'không đạt' VÀ verdict 'thiếu hồ sơ' cùng lúc
-    (vd nội dung A sai, nội dung B không nộp) — khi đó roll-up ưu tiên 'không đạt' (xem `_rollup`,
-    KET_QUA_KHONG đứng trước {SOI, THIEU, LOI}) nên tiêu chí rơi vào `n_khong_dat`, KHÔNG vào
-    `n_can_lam_ro`. Nếu lọc `n_thieu_ho_so` theo `e.ket_qua == KET_QUA_SOI` để ép nó thành con của
-    `n_can_lam_ro`, việc thiếu tài liệu ở đúng những tiêu chí đã có vấn đề khác sẽ bị giấu đi —
-    mà đó lại là chỗ chuyên gia cần biết nhất. Vì là lát cắt độc lập, `n_thieu_ho_so` KHÔNG tham
-    gia đẳng thức n_tieu_chi = n_dat + n_khong_dat + n_can_lam_ro + n_khong_ap_dung (4 ô đó vẫn
-    đủ và loại trừ lẫn nhau bình thường). Đếm theo TIÊU CHÍ (không theo verdict) để cùng đơn vị
-    với các ô còn lại.
+    NĂM ô loại trừ nhau và cộng đúng bằng `n_tieu_chi`:
+        n_tieu_chi = n_dat + n_khong_dat + n_can_lam_ro + n_thieu_ho_so + n_khong_ap_dung
+    Được vậy vì `_rollup` nay cho `"thiếu hồ sơ"` là một KẾT LUẬN cấp tiêu chí (ưu tiên dưới
+    'cần làm rõ'), thay vì cuộn nó vào 'cần làm rõ' rồi đếm bằng một lát cắt chồng lấn — cách cũ
+    làm bảng tổng hợp cộng ra thừa so với số tiêu chí và không đọc được.
     """
     tc = list(evals)
 
@@ -211,9 +213,8 @@ def _summary(evals: list[models.HsdtCriterionEval]) -> dict[str, int]:
         return sum(1 for e in tc if e.ket_qua == k)
     return {
         "n_tieu_chi": len(tc), "n_dat": cnt(KET_QUA_DAT), "n_khong_dat": cnt(KET_QUA_KHONG),
-        "n_can_lam_ro": cnt(KET_QUA_SOI), "n_khong_ap_dung": cnt(KET_QUA_KHONG_AP_DUNG),
-        "n_thieu_ho_so": sum(1 for e in tc
-                             if any(v.ket_qua == KET_QUA_THIEU for v in e.verdicts)),
+        "n_can_lam_ro": cnt(KET_QUA_SOI), "n_thieu_ho_so": cnt(KET_QUA_THIEU),
+        "n_khong_ap_dung": cnt(KET_QUA_KHONG_AP_DUNG),
     }
 
 

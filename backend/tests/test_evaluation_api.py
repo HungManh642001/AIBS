@@ -472,7 +472,9 @@ def test_evaluate_bao_loi_khi_ho_so_thieu_loai(client, monkeypatch):
 def _fake_eval_thieu():
     """evaluate_vendor giả: tiêu chí đầu có 1 verdict 'thiếu hồ sơ' + 1 'đạt', tiêu chí sau 'đạt'.
 
-    Roll-up cuộn 'thiếu hồ sơ' thành 'cần làm rõ' -> chính là ca mà ô đếm mới phải bóc tách ra.
+    ket_qua tiêu chí đặt KHỚP luật roll-up mới: {thiếu hồ sơ, đạt} -> 'thiếu hồ sơ' (ưu tiên trên
+    'đạt', dưới 'cần làm rõ'/'không đạt') — trước đây fake này còn cài "cần làm rõ", đúng với luật
+    CŨ đã bị đảo (thiếu hồ sơ cuộn vào cần làm rõ), nay phải khớp luật mới.
     """
     async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
                    registry=None, pkg_ctx=None, cache=None, call_cache=None):
@@ -487,13 +489,17 @@ def _fake_eval_thieu():
                 ghi_chu="", nguon_doc=[]) for j, kq in enumerate(kqs)]
             r.criteria.append(CriterionEval(
                 nhom=c["nhom"], ten=c["ten"],
-                ket_qua="cần làm rõ" if i == 0 else "đạt", verdicts=verds, yeu_cau_goc=""))
+                ket_qua="thiếu hồ sơ" if i == 0 else "đạt", verdicts=verds, yeu_cau_goc=""))
         return r
     return fake
 
 
 def test_summary_dem_rieng_thieu_ho_so(client, monkeypatch):
-    """'thiếu hồ sơ' (nhà thầu không nộp) khác hẳn 'cần làm rõ' (AI chưa đủ căn cứ) — phải bóc tách."""
+    """'thiếu hồ sơ' (nhà thầu không nộp) khác hẳn 'cần làm rõ' (AI chưa đủ căn cứ) — phải bóc tách.
+
+    'thiếu hồ sơ' nay là Ô ĐẾM THẬT (ket_qua == KET_QUA_THIEU cấp tiêu chí), một trong NĂM ô loại
+    trừ nhau — không còn là lát cắt chồng lấn nằm ngoài đẳng thức như spec cũ.
+    """
     import routers.evaluation as re_
 
     pid = _seed(client)
@@ -503,13 +509,9 @@ def test_summary_dem_rieng_thieu_ho_so(client, monkeypatch):
     v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
     s = v["summary"]
     assert s["n_thieu_ho_so"] == 1
-    # LÁT CẮT ĐỘC LẬP trên cùng tập tiêu chí, KHÔNG phải khoản mục con của n_can_lam_ro (nó có thể
-    # lớn hơn n_can_lam_ro — xem test_thieu_ho_so_trong_tieu_chi_da_khong_dat_van_dem). Cận trên
-    # duy nhất đúng là tổng số tiêu chí.
-    assert s["n_thieu_ho_so"] <= s["n_tieu_chi"]
-    # Đẳng thức tổng KHÔNG được vỡ khi thêm ô đếm mới (n_thieu_ho_so đứng NGOÀI đẳng thức này).
-    assert s["n_tieu_chi"] == (s["n_dat"] + s["n_khong_dat"]
-                               + s["n_can_lam_ro"] + s["n_khong_ap_dung"])
+    # Đẳng thức NĂM ô: n_thieu_ho_so nay THAM GIA, không còn đứng ngoài.
+    assert s["n_tieu_chi"] == (s["n_dat"] + s["n_khong_dat"] + s["n_can_lam_ro"]
+                               + s["n_thieu_ho_so"] + s["n_khong_ap_dung"])
 
 
 def test_mot_tieu_chi_hai_verdict_thieu_van_dem_mot(client, monkeypatch):
@@ -524,7 +526,7 @@ def test_mot_tieu_chi_hai_verdict_thieu_van_dem_mot(client, monkeypatch):
         verds = [Verdict(noi_dung_kiem_tra=f"nd{j}", hsdt_kiem_tra="don_du_thau", yeu_cau="",
                          thong_tin_bo_sung="", ket_qua="thiếu hồ sơ", bang_chung="", trang=[],
                          do_tin=0.0, ghi_chu="", nguon_doc=[]) for j in range(2)]
-        r.criteria.append(CriterionEval(nhom=c["nhom"], ten=c["ten"], ket_qua="cần làm rõ",
+        r.criteria.append(CriterionEval(nhom=c["nhom"], ten=c["ten"], ket_qua="thiếu hồ sơ",
                                         verdicts=verds, yeu_cau_goc=""))
         return r
 
@@ -535,15 +537,14 @@ def test_mot_tieu_chi_hai_verdict_thieu_van_dem_mot(client, monkeypatch):
     assert s["n_thieu_ho_so"] == 1
 
 
-def test_thieu_ho_so_trong_tieu_chi_da_khong_dat_van_dem(client, monkeypatch):
-    """'thiếu hồ sơ' là LÁT CẮT ĐỘC LẬP, không phải con của 'cần làm rõ'.
+def test_tieu_chi_khong_dat_khong_tinh_la_thieu_ho_so(client, monkeypatch):
+    """Thay đổi hành vi CÓ CHỦ Ý: ưu tiên 'không đạt' cao hơn 'thiếu hồ sơ'.
 
-    _rollup ưu tiên KET_QUA_KHONG trước {SOI, THIEU, LOI} (routers/evaluation.py:83-86): một tiêu
-    chí có cả verdict 'không đạt' lẫn 'thiếu hồ sơ' roll-up thành 'không đạt', rơi vào
-    n_khong_dat chứ KHÔNG vào n_can_lam_ro. Nếu _summary lọc n_thieu_ho_so theo
-    e.ket_qua == KET_QUA_SOI thì ca này bị giấu mất — mà đây đúng là chỗ chuyên gia cần biết
-    nhất (tiêu chí đã hỏng vì lý do khác, LẠI CÒN thiếu tài liệu). Nên ở đây n_thieu_ho_so (1) >
-    n_can_lam_ro (0) là ĐÚNG, không phải bug.
+    Một tiêu chí có cả verdict 'không đạt' lẫn 'thiếu hồ sơ' roll-up thành 'không đạt' (ưu tiên
+    'không đạt' > 'cần làm rõ' > 'thiếu hồ sơ' > 'đạt' — xem `_rollup`). Vì `n_thieu_ho_so` nay là
+    ô đếm THẬT (ket_qua == KET_QUA_THIEU cấp tiêu chí, không phải lát cắt theo verdict con), ca
+    này rơi vào `n_khong_dat` chứ KHÔNG được đếm vào `n_thieu_ho_so` — khác hẳn hành vi CŨ (lát
+    cắt độc lập) mà test này từng khoá.
     """
     import routers.evaluation as re_
 
@@ -571,9 +572,9 @@ def test_thieu_ho_so_trong_tieu_chi_da_khong_dat_van_dem(client, monkeypatch):
 
     assert s["n_khong_dat"] == 1
     assert s["n_can_lam_ro"] == 0
-    assert s["n_thieu_ho_so"] == 1        # > n_can_lam_ro -> ĐÚNG, không phải bug (xem docstring)
-    assert s["n_tieu_chi"] == (s["n_dat"] + s["n_khong_dat"]
-                               + s["n_can_lam_ro"] + s["n_khong_ap_dung"])
+    assert s["n_thieu_ho_so"] == 0        # 'không đạt' thắng -> không được đếm vào thiếu hồ sơ
+    assert s["n_tieu_chi"] == (s["n_dat"] + s["n_khong_dat"] + s["n_can_lam_ro"]
+                               + s["n_thieu_ho_so"] + s["n_khong_ap_dung"])
 
 
 def _seed_hai_loai(client) -> int:
@@ -1080,3 +1081,63 @@ def test_chay_tu_dong_mot_nha_thau_loi_van_cham_tiep(client, monkeypatch):
     assert [l["ten"] for l in data["loi"]] == ["A"]
     assert "vision timeout" in data["loi"][0]["error"]
     assert data["buoc"][-1]["trang_thai"] == "xong"
+
+
+def test_rollup_router_uu_tien_thieu_ho_so():
+    """`_rollup` (chạy khi chuyên gia ghi đè verdict) phải khớp TỪNG LY với roll-up lõi —
+    lệch nhau là chấm ra một kiểu, ghi đè xong ra kiểu khác."""
+    from routers.evaluation import _rollup
+
+    assert _rollup({"thiếu hồ sơ"}) == "thiếu hồ sơ"
+    assert _rollup({"thiếu hồ sơ", "đạt"}) == "thiếu hồ sơ"
+    assert _rollup({"cần làm rõ", "thiếu hồ sơ"}) == "cần làm rõ"
+    assert _rollup({"không đạt", "thiếu hồ sơ"}) == "không đạt"
+    assert _rollup({"lỗi", "thiếu hồ sơ"}) == "cần làm rõ"
+    assert _rollup({"đạt"}) == "đạt"
+    # Ba nhánh biên KHÔNG đổi.
+    assert _rollup({"không áp dụng"}) == "không áp dụng"
+    assert _rollup(set()) == "cần làm rõ"
+    assert _rollup({"thiếu hồ sơ", "không áp dụng"}) == "thiếu hồ sơ"   # N/A vẫn trung tính
+
+
+def _fake_eval_du_nam_loai():
+    """evaluate_vendor giả: 5 tiêu chí, mỗi tiêu chí một loại kết quả."""
+    async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
+                   registry=None, pkg_ctx=None, cache=None, call_cache=None):
+        r = EvalResult(doc=doc, vendor=vendor_ctx,
+                       vendor_profile=VendorProfile(hinh_thuc="độc lập", nguon="khai báo"),
+                       ho_so_nhan_duoc=[HoSoNhanDuoc("don_du_thau", ["don.pdf"], 1)])
+        for i, kq in enumerate(["đạt", "không đạt", "cần làm rõ", "thiếu hồ sơ", "không áp dụng"]):
+            v = Verdict(noi_dung_kiem_tra=f"nd{i}", hsdt_kiem_tra="don_du_thau", yeu_cau="",
+                        thong_tin_bo_sung="", ket_qua=kq, bang_chung="", trang=[], do_tin=0.0,
+                        ghi_chu="", nguon_doc=[])
+            r.criteria.append(CriterionEval(nhom="hop_le", ten=f"TC{i}", ket_qua=kq,
+                                            verdicts=[v], yeu_cau_goc=""))
+        return r
+    return fake
+
+
+def test_tong_nam_o_bang_dung_so_tieu_chi(client, monkeypatch):
+    """Bất biến CHÍNH của cả đợt: năm ô loại trừ nhau, cộng đúng bằng n_tieu_chi.
+
+    Trước đây bảng hiện '4 đạt, 5 không đạt, 1 cần làm rõ, 1 thiếu hồ sơ' trên 10 tiêu chí —
+    cộng ra 11 vì 'thiếu hồ sơ' là lát cắt chồng lấn chứ không phải ô đếm.
+    """
+    import routers.evaluation as re_
+
+    pid = _seed(client)
+    client.put(f"/api/v1/packages/{pid}/rubric", json={"criteria": [
+        {"nhom": "hop_le", "ten": f"TC{i}", "yeu_cau_goc": "x",
+         "hsdt_can_kiem_tra": ["don_du_thau"],
+         "noi_dung_can_kiem_tra": [{
+             "noi_dung_kiem_tra": f"nd{i}", "hsdt_kiem_tra": "don_du_thau", "yeu_cau": "có",
+             "can_lam_ro": "", "can_tra_cuu": False, "thong_tin_bo_sung": "", "nguon": "",
+             "can_review": False}]} for i in range(5)]})
+    monkeypatch.setattr(re_, "evaluate_vendor", _fake_eval_du_nam_loai())
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+
+    s = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]["summary"]
+    assert (s["n_dat"], s["n_khong_dat"], s["n_can_lam_ro"],
+            s["n_thieu_ho_so"], s["n_khong_ap_dung"]) == (1, 1, 1, 1, 1)
+    assert s["n_tieu_chi"] == (s["n_dat"] + s["n_khong_dat"] + s["n_can_lam_ro"]
+                               + s["n_thieu_ho_so"] + s["n_khong_ap_dung"])

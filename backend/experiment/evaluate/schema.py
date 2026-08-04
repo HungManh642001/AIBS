@@ -193,9 +193,9 @@ class EvalResult:
 
     @property
     def summary(self) -> dict[str, int]:
-        # Bản đếm của ĐƯỜNG EXPERIMENT (chạy tay/CLI, đếm từ EvalResult trong bộ nhớ). Bản đếm mà
-        # API trả cho UI nằm ở `routers/evaluation.py::_summary` (đếm từ DB, có thêm ô
-        # `n_thieu_ho_so`) — sửa một bên thì xem lại bên kia, đừng sửa nhầm.
+        # Bản đếm của ĐƯỜNG EXPERIMENT (chạy tay/CLI). Bản đếm mà API trả cho UI nằm ở
+        # `routers/evaluation.py::_summary` (đếm từ DB) — hai bên phải cho CÙNG bộ khoá, sửa một
+        # bên thì xem lại bên kia. Năm ô loại trừ nhau, cộng đúng bằng n_tieu_chi.
         def cnt(k: str) -> int:
             return sum(1 for c in self.criteria if c.ket_qua == k)
         return {
@@ -203,6 +203,7 @@ class EvalResult:
             "n_dat": cnt(KET_QUA_DAT),
             "n_khong_dat": cnt(KET_QUA_KHONG),
             "n_can_lam_ro": cnt(KET_QUA_SOI),
+            "n_thieu_ho_so": cnt(KET_QUA_THIEU),
             "n_khong_ap_dung": cnt(KET_QUA_KHONG_AP_DUNG),
         }
 

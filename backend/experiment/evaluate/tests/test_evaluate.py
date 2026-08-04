@@ -3,7 +3,7 @@ import logging
 from experiment.evaluate.evaluate import eval_noi_dung, evaluate_criterion
 from experiment.evaluate.vision import ScriptedVision
 from experiment.evaluate.schema import (
-    PageRecord, KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_LOI, KET_QUA_THIEU,
+    PageRecord, KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU,
 )
 
 
@@ -720,3 +720,44 @@ async def test_eval_noi_dung_shield_khong_nuot_thieu_ho_so():
     v = await eval_noi_dung(_nd("Giá trị bảo lãnh", "bao_dam_du_thau"),
                             [_page("don_du_thau", "đơn")], ScriptedVision({}))
     assert v.ket_qua == KET_QUA_THIEU
+
+
+async def _rollup_loi(kqs: list[str]) -> str:
+    """Chạy evaluate_criterion với verdict DỰNG SẴN -> lấy ket_qua tiêu chí.
+
+    Dùng một luật giả trả đúng verdict mong muốn cho từng nội dung, để test đúng phép roll-up
+    chứ không phải đường chấm.
+    """
+    from experiment.evaluate.rules.registry import RuleRegistry, RuleSkill
+    from experiment.evaluate.schema import Verdict
+
+    async def handler(by_type, ctx, crit, vision_fn, *, nd=None, pkg=None):
+        i = int((nd or {})["noi_dung_kiem_tra"][2:])       # "nd3" -> 3
+        return Verdict(noi_dung_kiem_tra=f"nd{i}", hsdt_kiem_tra="don_du_thau", yeu_cau="",
+                       thong_tin_bo_sung="", ket_qua=kqs[i], bang_chung="", trang=[],
+                       do_tin=0.0, ghi_chu="", nguon_doc=[])
+
+    reg = RuleRegistry()
+    reg.register(RuleSkill(id="gia", ten="gia", ho_so_can=["don_du_thau"], can_vendor=False,
+                           handler=handler))
+    crit = {"nhom": "hop_le", "ten": "TC", "hsdt_can_kiem_tra": ["don_du_thau"],
+            "noi_dung_can_kiem_tra": [
+                {"noi_dung_kiem_tra": f"nd{i}", "hsdt_kiem_tra": "don_du_thau",
+                 "yeu_cau": "có", "thong_tin_bo_sung": ""} for i in range(len(kqs))]}
+    ce = await evaluate_criterion(crit, [_page("don_du_thau", "x")], ScriptedVision({}),
+                                  registry=reg)
+    return ce.ket_qua
+
+
+async def test_rollup_uu_tien_thieu_ho_so():
+    """Ưu tiên: không đạt > cần làm rõ > thiếu hồ sơ > đạt.
+
+    'thiếu hồ sơ' nay là KẾT LUẬN cấp tiêu chí, không còn bị cuộn vào 'cần làm rõ' — nhờ vậy năm
+    ô tổng hợp loại trừ nhau và cộng đúng bằng số tiêu chí.
+    """
+    assert await _rollup_loi(["thiếu hồ sơ"]) == KET_QUA_THIEU
+    assert await _rollup_loi(["thiếu hồ sơ", "đạt"]) == KET_QUA_THIEU
+    assert await _rollup_loi(["cần làm rõ", "thiếu hồ sơ"]) == KET_QUA_SOI
+    assert await _rollup_loi(["không đạt", "thiếu hồ sơ"]) == KET_QUA_KHONG
+    assert await _rollup_loi(["lỗi", "thiếu hồ sơ"]) == KET_QUA_SOI   # 'lỗi' gộp vào 'cần làm rõ'
+    assert await _rollup_loi(["đạt", "đạt"]) == KET_QUA_DAT

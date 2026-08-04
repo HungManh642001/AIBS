@@ -142,3 +142,16 @@ def test_passed_legality_chi_dat_va_khong_ap_dung(client, db_session):
     assert _passed("thiếu hồ sơ") is False
     assert _passed("lỗi") is False
     assert _passed("đạt", "không đạt") is False
+
+
+def test_tieu_chi_thieu_ho_so_khong_duoc_tinh_la_hop_le():
+    """'thiếu hồ sơ' nay là kết luận cấp tiêu chí — báo cáo KHÔNG được coi nó là hợp lệ.
+
+    `_KET_QUA_HOP_LE` chỉ gồm {đạt, không áp dụng} nên hành vi vốn đã đúng; test này khoá lại để
+    ai nới tập hợp lệ sau này phải thấy đỏ.
+    """
+    from routers.reports import _KET_QUA_HOP_LE
+
+    assert "thiếu hồ sơ" not in _KET_QUA_HOP_LE
+    assert "cần làm rõ" not in _KET_QUA_HOP_LE
+    assert "lỗi" not in _KET_QUA_HOP_LE

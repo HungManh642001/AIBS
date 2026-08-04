@@ -319,10 +319,16 @@ async def evaluate_criterion(crit: dict[str, Any], pages: list[PageRecord],
     verdicts: list[Verdict] = [v for v in cho if v is not None]
     xet = [v for v in verdicts if v.ket_qua != KET_QUA_KHONG_AP_DUNG]   # N/A trung tính
     kq = {v.ket_qua for v in xet}
+    # Ưu tiên CAO -> THẤP: không đạt > cần làm rõ > thiếu hồ sơ > đạt. Năm kết quả cấp tiêu chí
+    # loại trừ nhau, nhờ vậy bảng tổng hợp cộng đúng bằng số tiêu chí — trước đây 'thiếu hồ sơ'
+    # bị cuộn vào 'cần làm rõ' rồi phải đếm bằng một lát cắt chồng lấn, làm tổng ra thừa.
+    # 'lỗi' (proxy/AI hỏng) gộp vào 'cần làm rõ': cùng nghĩa "chưa kết luận được".
     if KET_QUA_KHONG in kq:
         ket_qua = KET_QUA_KHONG
-    elif kq & {KET_QUA_SOI, KET_QUA_THIEU, KET_QUA_LOI}:
+    elif kq & {KET_QUA_SOI, KET_QUA_LOI}:
         ket_qua = KET_QUA_SOI
+    elif KET_QUA_THIEU in kq:
+        ket_qua = KET_QUA_THIEU
     elif kq == {KET_QUA_DAT}:
         ket_qua = KET_QUA_DAT
     elif verdicts and not xet:          # có verdict nhưng TẤT CẢ đều N/A
