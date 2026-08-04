@@ -467,3 +467,66 @@ def test_evaluate_bao_loi_khi_ho_so_thieu_loai(client, monkeypatch):
     r = client.post(f"/api/v1/packages/{pid}/vendors/{vid}/evaluate")
     assert r.status_code == 400
     assert "bi_thieu.pdf" in r.json()["error"]
+
+
+def _fake_eval_thieu():
+    """evaluate_vendor giả: tiêu chí đầu có 1 verdict 'thiếu hồ sơ' + 1 'đạt', tiêu chí sau 'đạt'.
+
+    Roll-up cuộn 'thiếu hồ sơ' thành 'cần làm rõ' -> chính là ca mà ô đếm mới phải bóc tách ra.
+    """
+    async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
+                   registry=None, pkg_ctx=None, cache=None, call_cache=None):
+        r = EvalResult(doc=doc, vendor=vendor_ctx,
+                       vendor_profile=VendorProfile(hinh_thuc="độc lập", nguon="khai báo"),
+                       ho_so_nhan_duoc=[HoSoNhanDuoc("don_du_thau", ["don.pdf"], 1)])
+        for i, c in enumerate(criteria):
+            kqs = ["thiếu hồ sơ", "đạt"] if i == 0 else ["đạt"]
+            verds = [Verdict(
+                noi_dung_kiem_tra=f"nd{j}", hsdt_kiem_tra="don_du_thau", yeu_cau="",
+                thong_tin_bo_sung="", ket_qua=kq, bang_chung="", trang=[], do_tin=0.0,
+                ghi_chu="", nguon_doc=[]) for j, kq in enumerate(kqs)]
+            r.criteria.append(CriterionEval(
+                nhom=c["nhom"], ten=c["ten"],
+                ket_qua="cần làm rõ" if i == 0 else "đạt", verdicts=verds, yeu_cau_goc=""))
+        return r
+    return fake
+
+
+def test_summary_dem_rieng_thieu_ho_so(client, monkeypatch):
+    """'thiếu hồ sơ' (nhà thầu không nộp) khác hẳn 'cần làm rõ' (AI chưa đủ căn cứ) — phải bóc tách."""
+    import routers.evaluation as re_
+
+    pid = _seed(client)
+    monkeypatch.setattr(re_, "evaluate_vendor", _fake_eval_thieu())
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+
+    v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+    s = v["summary"]
+    assert s["n_thieu_ho_so"] == 1
+    assert s["n_thieu_ho_so"] <= s["n_can_lam_ro"]        # là khoản mục CON, không ngang hàng
+    # Đẳng thức tổng KHÔNG được vỡ khi thêm ô đếm mới.
+    assert s["n_tieu_chi"] == (s["n_dat"] + s["n_khong_dat"]
+                               + s["n_can_lam_ro"] + s["n_khong_ap_dung"])
+
+
+def test_mot_tieu_chi_hai_verdict_thieu_van_dem_mot(client, monkeypatch):
+    """Đếm TIÊU CHÍ, không đếm verdict — hai nội dung cùng thiếu vẫn là một tiêu chí."""
+    import routers.evaluation as re_
+
+    async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
+                   registry=None, pkg_ctx=None, cache=None, call_cache=None):
+        r = EvalResult(doc=doc, vendor=vendor_ctx,
+                       vendor_profile=VendorProfile(hinh_thuc="độc lập", nguon="khai báo"))
+        c = criteria[0]
+        verds = [Verdict(noi_dung_kiem_tra=f"nd{j}", hsdt_kiem_tra="don_du_thau", yeu_cau="",
+                         thong_tin_bo_sung="", ket_qua="thiếu hồ sơ", bang_chung="", trang=[],
+                         do_tin=0.0, ghi_chu="", nguon_doc=[]) for j in range(2)]
+        r.criteria.append(CriterionEval(nhom=c["nhom"], ten=c["ten"], ket_qua="cần làm rõ",
+                                        verdicts=verds, yeu_cau_goc=""))
+        return r
+
+    pid = _seed(client)
+    monkeypatch.setattr(re_, "evaluate_vendor", fake)
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    s = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]["summary"]
+    assert s["n_thieu_ho_so"] == 1

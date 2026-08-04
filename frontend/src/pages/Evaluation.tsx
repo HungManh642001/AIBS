@@ -19,7 +19,8 @@ function pillClass(kq: string): string {
   if (kq === "không đạt") return "khong-dat";
   if (kq === "lỗi") return "loi";
   if (kq === "không áp dụng") return "khong-ap-dung";   // trung tính (xám), khác cam "cần làm rõ"
-  return "can-lam-ro";   // cần làm rõ | thiếu hồ sơ
+  if (kq === "thiếu hồ sơ") return "thieu-ho-so";       // nhà thầu không nộp, khác "AI chưa đủ căn cứ"
+  return "can-lam-ro";
 }
 
 function ResultPill({ kq }: { kq: string }) {
@@ -144,7 +145,10 @@ function SummaryChips({ v }: { v: VendorEval }) {
       <Tag>{s.n_tieu_chi} tiêu chí</Tag>
       <Tag color={s.n_dat > 0 ? "green" : undefined}>{s.n_dat} đạt</Tag>
       <Tag color={s.n_khong_dat > 0 ? "red" : undefined}>{s.n_khong_dat} không đạt</Tag>
-      <Tag color={s.n_can_lam_ro > 0 ? "orange" : undefined}>{s.n_can_lam_ro} cần làm rõ</Tag>
+      <Tag color={s.n_can_lam_ro > 0 ? "orange" : undefined}>
+        {s.n_can_lam_ro} cần làm rõ
+        {(s.n_thieu_ho_so ?? 0) > 0 && ` (${s.n_thieu_ho_so} thiếu hồ sơ)`}
+      </Tag>
       {(s.n_khong_ap_dung ?? 0) > 0 && <Tag>{s.n_khong_ap_dung} không áp dụng</Tag>}
     </div>
   );
@@ -348,9 +352,21 @@ function SummaryTable({ vendors, onOpen }: { vendors: VendorEval[]; onOpen: (vid
         { title: "Không đạt", width: 100, align: "center",
           render: (_, v) => v.summary.n_khong_dat > 0
             ? <span style={{ color: "var(--fail)", fontWeight: 600 }}>{v.summary.n_khong_dat}</span> : 0 },
-        { title: "Cần làm rõ", width: 105, align: "center",
-          render: (_, v) => v.summary.n_can_lam_ro > 0
-            ? <span style={{ color: "var(--partial)", fontWeight: 600 }}>{v.summary.n_can_lam_ro}</span> : 0 },
+        { title: "Cần làm rõ", width: 130, align: "center",
+          render: (_, v) => {
+            const n = v.summary.n_can_lam_ro;
+            const thieu = v.summary.n_thieu_ho_so ?? 0;
+            return (
+              <span>
+                {n > 0 ? <span style={{ color: "var(--partial)", fontWeight: 600 }}>{n}</span> : 0}
+                {thieu > 0 && (
+                  <span style={{ color: "var(--ink-muted)", fontSize: "var(--fs-label)" }}>
+                    {" "}(thiếu hồ sơ: {thieu})
+                  </span>
+                )}
+              </span>
+            );
+          } },
         { title: "Không áp dụng", width: 120, align: "center",
           render: (_, v) => v.summary.n_khong_ap_dung ?? 0 },
         { title: "", width: 100, render: (_, v) => <a onClick={() => onOpen(v.vendor_id)}>Chi tiết →</a> },

@@ -92,7 +92,13 @@ def _rollup(kqs: set[str]) -> str:
 
 
 def _summary(evals: list[models.HsdtCriterionEval]) -> dict[str, int]:
-    """Đếm MỌI tiêu chí — kiểm tra thường trực của hệ thống có trọng số ngang tiêu chí HSMT."""
+    """Đếm MỌI tiêu chí — kiểm tra thường trực của hệ thống có trọng số ngang tiêu chí HSMT.
+
+    `n_thieu_ho_so` là KHOẢN MỤC CON của `n_can_lam_ro`, không ngang hàng: roll-up cuộn verdict
+    'thiếu hồ sơ' thành tiêu chí 'cần làm rõ', nên đếm nó thành ô riêng sẽ phá đẳng thức
+    n_tieu_chi = n_dat + n_khong_dat + n_can_lam_ro + n_khong_ap_dung. Đếm theo TIÊU CHÍ (không
+    theo verdict) để cùng đơn vị với các ô còn lại.
+    """
     tc = list(evals)
 
     def cnt(k: str) -> int:
@@ -100,6 +106,8 @@ def _summary(evals: list[models.HsdtCriterionEval]) -> dict[str, int]:
     return {
         "n_tieu_chi": len(tc), "n_dat": cnt(KET_QUA_DAT), "n_khong_dat": cnt(KET_QUA_KHONG),
         "n_can_lam_ro": cnt(KET_QUA_SOI), "n_khong_ap_dung": cnt(KET_QUA_KHONG_AP_DUNG),
+        "n_thieu_ho_so": sum(1 for e in tc
+                             if any(v.ket_qua == KET_QUA_THIEU for v in e.verdicts)),
     }
 
 

@@ -287,6 +287,10 @@ body {
 .verdict-result-pill.khong-ap-dung{ background: #F0F0F0;           color: var(--ink-muted); }
 .verdict-result-pill.loi          { background: #FBE3E1;           color: var(--seal); }
 
+/* "Thiếu hồ sơ" (nhà thầu không nộp) và "cần làm rõ" (AI chưa đủ căn cứ) cần hai hành động khác
+   nhau — trước đây dùng chung màu cam nên chuyên gia không phân biệt được khi quét mắt. */
+.verdict-result-pill.thieu-ho-so  { background: var(--teal-tint);  color: var(--teal); }
+
 /* ── AntD global overrides ──────────────────────────────── */
 
 /* Tag preset của AntD (green/red/orange/volcano) dùng bảng màu RIÊNG, không lấy theo

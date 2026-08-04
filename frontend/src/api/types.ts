@@ -50,6 +50,8 @@ export interface CriterionEval {
 export interface EvalSummary {
   n_tieu_chi: number; n_dat: number; n_khong_dat: number; n_can_lam_ro: number;
   n_khong_ap_dung?: number;
+  /** Khoản mục CON của n_can_lam_ro: số tiêu chí có ít nhất một nội dung thiếu hồ sơ. */
+  n_thieu_ho_so?: number;
 }
 export interface VendorProfile {
   hinh_thuc: string; nguon: string; bang_chung: string; trang: number[];
