@@ -145,10 +145,13 @@ function SummaryChips({ v }: { v: VendorEval }) {
       <Tag>{s.n_tieu_chi} tiêu chí</Tag>
       <Tag color={s.n_dat > 0 ? "green" : undefined}>{s.n_dat} đạt</Tag>
       <Tag color={s.n_khong_dat > 0 ? "red" : undefined}>{s.n_khong_dat} không đạt</Tag>
-      <Tag color={s.n_can_lam_ro > 0 ? "orange" : undefined}>
-        {s.n_can_lam_ro} cần làm rõ
-        {(s.n_thieu_ho_so ?? 0) > 0 && ` (${s.n_thieu_ho_so} thiếu hồ sơ)`}
-      </Tag>
+      <Tag color={s.n_can_lam_ro > 0 ? "orange" : undefined}>{s.n_can_lam_ro} cần làm rõ</Tag>
+      {/* Lát cắt ĐỘC LẬP, không phải con của "cần làm rõ" — có thể xuất hiện ở tiêu chí đã
+          "không đạt" (xem docstring _summary), nên đặt Tag riêng thay vì lồng vào Tag trên.
+          color="blue" -> ánh xạ sang --teal qua .ant-tag-blue override (index.css), không
+          hardcode màu mới. */}
+      {(s.n_thieu_ho_so ?? 0) > 0 &&
+        <Tag color="blue">{s.n_thieu_ho_so} tiêu chí vướng thiếu hồ sơ</Tag>}
       {(s.n_khong_ap_dung ?? 0) > 0 && <Tag>{s.n_khong_ap_dung} không áp dụng</Tag>}
     </div>
   );
@@ -352,20 +355,15 @@ function SummaryTable({ vendors, onOpen }: { vendors: VendorEval[]; onOpen: (vid
         { title: "Không đạt", width: 100, align: "center",
           render: (_, v) => v.summary.n_khong_dat > 0
             ? <span style={{ color: "var(--fail)", fontWeight: 600 }}>{v.summary.n_khong_dat}</span> : 0 },
-        { title: "Cần làm rõ", width: 130, align: "center",
+        { title: "Cần làm rõ", width: 105, align: "center",
+          render: (_, v) => v.summary.n_can_lam_ro > 0
+            ? <span style={{ color: "var(--partial)", fontWeight: 600 }}>{v.summary.n_can_lam_ro}</span> : 0 },
+        /* Lát cắt ĐỘC LẬP với "Cần làm rõ" — số tiêu chí vướng ít nhất một nội dung thiếu hồ sơ,
+           kể cả những tiêu chí đã roll-up thành "không đạt" (xem docstring _summary backend). */
+        { title: "Thiếu hồ sơ", width: 105, align: "center",
           render: (_, v) => {
-            const n = v.summary.n_can_lam_ro;
-            const thieu = v.summary.n_thieu_ho_so ?? 0;
-            return (
-              <span>
-                {n > 0 ? <span style={{ color: "var(--partial)", fontWeight: 600 }}>{n}</span> : 0}
-                {thieu > 0 && (
-                  <span style={{ color: "var(--ink-muted)", fontSize: "var(--fs-label)" }}>
-                    {" "}(thiếu hồ sơ: {thieu})
-                  </span>
-                )}
-              </span>
-            );
+            const n = v.summary.n_thieu_ho_so ?? 0;
+            return n > 0 ? <span style={{ color: "var(--teal)", fontWeight: 600 }}>{n}</span> : 0;
           } },
         { title: "Không áp dụng", width: 120, align: "center",
           render: (_, v) => v.summary.n_khong_ap_dung ?? 0 },

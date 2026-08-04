@@ -530,3 +530,44 @@ def test_mot_tieu_chi_hai_verdict_thieu_van_dem_mot(client, monkeypatch):
     assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
     s = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]["summary"]
     assert s["n_thieu_ho_so"] == 1
+
+
+def test_thieu_ho_so_trong_tieu_chi_da_khong_dat_van_dem(client, monkeypatch):
+    """'thiếu hồ sơ' là LÁT CẮT ĐỘC LẬP, không phải con của 'cần làm rõ'.
+
+    _rollup ưu tiên KET_QUA_KHONG trước {SOI, THIEU, LOI} (routers/evaluation.py:83-86): một tiêu
+    chí có cả verdict 'không đạt' lẫn 'thiếu hồ sơ' roll-up thành 'không đạt', rơi vào
+    n_khong_dat chứ KHÔNG vào n_can_lam_ro. Nếu _summary lọc n_thieu_ho_so theo
+    e.ket_qua == KET_QUA_SOI thì ca này bị giấu mất — mà đây đúng là chỗ chuyên gia cần biết
+    nhất (tiêu chí đã hỏng vì lý do khác, LẠI CÒN thiếu tài liệu). Nên ở đây n_thieu_ho_so (1) >
+    n_can_lam_ro (0) là ĐÚNG, không phải bug.
+    """
+    import routers.evaluation as re_
+
+    async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
+                   registry=None, pkg_ctx=None, cache=None, call_cache=None):
+        r = EvalResult(doc=doc, vendor=vendor_ctx,
+                       vendor_profile=VendorProfile(hinh_thuc="độc lập", nguon="khai báo"))
+        c = criteria[0]
+        verds = [
+            Verdict(noi_dung_kiem_tra="nd0", hsdt_kiem_tra="don_du_thau", yeu_cau="",
+                    thong_tin_bo_sung="", ket_qua="không đạt", bang_chung="", trang=[],
+                    do_tin=0.0, ghi_chu="", nguon_doc=[]),
+            Verdict(noi_dung_kiem_tra="nd1", hsdt_kiem_tra="don_du_thau", yeu_cau="",
+                    thong_tin_bo_sung="", ket_qua="thiếu hồ sơ", bang_chung="", trang=[],
+                    do_tin=0.0, ghi_chu="", nguon_doc=[]),
+        ]
+        r.criteria.append(CriterionEval(nhom=c["nhom"], ten=c["ten"], ket_qua="không đạt",
+                                        verdicts=verds, yeu_cau_goc=""))
+        return r
+
+    pid = _seed(client)
+    monkeypatch.setattr(re_, "evaluate_vendor", fake)
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    s = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]["summary"]
+
+    assert s["n_khong_dat"] == 1
+    assert s["n_can_lam_ro"] == 0
+    assert s["n_thieu_ho_so"] == 1        # > n_can_lam_ro -> ĐÚNG, không phải bug (xem docstring)
+    assert s["n_tieu_chi"] == (s["n_dat"] + s["n_khong_dat"]
+                               + s["n_can_lam_ro"] + s["n_khong_ap_dung"])

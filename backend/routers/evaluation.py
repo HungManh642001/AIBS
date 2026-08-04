@@ -94,10 +94,16 @@ def _rollup(kqs: set[str]) -> str:
 def _summary(evals: list[models.HsdtCriterionEval]) -> dict[str, int]:
     """Đếm MỌI tiêu chí — kiểm tra thường trực của hệ thống có trọng số ngang tiêu chí HSMT.
 
-    `n_thieu_ho_so` là KHOẢN MỤC CON của `n_can_lam_ro`, không ngang hàng: roll-up cuộn verdict
-    'thiếu hồ sơ' thành tiêu chí 'cần làm rõ', nên đếm nó thành ô riêng sẽ phá đẳng thức
-    n_tieu_chi = n_dat + n_khong_dat + n_can_lam_ro + n_khong_ap_dung. Đếm theo TIÊU CHÍ (không
-    theo verdict) để cùng đơn vị với các ô còn lại.
+    `n_thieu_ho_so` là một LÁT CẮT ĐỘC LẬP trên cùng tập tiêu chí, KHÔNG phải tập con của
+    `n_can_lam_ro`: một tiêu chí có thể có verdict 'không đạt' VÀ verdict 'thiếu hồ sơ' cùng lúc
+    (vd nội dung A sai, nội dung B không nộp) — khi đó roll-up ưu tiên 'không đạt' (xem `_rollup`,
+    KET_QUA_KHONG đứng trước {SOI, THIEU, LOI}) nên tiêu chí rơi vào `n_khong_dat`, KHÔNG vào
+    `n_can_lam_ro`. Nếu lọc `n_thieu_ho_so` theo `e.ket_qua == KET_QUA_SOI` để ép nó thành con của
+    `n_can_lam_ro`, việc thiếu tài liệu ở đúng những tiêu chí đã có vấn đề khác sẽ bị giấu đi —
+    mà đó lại là chỗ chuyên gia cần biết nhất. Vì là lát cắt độc lập, `n_thieu_ho_so` KHÔNG tham
+    gia đẳng thức n_tieu_chi = n_dat + n_khong_dat + n_can_lam_ro + n_khong_ap_dung (4 ô đó vẫn
+    đủ và loại trừ lẫn nhau bình thường). Đếm theo TIÊU CHÍ (không theo verdict) để cùng đơn vị
+    với các ô còn lại.
     """
     tc = list(evals)
 
