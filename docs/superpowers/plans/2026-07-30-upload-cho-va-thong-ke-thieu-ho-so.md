@@ -13,7 +13,9 @@
 ## Global Constraints
 
 - Thư mục làm việc mọi lệnh backend: `backend/`. Chạy test: `cd backend && python -m pytest <path> -q`.
-- **Baseline có sẵn test đỏ, KHÔNG liên quan tới plan này** — đừng tưởng mình làm hỏng, đừng sửa chúng. Chạy `cd backend && python -m pytest -q` trước khi bắt đầu và ghi lại con số; so lại đúng con số đó khi xong. (Tại thời điểm viết plan: toàn bộ `experiment/evaluate/tests experiment/decompose/tests tests` cho `524 passed, 28 failed, 3 errors`.)
+- **Baseline (đã đo tại commit gốc của plan này):** `cd backend && python -m pytest -q` → **149 passed, 0 failed**. `pytest.ini` đặt `testpaths = tests` nên lệnh đó chỉ chạy `backend/tests/` — đúng phạm vi mọi task ở đây chạm tới, và **không có test đỏ nào**. Bất kỳ test đỏ nào xuất hiện đều là do bạn gây ra, phải sửa.
+  (Bộ `experiment/**/tests` phải gọi tên tường minh mới chạy và có 28 failed + 3 errors từ trước, KHÔNG liên quan tới plan này — đừng chạy, đừng sửa.)
+- Frontend typecheck: `cd frontend && npx tsc --noEmit` chạy được từ WSL và **hiện đang sạch**. KHÔNG chạy `npm install` / `npm run dev` trong `frontend/` — `node_modules` ở đó là bản cài từ Windows, cài lại sẽ hỏng môi trường dev của người dùng.
 - Quy ước code (CLAUDE.md): Python snake_case, **type hints bắt buộc**, PEP 8. **Tiếng Việt trong UI/comment/docstring, tiếng Anh trong tên code.**
 - API response format: `{"success": bool, "data": ..., "error": ...}` — dùng helper `ok()` / `fail()` có sẵn trong `backend/responses.py`.
 - Async: dùng `async/await` cho mọi I/O.
@@ -209,7 +211,7 @@ Expected: PASS toàn bộ (gồm hồi quy `test_upload_hsdt_thieu_loai_ho_so_bi
 - [ ] **Step 6: Chạy full suite backend**
 
 Run: `cd backend && python -m pytest -q`
-Expected: đúng con số baseline đã ghi ở đầu, không thêm test đỏ nào.
+Expected: `149 passed` cộng thêm số test bạn vừa viết, **0 failed**.
 
 - [ ] **Step 7: Commit**
 
@@ -755,7 +757,7 @@ Expected: PASS toàn bộ.
 - [ ] **Step 7: Chạy full suite backend**
 
 Run: `cd backend && python -m pytest -q`
-Expected: đúng con số baseline, không thêm test đỏ nào.
+Expected: `149 passed` cộng thêm số test bạn vừa viết, **0 failed**.
 
 - [ ] **Step 8: Thêm type frontend**
 
@@ -822,7 +824,7 @@ git commit -m "feat(evaluation): liệt kê loại hồ sơ nhà thầu chưa n�
 
 ## Nghiệm thu cuối (sau khi xong cả 4 task)
 
-- [ ] `cd backend && python -m pytest -q` — đúng con số baseline ghi ở đầu, không thêm test đỏ.
+- [ ] `cd backend && python -m pytest -q` — `149 passed` cộng số test mới của 4 task, **0 failed**.
 - [ ] `cd frontend && npx tsc --noEmit` — sạch.
 - [ ] `git log --oneline` có đủ 4 commit, mỗi commit một task.
 - [ ] Chạy app thật (`cd backend && uvicorn main:app --reload --port 8000` + `cd frontend && npm run dev`) và kiểm bằng tay:
