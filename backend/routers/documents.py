@@ -11,7 +11,7 @@ import models
 import storage
 from database import get_db
 from responses import ok, fail
-from services import documents
+from services import artifact_catalog, documents
 from services.artifact_classify import validate_artifact
 
 router = APIRouter(prefix="/api/v1/packages", tags=["documents"])
@@ -23,6 +23,38 @@ def _detect_kind(filename: str, data: bytes) -> str:
     if name.endswith((".xlsx", ".xls")):
         return "excel"
     return documents.classify_pdf(data)
+
+
+def _trung_loai(pkg: models.ProcurementPackage, vendor_id: int | None, artifact_type: str,
+                bo_qua_doc_id: int | None = None) -> models.TenderDocument | None:
+    """Tài liệu HSDT cùng loại đã tồn tại trong bộ hồ sơ mà nhà thầu này sẽ BỊ CHẤM?
+
+    Phạm vi trùng bám đúng phạm vi pipeline đọc (`_ho_so_cua_vendor`): chấm 1 nhà thầu lấy hồ sơ
+    RIÊNG của họ CỘNG tài liệu DÙNG CHUNG (vendor_id NULL). Nên:
+    - tài liệu riêng đụng tài liệu riêng của cùng nhà thầu, và đụng cả tài liệu dùng chung;
+    - tài liệu dùng chung đụng MỌI tài liệu cùng loại, vì nó gia nhập bộ hồ sơ của mọi nhà thầu.
+
+    Hai file cùng loại nghĩa là hệ thống chấm trên hai nguồn có thể mâu thuẫn mà không ai chọn
+    dùng cái nào — tệ hơn nữa, trùng tên file thì cái sau ghi đè cái trước ngay trên đĩa.
+    """
+    ma = _norm_ma(artifact_type)
+    for d in pkg.documents:
+        if d.loai != "HSDT" or d.id == bo_qua_doc_id or _norm_ma(d.artifact_type) != ma:
+            continue
+        if vendor_id is None or d.vendor_id is None or d.vendor_id == vendor_id:
+            return d
+    return None
+
+
+def _norm_ma(raw: str | None) -> str:
+    return (raw or "").strip().lower()
+
+
+def _loi_trung(d: models.TenderDocument, artifact_type: str) -> Any:
+    nhan = (artifact_catalog.get_artifact(artifact_type) or {}).get("label", artifact_type)
+    pham_vi = "dùng chung" if d.vendor_id is None else "của nhà thầu này"
+    return fail(f'Loại hồ sơ "{nhan}" đã có file {pham_vi}: {Path(d.file_path).name}. '
+                f"Mỗi loại chỉ nộp một file — xóa file cũ rồi tải lại nếu muốn thay.", 409)
 
 
 @router.post("/{package_id}/documents")
@@ -48,6 +80,10 @@ async def upload_document(
         # HSDT không có loại hồ sơ bị _hsdt_files bỏ qua -> tài liệu nằm im trong UI mà không
         # bao giờ được chấm. Bắt khai báo ngay tại nguồn.
         return fail("Thiếu loại hồ sơ — hãy chọn loại hồ sơ cho file HSDT này", 400)
+    if loai == "HSDT":
+        trung = _trung_loai(pkg, vendor_id, artifact_type or "")
+        if trung is not None:
+            return _loi_trung(trung, artifact_type or "")
     if loai == "HSMT":
         subdir = "hsmt"
     elif loai == "TBMT":                       # tài liệu gói (scan), không thuộc nhà thầu
@@ -109,11 +145,18 @@ async def update_document_type(package_id: int, doc_id: int, payload: dict[str, 
     doc = db.get(models.TenderDocument, doc_id)
     if not doc or doc.package_id != package_id:
         return fail("Không tìm thấy tài liệu", 404)
+    pkg = db.get(models.ProcurementPackage, package_id)
     artifact_type = (payload.get("artifact_type") or "").strip()
     if doc.loai == "HSDT" and not artifact_type:
         # Xóa trắng loại = tài liệu biến mất khỏi đánh giá trong khi UI vẫn đếm nó. Muốn bỏ hẳn
         # thì xóa tài liệu, không để nó tồn tại ở trạng thái không chấm được.
         return fail("Không thể bỏ trống loại hồ sơ — chọn loại khác hoặc xóa tài liệu", 400)
+    if doc.loai == "HSDT" and artifact_type:
+        # Chặn ở upload mà bỏ ngỏ PATCH thì luật vòng qua được bằng hai bước: tải với loại khác
+        # rồi đổi loại. Bỏ qua chính tài liệu đang sửa để giữ nguyên loại cũ không bị tự chặn.
+        trung = _trung_loai(pkg, doc.vendor_id, artifact_type, bo_qua_doc_id=doc.id)
+        if trung is not None:
+            return _loi_trung(trung, artifact_type)
     doc.artifact_type = artifact_type or None
     pages = json.loads(doc.extracted_text or "[]")
     # Cùng lý do như lúc upload: file scan có extracted_text="[]" nên không có căn cứ để kiểm.

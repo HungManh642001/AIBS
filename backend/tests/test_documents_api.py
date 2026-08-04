@@ -252,3 +252,65 @@ def test_upload_giu_nguyen_ten_file_co_dau(client):
     assert r.status_code == 200
     assert r.json()["data"]["file_name"] == ten
     assert client.get(f"/api/v1/packages/{pid}/documents").json()["data"][0]["file_name"] == ten
+
+
+def _tai(client, pid, *, vendor_id=None, at="don_du_thau", ten="f.pdf"):
+    data = {"loai": "HSDT", "artifact_type": at}
+    if vendor_id is not None:
+        data["vendor_id"] = str(vendor_id)
+    return client.post(f"/api/v1/packages/{pid}/documents",
+                       files={"file": (ten, _text_pdf("nội dung"), "application/pdf")}, data=data)
+
+
+def test_moi_loai_ho_so_chi_mot_file_cho_moi_nha_thau(client):
+    """Hai file cùng loại cho một nhà thầu = pipeline chấm trên hai nguồn mâu thuẫn, và trước đây
+    file sau còn ghi đè file trước nếu trùng tên."""
+    p = client.post("/api/v1/packages",
+                    json={"ma_so": "G-1F", "ten": "G", "vendors": ["A", "B"]}).json()["data"]
+    pid, va, vb = p["id"], p["vendors"][0]["id"], p["vendors"][1]["id"]
+
+    assert _tai(client, pid, vendor_id=va, ten="don1.pdf").status_code == 200
+    r = _tai(client, pid, vendor_id=va, ten="don2.pdf")
+    assert r.status_code == 409
+    assert "đã có" in r.json()["error"].lower() and "don1.pdf" in r.json()["error"]
+    assert len(client.get(f"/api/v1/packages/{pid}/documents").json()["data"]) == 1
+
+    # Nhà thầu KHÁC vẫn nộp được cùng loại; cùng nhà thầu vẫn nộp được loại khác.
+    assert _tai(client, pid, vendor_id=vb, ten="don_b.pdf").status_code == 200
+    assert _tai(client, pid, vendor_id=va, at="bao_dam_du_thau", ten="bl.pdf").status_code == 200
+
+
+def test_tai_lieu_dung_chung_cung_chi_mot_file_moi_loai(client):
+    p = client.post("/api/v1/packages",
+                    json={"ma_so": "G-DC", "ten": "G", "vendors": ["A"]}).json()["data"]
+    pid = p["id"]
+    assert _tai(client, pid, at="webform", ten="wf1.pdf").status_code == 200
+    assert _tai(client, pid, at="webform", ten="wf2.pdf").status_code == 409
+
+
+def test_dung_chung_va_rieng_cung_loai_bi_chan(client):
+    """Pipeline chấm 1 nhà thầu lấy hồ sơ riêng CỘNG tài liệu dùng chung — trùng loại giữa hai
+    nhóm vẫn ra hai file một loại cho đúng nhà thầu đó."""
+    p = client.post("/api/v1/packages",
+                    json={"ma_so": "G-MX", "ten": "G", "vendors": ["A"]}).json()["data"]
+    pid, va = p["id"], p["vendors"][0]["id"]
+    assert _tai(client, pid, at="webform", ten="wf.pdf").status_code == 200
+    assert _tai(client, pid, vendor_id=va, at="webform", ten="wf_rieng.pdf").status_code == 409
+
+
+def test_doi_loai_ho_so_sang_loai_da_co_bi_chan(client):
+    """Chặn ở upload mà không chặn ở PATCH thì luật vòng qua được bằng hai bước."""
+    p = client.post("/api/v1/packages",
+                    json={"ma_so": "G-PC", "ten": "G", "vendors": ["A"]}).json()["data"]
+    pid, va = p["id"], p["vendors"][0]["id"]
+    _tai(client, pid, vendor_id=va, at="don_du_thau", ten="don.pdf")
+    doc_id = _tai(client, pid, vendor_id=va, at="bao_dam_du_thau", ten="bl.pdf").json()["data"]["id"]
+
+    r = client.patch(f"/api/v1/packages/{pid}/documents/{doc_id}",
+                     json={"artifact_type": "don_du_thau"})
+    assert r.status_code == 409
+    # Đổi sang loại chưa ai dùng thì vẫn được; giữ nguyên loại của CHÍNH nó cũng không tự chặn.
+    assert client.patch(f"/api/v1/packages/{pid}/documents/{doc_id}",
+                        json={"artifact_type": "dang_ky_kinh_doanh"}).status_code == 200
+    assert client.patch(f"/api/v1/packages/{pid}/documents/{doc_id}",
+                        json={"artifact_type": "dang_ky_kinh_doanh"}).status_code == 200

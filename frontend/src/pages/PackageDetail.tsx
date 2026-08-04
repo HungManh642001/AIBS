@@ -234,6 +234,18 @@ export default function PackageDetail() {
   const shared = docs.filter((d) => d.loai === "HSDT" && d.vendor_id == null);
   const vendorDocs = (vid: number) => docs.filter((d) => d.loai === "HSDT" && d.vendor_id === vid);
 
+  // Mỗi loại hồ sơ chỉ nộp MỘT file. Bỏ hẳn loại đã có khỏi ô chọn thay vì để người dùng tải xong
+  // mới nhận lỗi 409. Phạm vi trùng bám đúng phạm vi pipeline đọc khi chấm một nhà thầu: hồ sơ
+  // RIÊNG của họ CỘNG tài liệu DÙNG CHUNG — nên tài liệu dùng chung chặn mọi nhà thầu, và ngược
+  // lại loại nào đã có ở bất kỳ đâu cũng chặn ô chọn của tài liệu dùng chung.
+  const loaiConLai = (vid?: number): ArtOpt[] => {
+    const daCo = new Set(
+      docs.filter((d) => d.loai === "HSDT" && d.artifact_type
+                         && (vid === undefined || d.vendor_id == null || d.vendor_id === vid))
+          .map((d) => d.artifact_type as string));
+    return artifactTypes.filter((o) => !daCo.has(o.value));
+  };
+
   // Dẫn dắt luồng: HSMT -> tiêu chí -> HSDT -> chạy đánh giá -> kết quả.
   const hasCriteria = (pkg.so_tieu_chi ?? 0) > 0;
   const hasAnyHsdt = docs.some((d) => d.loai === "HSDT" && d.vendor_id != null);
@@ -256,7 +268,7 @@ export default function PackageDetail() {
       <div>
         <div className="page-eyebrow">Tài liệu dùng chung — áp cho mọi nhà thầu</div>
         <DocTable docs={shared} artifactTypes={artifactTypes} onChangeType={changeDocType} onDelete={deleteDoc} />
-        <UploadDoc artifactTypes={artifactTypes} label="Tải tài liệu dùng chung"
+        <UploadDoc artifactTypes={loaiConLai()} label="Tải tài liệu dùng chung"
           onUpload={(f, at) => uploadDoc(f, "HSDT", undefined, at)} disabled={uploading} />
       </div>
     </div>
@@ -296,7 +308,7 @@ export default function PackageDetail() {
       </div>
       <DocTable docs={vendorDocs(v.id)} artifactTypes={artifactTypes}
         onChangeType={changeDocType} onDelete={deleteDoc} />
-      <UploadDoc artifactTypes={artifactTypes} label="Tải hồ sơ nhà thầu"
+      <UploadDoc artifactTypes={loaiConLai(v.id)} label="Tải hồ sơ nhà thầu"
         onUpload={(f, at) => uploadDoc(f, "HSDT", v.id, at)} disabled={uploading} />
     </div>
   );
