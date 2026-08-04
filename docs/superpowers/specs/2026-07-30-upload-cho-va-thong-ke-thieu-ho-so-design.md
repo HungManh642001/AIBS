@@ -154,6 +154,12 @@ Payload `results` thêm cho mỗi nhà thầu:
 
 ### B2 — Đếm riêng "thiếu hồ sơ", không gộp vào "cần làm rõ"
 
+> **ĐÃ BỊ THAY THẾ (2026-07-30, sau khi dùng thử).** Toàn bộ mục B2 này — `n_thieu_ho_so` là "lát
+> cắt độc lập" nằm ngoài đẳng thức bốn ô — đã bị đảo. Chủ dự án thấy bảng tổng hợp cộng ra 11 trên
+> 10 tiêu chí là không đọc được, và yêu cầu "thiếu hồ sơ" trở thành kết luận cấp tiêu chí thật với
+> tổng bằng số tiêu chí. Xem `2026-07-30-rollup-thieu-ho-so-thanh-o-dem-design.md`. Đừng làm theo
+> mục B2 dưới đây.
+
 Vì roll-up không bao giờ cho tiêu chí kết quả `"thiếu hồ sơ"`, ô đếm phải định nghĩa lại cho đúng:
 
 **Đếm số TIÊU CHÍ có ít nhất một verdict `"thiếu hồ sơ"`**, đơn vị TIÊU CHÍ để cùng đơn vị với các
