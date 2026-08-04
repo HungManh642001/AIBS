@@ -5,6 +5,7 @@ nhánh khác CLI. Đặt logic dựng EvalResult ở ĐÂY, cả hai gọi chung
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from experiment.evaluate.cached_vision import CachedVision, CallCache
@@ -76,10 +77,12 @@ async def evaluate_hsdt(criteria: list[dict[str, Any]], hsdt_files: list[tuple[s
         log.warning("[eval] %s: %d trang nghi đọc thiếu", doc, len(canh_bao))
     result = EvalResult(doc=doc, vendor=vendor, vendor_profile=profile,
                         ho_so_nhan_duoc=inventory_pages(pages), canh_bao_doc=canh_bao)
-    for c in criteria:
-        result.criteria.append(await evaluate_criterion(
-            c, pages, vision_fn, registry=registry, vendor_ctx=vendor, profile=profile,
-            by_type=by_type))
+    # Song song theo tiêu chí; `evaluate_criterion` tự gather bên trong theo nội dung. Lồng hai
+    # tầng gather là chủ ý — cổng song song toàn cục (services/llm_gate) giữ tổng số request đang
+    # bay trong tầm kiểm soát, nên không dội quá tải xuống proxy. `gather` giữ nguyên thứ tự.
+    result.criteria.extend(await asyncio.gather(*(
+        evaluate_criterion(c, pages, vision_fn, registry=registry, vendor_ctx=vendor,
+                           profile=profile, by_type=by_type) for c in criteria)))
     result.criteria.extend(_thanh_tieu_chi(v) for v in phat_hien)
     log.info("[eval] %s: %s", doc, result.summary)
     return result

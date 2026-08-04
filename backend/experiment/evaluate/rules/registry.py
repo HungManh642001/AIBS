@@ -16,6 +16,7 @@ sai và bỏ sót tiêu chí thật. Metadata là nguồn sự thật duy nhất
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -109,6 +110,10 @@ async def run_skill(skill: RuleSkill, by_type: dict[str, list[PageRecord]],
 async def dispatch_standing(registry: RuleRegistry, by_type: dict[str, list[PageRecord]],
                             vendor_ctx: VendorContext | None, vision_fn: Any,
                             *, pkg: PackageContext | None = None) -> list[Verdict]:
-    """Kiểm tra thường trực — 1 lần/nhà thầu, verdict NGOÀI roll-up tiêu chí."""
-    return [await run_skill(s, by_type, vendor_ctx, {}, vision_fn, pkg=pkg)
-            for s in registry.standing()]
+    """Kiểm tra thường trực — 1 lần/nhà thầu, verdict NGOÀI roll-up tiêu chí.
+
+    Chạy song song: các luật độc lập nhau, chỉ ĐỌC `by_type`. `gather` giữ nguyên thứ tự nên thứ
+    tự verdict trong báo cáo không đổi.
+    """
+    return list(await asyncio.gather(*(
+        run_skill(s, by_type, vendor_ctx, {}, vision_fn, pkg=pkg) for s in registry.standing())))
