@@ -30,6 +30,7 @@ luật này sinh ra để chặn; chia chunk thì không mất gì.
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from services.prompts import cot_block
@@ -309,16 +310,21 @@ async def handler(by_type: dict[str, list[PageRecord]], vendor_ctx: VendorContex
 
     # Giai đoạn 2 — quét TOÀN BỘ bảng giá theo chunk (không cắt, không bỏ trang nào).
     chunks = chia_chunk_theo_trang(by_type[_GIA], _GIA_NGAN_SACH)
-    ket_qua_chunks: list[dict[str, Any]] = []
-    for i, chunk in enumerate(chunks, 1):
-        o = await vision_fn(SYS_RULE_BANG_GIA, bang_gia_prompt(chunk, thanh_vien),
-                            validate=validate_bang_gia_chunk, max_tokens=_MAX_TOKENS)
+    # Song song theo chunk. Đánh đổi có chủ ý: bản cũ dừng ở chunk lỗi ĐẦU TIÊN, bản này gọi hết
+    # rồi mới xét lỗi — đường lỗi tốn thêm call, đổi lại đường thường nhanh hơn nhiều. Verdict
+    # KHÔNG đổi: vẫn báo chỉ số chunk lỗi đầu tiên THEO THỨ TỰ (gather giữ thứ tự), không phải
+    # chunk nào lỗi trước về đích.
+    outs = await asyncio.gather(*(
+        vision_fn(SYS_RULE_BANG_GIA, bang_gia_prompt(chunk, thanh_vien),
+                  validate=validate_bang_gia_chunk, max_tokens=_MAX_TOKENS)
+        for chunk in chunks))
+    for i, o in enumerate(outs, 1):
         if o.status == "error":
             # Thiếu 1 phần là tổng sai -> mọi tỷ lệ sai theo. KHÔNG kết luận trên dữ liệu thiếu.
             return _verdict(KET_QUA_LOI, trang=trang,
                             bang_chung=f"AI lỗi khi đọc bảng giá (phần {i}/{len(chunks)}): {o.error}",
                             ghi_chu="cần soi lại")
-        ket_qua_chunks.append(o.data)
+    ket_qua_chunks: list[dict[str, Any]] = [o.data for o in outs]
 
     # Giai đoạn 3 — cộng dồn + đối chiếu, toàn bộ ở code.
     d = gop_bang_gia(thanh_vien, ket_qua_chunks)
