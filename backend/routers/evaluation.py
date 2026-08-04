@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -305,12 +306,24 @@ async def clear_cache(package_id: int, loai: str = "tat_ca", vendor_id: int | No
     return ok({"n_tai_lieu": n_ocr, "n_ket_qua_cham": n_ai})
 
 
+def _vendor_da_cham(db: Session, package_id: int, vendor_id: int) -> bool:
+    """Nhà thầu đã có kết quả chấm lưu trong DB chưa?"""
+    return db.scalar(select(models.HsdtCriterionEval.id).where(
+        models.HsdtCriterionEval.package_id == package_id,
+        models.HsdtCriterionEval.vendor_id == vendor_id).limit(1)) is not None
+
+
 @router.post("/packages/{package_id}/evaluate")
-async def evaluate(package_id: int, db: Session = Depends(get_db)):
+async def evaluate(package_id: int, bo_qua_da_cham: bool = False,
+                   db: Session = Depends(get_db)):
     """Chạy đánh giá HSDT cho TẤT CẢ nhà thầu (tiện lợi chạy hàng loạt).
 
     Một nhà thầu lỗi KHÔNG hủy cả lô: kết quả các nhà thầu chấm xong vẫn được lưu, nhà thầu lỗi
     liệt kê trong `loi` để chạy lại riêng. Chấm lại cả gói vì 1 proxy timeout là quá đắt.
+
+    `bo_qua_da_cham=True`: bỏ qua nhà thầu đã có kết quả — dùng cho nút chạy tự động, để bấm lại
+    sau khi thêm một nhà thầu thì chỉ chấm người mới. Mặc định False giữ nguyên hành vi cũ của
+    endpoint này (chấm lại tất cả), vì đó chính là cách ép chấm lại cả gói.
     """
     pkg = db.get(models.ProcurementPackage, package_id)
     if not pkg:
@@ -321,6 +334,8 @@ async def evaluate(package_id: int, db: Session = Depends(get_db)):
     vendors_out: list[dict[str, Any]] = []
     loi: list[dict[str, Any]] = []
     for vendor in pkg.vendors:
+        if bo_qua_da_cham and _vendor_da_cham(db, package_id, vendor.id):
+            continue
         thieu = _thieu_loai_ho_so(pkg, vendor.id)
         if thieu:
             loi.append({"vendor_id": vendor.id, "ten": vendor.ten,
@@ -337,6 +352,64 @@ async def evaluate(package_id: int, db: Session = Depends(get_db)):
         pkg.trang_thai = "cho_review"
     db.commit()
     return ok({"vendors": vendors_out, "loi": loi})
+
+
+def _buoc(ten: str, trang_thai: str, chi_tiet: str = "") -> dict[str, Any]:
+    """Một bước của luồng chạy tự động. trang_thai: xong | bo_qua | loi."""
+    return {"ten": ten, "trang_thai": trang_thai, "chi_tiet": chi_tiet}
+
+
+def _envelope(res: Any) -> dict[str, Any]:
+    """Envelope {success,data,error} của một endpoint gọi trực tiếp (không qua HTTP).
+
+    `ok()` trả dict thuần còn `fail()` trả JSONResponse — chạy tự động gọi thẳng hàm endpoint nên
+    phải mở gói cả hai kiểu, nếu không nhánh lỗi sẽ nổ AttributeError thay vì báo đúng bệnh.
+    """
+    if isinstance(res, JSONResponse):
+        return json.loads(bytes(res.body).decode("utf-8"))
+    return res
+
+
+@router.post("/packages/{package_id}/chay-tu-dong")
+async def chay_tu_dong(package_id: int, db: Session = Depends(get_db)):
+    """Chạy trọn luồng: bóc tiêu chí từ HSMT (nếu chưa có) -> chấm mọi nhà thầu chưa chấm.
+
+    KHÔNG cài lại luật nào — gọi thẳng hai endpoint đã có (`rubric.extract`, `evaluate`), nên mọi
+    phép kiểm sẵn có (chưa upload HSMT, chưa gán loại hồ sơ, một nhà thầu lỗi không hủy cả lô)
+    giữ nguyên hiệu lực và chỉ có một nguồn sự thật cho từng bước.
+
+    BỎ QUA bước đã xong: gói đã có tiêu chí thì không bóc lại; nhà thầu đã có kết quả thì không
+    chấm lại. Bấm lại sau khi thêm một nhà thầu chỉ tốn tiền AI cho đúng người mới.
+
+    Bóc tiêu chí HỎNG thì DỪNG, không chấm tiếp: chấm khi chưa có tiêu chí chỉ ra một lỗi 400 khó
+    hiểu, còn chấm bằng bộ tiêu chí cũ trong khi người dùng vừa yêu cầu bóc lại thì còn tệ hơn.
+    """
+    from routers.rubric import extract as boc_tieu_chi   # import cục bộ: tránh vòng import router
+
+    pkg = db.get(models.ProcurementPackage, package_id)
+    if not pkg:
+        return fail("Không tìm thấy gói thầu", 404)
+
+    buoc: list[dict[str, Any]] = []
+    if _criteria_dicts(db, package_id):
+        buoc.append(_buoc("Bóc tiêu chí từ HSMT", "bo_qua", "gói đã có tiêu chí"))
+    else:
+        res = _envelope(await boc_tieu_chi(package_id, db))
+        if not res.get("success"):
+            buoc.append(_buoc("Bóc tiêu chí từ HSMT", "loi", str(res.get("error", ""))))
+            return ok({"buoc": buoc, "vendors": [], "loi": []})
+        n = len(res["data"].get("criteria", []))
+        buoc.append(_buoc("Bóc tiêu chí từ HSMT", "xong", f"{n} tiêu chí"))
+
+    res = _envelope(await evaluate(package_id, bo_qua_da_cham=True, db=db))
+    if not res.get("success"):
+        buoc.append(_buoc("Chấm nhà thầu", "loi", str(res.get("error", ""))))
+        return ok({"buoc": buoc, "vendors": [], "loi": []})
+    vendors_out = res["data"]["vendors"]
+    loi = res["data"]["loi"]
+    chi_tiet = f"{len(vendors_out)} nhà thầu đã chấm" + (f", {len(loi)} lỗi" if loi else "")
+    buoc.append(_buoc("Chấm nhà thầu", "xong", chi_tiet))
+    return ok({"buoc": buoc, "vendors": vendors_out, "loi": loi})
 
 
 def _hsnd(h) -> dict[str, Any]:

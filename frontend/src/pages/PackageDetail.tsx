@@ -5,7 +5,7 @@ import {
 import { CheckCircleOutlined, DeleteOutlined, EditOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, unwrap } from "../api/client";
-import type { EvalResultsPayload, Package, TenderDoc, Vendor } from "../api/types";
+import type { ChayTuDongOut, EvalResultsPayload, Package, TenderDoc, Vendor } from "../api/types";
 import { useArtifactTypes } from "../api/artifacts";
 import StatusTag from "../components/StatusTag";
 import Loader from "../components/Loader";
@@ -132,6 +132,7 @@ export default function PackageDetail() {
   const [err, setErr] = useState<string | null>(null);
   const [evaluatedVids, setEvaluatedVids] = useState<Set<number>>(new Set());
   const [uploading, setUploading] = useState(false);
+  const [autoRunning, setAutoRunning] = useState(false);
   const artifactTypes = useArtifactTypes() as ArtOpt[];
 
   const load = () => {
@@ -184,6 +185,37 @@ export default function PackageDetail() {
       load();
       message.success("Đã xóa nhà thầu");
     } catch (e: any) { message.error(e.message); }
+  };
+  // Chạy trọn luồng bằng một nút. Backend BỎ QUA bước đã xong (gói đã có tiêu chí thì không bóc
+  // lại, nhà thầu đã chấm thì không chấm lại), nên bấm lại sau khi thêm nhà thầu chỉ tốn tiền AI
+  // cho đúng người mới.
+  const runAuto = async () => {
+    setAutoRunning(true);
+    message.loading({ content: "Đang chạy tự động — bóc tiêu chí rồi chấm từng nhà thầu, có thể mất vài phút…",
+                      key: "auto", duration: 0 });
+    try {
+      const d = unwrap<ChayTuDongOut>(await api.post(`/packages/${id}/chay-tu-dong`));
+      const hong = d.buoc.find((b) => b.trang_thai === "loi");
+      if (hong) {
+        message.error({ content: `${hong.ten}: ${hong.chi_tiet}`, key: "auto" });
+      } else {
+        const tom_tat = d.buoc.map((b) => `${b.ten}: ${b.trang_thai === "bo_qua" ? "bỏ qua" : b.chi_tiet}`).join(" · ");
+        message.success({ content: `Chạy tự động xong — ${tom_tat}`, key: "auto", duration: 6 });
+      }
+      // Nhà thầu lỗi KHÔNG hủy cả lô — liệt kê riêng để chuyên gia chạy lại từng người.
+      if (d.loi.length) {
+        Modal.info({
+          title: `${d.loi.length} nhà thầu chưa chấm được`,
+          content: (
+            <ul style={{ paddingLeft: "var(--sp-4)", marginTop: "var(--sp-2)" }}>
+              {d.loi.map((l) => <li key={l.vendor_id}><b>{l.ten}</b>: {l.error}</li>)}
+            </ul>
+          ),
+        });
+      }
+      load();
+    } catch (e: any) { message.error({ content: e.message, key: "auto" }); }
+    finally { setAutoRunning(false); }
   };
   const evalVendor = async (vid: number) => {
     setEvaluating(vid);
@@ -309,6 +341,18 @@ export default function PackageDetail() {
           { title: "Tải HSMT" }, { title: "Chốt tiêu chí" }, { title: "Tải hồ sơ nhà thầu" },
           { title: "Chạy đánh giá" }, { title: "Xem kết quả" },
         ]} />
+        {/* Nút tắt cho cả luồng trên. Đặt ngay dưới Steps để thấy rõ nó thay cho việc bấm tay
+            từng bước, chứ không phải một hành động khác. */}
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)",
+                      marginTop: "var(--sp-4)", flexWrap: "wrap" }}>
+          <Button type="primary" loading={autoRunning} disabled={!hsmt || autoRunning}
+            onClick={runAuto}>Chạy tự động</Button>
+          <span style={{ color: "var(--ink-muted)", fontSize: "var(--fs-label)" }}>
+            {hsmt
+              ? "Bóc tiêu chí từ HSMT rồi chấm mọi nhà thầu — bỏ qua bước đã xong."
+              : "Tải HSMT trước đã."}
+          </span>
+        </div>
       </Card>
 
       <Card styles={{ body: { paddingTop: "var(--sp-2)" } }}>

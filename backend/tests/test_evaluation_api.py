@@ -939,3 +939,144 @@ def test_ho_so_chua_nop_alias_khop_voi_ho_so_da_nop(client, monkeypatch):
     assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
     v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
     assert v["ho_so_chua_nop"] == []
+
+
+def _da_cham(client, pid: int) -> set[int]:
+    """Nhà thầu đã có kết quả chấm (dùng để khẳng định 'bỏ qua bước đã xong')."""
+    vendors = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"]
+    return {v["vendor_id"] for v in vendors if v["criteria"]}
+
+
+def test_evaluate_bo_qua_da_cham_khong_cham_lai(client, monkeypatch):
+    """Cờ bo_qua_da_cham: thêm nhà thầu mới rồi bấm lại thì chỉ chấm người mới, không chấm lại cả lô."""
+    import routers.evaluation as re_
+
+    pid = _seed(client)
+    goi: list[str] = []
+
+    def dem(base):
+        async def fake(criteria, hsdt_files, **kw):
+            goi.append(kw.get("vendor_ctx").ten if kw.get("vendor_ctx") else "?")
+            return await base(criteria, hsdt_files, **kw)
+        return fake
+
+    monkeypatch.setattr(re_, "evaluate_vendor", dem(_fake_eval("đạt")))
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    assert len(goi) == 1                                    # gói seed có 1 nhà thầu
+
+    client.post(f"/api/v1/packages/{pid}/vendors", json={"ten": "B"})
+    goi.clear()
+    r = client.post(f"/api/v1/packages/{pid}/evaluate?bo_qua_da_cham=true")
+    assert r.status_code == 200
+    assert goi == ["B"]                                     # CHỈ chấm nhà thầu mới
+    assert len(_da_cham(client, pid)) == 2                  # kết quả cũ vẫn còn nguyên
+
+
+def test_chay_tu_dong_boc_tieu_chi_roi_cham_het(client, monkeypatch):
+    """Gói chưa có tiêu chí -> bước bóc chạy thật, rồi chấm mọi nhà thầu."""
+    import routers.evaluation as re_
+    import routers.rubric as ru
+
+    pid = client.post("/api/v1/packages",
+                      json={"ma_so": "G-AUTO", "ten": "g", "vendors": ["A"]}).json()["data"]["id"]
+    import fitz
+    d = fitz.open(); d.new_page().insert_text((72, 72), "Tiêu chuẩn đánh giá")
+    client.post(f"/api/v1/packages/{pid}/documents",
+                files={"file": ("hsmt.pdf", d.tobytes(), "application/pdf")},
+                data={"loai": "HSMT"})
+
+    async def fake_decomp(pdf_path, workdir, scan_sources=None):
+        return {"groups": [{"criteria": [{
+            "nhom": "hop_le", "ten": "Đơn dự thầu", "yeu_cau_goc": "Có đơn",
+            "hsdt_can_kiem_tra": ["don_du_thau"],
+            "noi_dung_can_kiem_tra": [{
+                "noi_dung_kiem_tra": "Có đơn", "hsdt_kiem_tra": "don_du_thau", "yeu_cau": "có",
+                "can_lam_ro": "", "can_tra_cuu": False, "thong_tin_bo_sung": "", "nguon": "",
+                "can_review": False}]}]}]}
+
+    monkeypatch.setattr(ru, "build_decomposition", fake_decomp)
+    monkeypatch.setattr(re_, "evaluate_vendor", _fake_eval("đạt"))
+    r = client.post(f"/api/v1/packages/{pid}/chay-tu-dong")
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert [b["trang_thai"] for b in data["buoc"]] == ["xong", "xong"]
+    assert len(data["vendors"]) == 1 and data["loi"] == []
+    assert len(_da_cham(client, pid)) == 1
+
+
+def test_chay_tu_dong_bo_qua_buoc_da_xong(client, monkeypatch):
+    """Đã có tiêu chí + nhà thầu đã chấm -> bước bóc 'bo_qua', nhà thầu cũ không bị chấm lại."""
+    import routers.evaluation as re_
+    import routers.rubric as ru
+
+    pid = _seed(client)
+    goi: list[str] = []
+
+    def dem(base):
+        async def fake(criteria, hsdt_files, **kw):
+            goi.append(kw.get("vendor_ctx").ten if kw.get("vendor_ctx") else "?")
+            return await base(criteria, hsdt_files, **kw)
+        return fake
+
+    monkeypatch.setattr(re_, "evaluate_vendor", dem(_fake_eval("đạt")))
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+
+    async def no_decomp(*a, **kw):
+        raise AssertionError("KHÔNG được bóc lại tiêu chí khi gói đã có")
+
+    monkeypatch.setattr(ru, "build_decomposition", no_decomp)
+    goi.clear()
+    r = client.post(f"/api/v1/packages/{pid}/chay-tu-dong")
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert data["buoc"][0]["trang_thai"] == "bo_qua"
+    assert goi == []                                        # không nhà thầu nào bị chấm lại
+    assert data["vendors"] == []
+
+
+def test_chay_tu_dong_boc_tieu_chi_loi_thi_dung_va_bao(client, monkeypatch):
+    """Bóc tiêu chí hỏng -> không chấm mù, báo rõ bước nào hỏng."""
+    import routers.rubric as ru
+
+    pid = client.post("/api/v1/packages",
+                      json={"ma_so": "G-ERR", "ten": "g", "vendors": ["A"]}).json()["data"]["id"]
+    import fitz
+    d = fitz.open(); d.new_page().insert_text((72, 72), "Tiêu chuẩn đánh giá")
+    client.post(f"/api/v1/packages/{pid}/documents",
+                files={"file": ("hsmt.pdf", d.tobytes(), "application/pdf")},
+                data={"loai": "HSMT"})
+
+    async def hong(*a, **kw):
+        raise RuntimeError("proxy tắt")
+
+    monkeypatch.setattr(ru, "build_decomposition", hong)
+    r = client.post(f"/api/v1/packages/{pid}/chay-tu-dong")
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert data["buoc"][0]["trang_thai"] == "loi"
+    assert "proxy tắt" in data["buoc"][0]["chi_tiet"]
+    assert len(data["buoc"]) == 1                           # dừng, không chấm mù
+    assert data["vendors"] == []
+
+
+def test_chay_tu_dong_mot_nha_thau_loi_van_cham_tiep(client, monkeypatch):
+    """Một nhà thầu hỏng KHÔNG được cuốn theo kết quả của người khác."""
+    import routers.evaluation as re_
+
+    pid = _seed(client)
+    client.post(f"/api/v1/packages/{pid}/vendors", json={"ten": "B"})
+    base = _fake_eval("đạt")
+
+    async def fake(criteria, hsdt_files, **kw):
+        if kw.get("vendor_ctx") and kw["vendor_ctx"].ten == "A":
+            raise RuntimeError("vision timeout")
+        return await base(criteria, hsdt_files, **kw)
+
+    monkeypatch.setattr(re_, "evaluate_vendor", fake)
+    r = client.post(f"/api/v1/packages/{pid}/chay-tu-dong")
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert [v["ten"] for v in data["vendors"]] == ["B"]
+    assert [l["ten"] for l in data["loi"]] == ["A"]
+    assert "vision timeout" in data["loi"][0]["error"]
+    assert data["buoc"][-1]["trang_thai"] == "xong"

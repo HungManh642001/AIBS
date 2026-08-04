@@ -74,3 +74,12 @@ export interface VendorEval {
 }
 export interface EvalResultsPayload { vendors: VendorEval[]; }
 // Danh mục loại hồ sơ giờ lấy động từ backend — dùng hook useArtifactTypes() (api/artifacts.ts).
+
+// Nút "Chạy tự động": bóc tiêu chí (nếu chưa có) -> chấm mọi nhà thầu chưa chấm.
+export interface BuocTuDong { ten: string; trang_thai: "xong" | "bo_qua" | "loi"; chi_tiet: string; }
+export interface LoiNhaThau { vendor_id: number; ten: string; error: string; }
+export interface ChayTuDongOut {
+  buoc: BuocTuDong[];
+  vendors: { vendor_id: number; ten: string }[];
+  loi: LoiNhaThau[];
+}
