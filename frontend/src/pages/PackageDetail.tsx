@@ -74,33 +74,36 @@ function DocTable({ docs, artifactTypes, onChangeType, onDelete }: {
 }
 
 // ── Nút tải hồ sơ (tự giữ loại đang chọn) ─────────────────────────────────────────────
-function UploadDoc({ artifactTypes, onUpload, label = "Tải hồ sơ" }: {
-  artifactTypes: ArtOpt[]; onUpload: (file: File, at: string) => Promise<void>; label?: string;
+function UploadDoc({ artifactTypes, onUpload, label = "Tải hồ sơ", disabled = false }: {
+  artifactTypes: ArtOpt[]; onUpload: (file: File, at: string) => Promise<void>;
+  label?: string; disabled?: boolean;
 }) {
   const [at, setAt] = useState<string>();
   return (
     <div style={{ display: "flex", gap: "var(--sp-2)", marginTop: "var(--sp-3)", flexWrap: "wrap", alignItems: "center" }}>
       <Select placeholder="Chọn loại hồ sơ" style={{ minWidth: 200 }} value={at} onChange={setAt}
         options={artifactTypes} />
-      <Upload showUploadList={false} accept=".pdf" beforeUpload={(f) => {
+      <Upload showUploadList={false} accept=".pdf" disabled={disabled} beforeUpload={(f) => {
         if (!at) { message.warning("Chọn loại hồ sơ trước"); return false; }
         if (!isPdf(f)) { message.error(PDF_ONLY); return false; }
         onUpload(f, at); return false;
       }}>
-        <Button icon={<UploadOutlined />}>{label}</Button>
+        <Button icon={<UploadOutlined />} loading={disabled}>{label}</Button>
       </Upload>
     </div>
   );
 }
 
 // ── Tải tài liệu không cần loại (HSMT / TBMT) ─────────────────────────────────────────
-function UploadPlain({ onUpload, label }: { onUpload: (file: File) => Promise<void>; label: string }) {
+function UploadPlain({ onUpload, label, disabled = false }: {
+  onUpload: (file: File) => Promise<void>; label: string; disabled?: boolean;
+}) {
   return (
-    <Upload showUploadList={false} accept=".pdf" beforeUpload={(f) => {
+    <Upload showUploadList={false} accept=".pdf" disabled={disabled} beforeUpload={(f) => {
       if (!isPdf(f)) { message.error(PDF_ONLY); return false; }
       onUpload(f); return false;
     }}>
-      <Button icon={<UploadOutlined />}>{label}</Button>
+      <Button icon={<UploadOutlined />} loading={disabled}>{label}</Button>
     </Upload>
   );
 }
@@ -128,6 +131,7 @@ export default function PackageDetail() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [evaluatedVids, setEvaluatedVids] = useState<Set<number>>(new Set());
+  const [uploading, setUploading] = useState(false);
   const artifactTypes = useArtifactTypes() as ArtOpt[];
 
   const load = () => {
@@ -146,14 +150,19 @@ export default function PackageDetail() {
     fd.append("file", file); fd.append("loai", loai);
     if (vendorId) fd.append("vendor_id", String(vendorId));
     if (artifactType) fd.append("artifact_type", artifactType);
+    // Cùng khuôn với nút "Chạy đánh giá": message có key cố định + duration 0 -> thông báo đứng
+    // yên cho tới khi bị chính nó thay thế, không xếp chồng.
+    message.loading({ content: `Đang tải "${file.name}" và xử lý…`, key: "upload", duration: 0 });
+    setUploading(true);
     try {
       const res = await api.post(`/packages/${id}/documents`, fd);
       const doc = res.data.data;
       if (doc?.artifact_validation?.match === false)
-        message.warning(`Nghi tải nhầm loại: ${doc.artifact_validation.note}`);
-      else message.success("Đã tải lên & xử lý");
+        message.warning({ content: `Nghi tải nhầm loại: ${doc.artifact_validation.note}`, key: "upload" });
+      else message.success({ content: "Đã tải lên & xử lý", key: "upload" });
       load();
-    } catch (e: any) { message.error(e.message); }
+    } catch (e: any) { message.error({ content: e.message, key: "upload" }); }
+    finally { setUploading(false); }
   };
   const changeDocType = async (docId: number, at: string) => {
     try { await api.patch(`/packages/${id}/documents/${docId}`, { artifact_type: at }); load(); }
@@ -205,18 +214,18 @@ export default function PackageDetail() {
         <div className="page-eyebrow">Hồ sơ mời thầu (HSMT) — nguồn để trích tiêu chí</div>
         {hsmt
           ? <DocRow d={hsmt} onDelete={deleteDoc} />
-          : <div style={{ marginTop: "var(--sp-2)" }}><UploadPlain label="Tải HSMT" onUpload={(f) => uploadDoc(f, "HSMT")} /></div>}
+          : <div style={{ marginTop: "var(--sp-2)" }}><UploadPlain label="Tải HSMT" onUpload={(f) => uploadDoc(f, "HSMT")} disabled={uploading} /></div>}
       </div>
       <div>
         <div className="page-eyebrow">Thông báo mời thầu (TBMT) — mốc đóng/mở thầu</div>
         {tbmt.map((d) => <DocRow key={d.id} d={d} onDelete={deleteDoc} />)}
-        <div style={{ marginTop: "var(--sp-2)" }}><UploadPlain label="Tải TBMT" onUpload={(f) => uploadDoc(f, "TBMT")} /></div>
+        <div style={{ marginTop: "var(--sp-2)" }}><UploadPlain label="Tải TBMT" onUpload={(f) => uploadDoc(f, "TBMT")} disabled={uploading} /></div>
       </div>
       <div>
         <div className="page-eyebrow">Tài liệu dùng chung — áp cho mọi nhà thầu</div>
         <DocTable docs={shared} artifactTypes={artifactTypes} onChangeType={changeDocType} onDelete={deleteDoc} />
         <UploadDoc artifactTypes={artifactTypes} label="Tải tài liệu dùng chung"
-          onUpload={(f, at) => uploadDoc(f, "HSDT", undefined, at)} />
+          onUpload={(f, at) => uploadDoc(f, "HSDT", undefined, at)} disabled={uploading} />
       </div>
     </div>
   );
@@ -256,7 +265,7 @@ export default function PackageDetail() {
       <DocTable docs={vendorDocs(v.id)} artifactTypes={artifactTypes}
         onChangeType={changeDocType} onDelete={deleteDoc} />
       <UploadDoc artifactTypes={artifactTypes} label="Tải hồ sơ nhà thầu"
-        onUpload={(f, at) => uploadDoc(f, "HSDT", v.id, at)} />
+        onUpload={(f, at) => uploadDoc(f, "HSDT", v.id, at)} disabled={uploading} />
     </div>
   );
 
