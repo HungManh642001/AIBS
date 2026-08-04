@@ -18,9 +18,11 @@ from services.hsdt_pipeline import evaluate_vendor  # tests monkeypatch tên nà
 from services.ai_cache import DbCallCache, xoa_ai_cache
 from services.ocr_cache import DocumentOcrCache, xoa_cache
 from services import artifact_catalog
+from experiment.evaluate.evaluate import _HO_SO_CHI_LIEN_DANH  # nguồn sự thật duy nhất, xem docstring _lech_hinh_thuc
 from experiment.evaluate.ingest import DPI_MAC_DINH, ingest_cache_key
 from experiment.evaluate.route import _norm
 from experiment.evaluate.schema import (
+    HINH_THUC_DOC_LAP, HINH_THUC_LIEN_DANH,
     KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_KHONG_AP_DUNG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU,
     PackageContext, VendorContext,
 )
@@ -71,9 +73,13 @@ def _ho_so_chua_nop(db: Session, package_id: int,
 
     - Tài liệu DÙNG CHUNG (webform = kết quả mở thầu) do bên mời thầu công bố cho cả gói, không
       phải thứ nhà thầu nộp — báo thiếu là quy kết sai.
-    - Loại mà MỌI nội dung trỏ tới nó đều `ap_dung` lệch hình thức của nhà thầu (vd thỏa thuận
-      liên danh với nhà thầu độc lập). Đọc cùng dữ liệu mà `_gate_khong_ap_dung` đọc, KHÔNG cài
-      lại phép gate.
+    - Loại mà MỌI nội dung trỏ tới nó đều lệch hình thức của nhà thầu. "Lệch" xét CẢ HAI tín hiệu
+      mà `_gate_khong_ap_dung` xét (KHÔNG cài lại phép gate, chỉ đọc lại đúng 2 tín hiệu đó):
+      trường `ap_dung` do decompose gán, VÀ loại hồ sơ nằm trong `_HO_SO_CHI_LIEN_DANH` (hiển
+      nhiên chỉ-liên-danh, vd `thoa_thuan_lien_danh`). Cần tín hiệu thứ hai vì `ap_dung` do LLM
+      gán lúc decompose nên có thể bị bỏ trống — nếu banner chỉ dựa `ap_dung`, một tiêu chí bị
+      quên gán cờ sẽ khiến banner báo "chưa nộp" ngay trong khi verdict trên cùng trang đã "không
+      áp dụng", hai tín hiệu mâu thuẫn nhau trước mắt chuyên gia.
 
     Chưa dò được hình thức -> KHÔNG trừ theo hình thức (fail-safe: thà báo thừa còn hơn giấu mất
     một loại hồ sơ thật sự thiếu).
@@ -101,7 +107,7 @@ def _ho_so_chua_nop(db: Session, package_id: int,
             nds = [n for n in c.noi_dung if _norm(n.hsdt_kiem_tra) == _norm(ma)]
             if not nds or not hinh_thuc:
                 muc["chi_hinh_thuc_khac"] = False
-            elif any(not _lech_hinh_thuc(n.ap_dung, hinh_thuc) for n in nds):
+            elif any(not _lech_hinh_thuc(n, hinh_thuc) for n in nds):
                 muc["chi_hinh_thuc_khac"] = False
 
     return [{"loai_ho_so": ma, "tieu_chi": muc["tieu_chi"]}
@@ -109,10 +115,20 @@ def _ho_so_chua_nop(db: Session, package_id: int,
             if _norm(ma) not in da_nhan and not muc["chi_hinh_thuc_khac"]]
 
 
-def _lech_hinh_thuc(ap_dung: str, hinh_thuc: str) -> bool:
-    """Nội dung chỉ áp dụng một hình thức, mà nhà thầu thuộc hình thức KHÁC?"""
-    ap = canon_hinh_thuc(ap_dung or "")
-    return bool(ap) and ap != hinh_thuc
+def _lech_hinh_thuc(nd: models.RubricNoiDung, hinh_thuc: str) -> bool:
+    """Nội dung chỉ áp dụng một hình thức, mà nhà thầu thuộc hình thức KHÁC?
+
+    Cùng 2 tín hiệu mà `_gate_khong_ap_dung` (`experiment/evaluate/evaluate.py`) dùng để phát
+    verdict "không áp dụng": `ap_dung` (tường minh, do decompose gán) VÀ `hsdt_kiem_tra` nằm
+    trong `_HO_SO_CHI_LIEN_DANH` (ngầm định, hiển nhiên chỉ-liên-danh dù `ap_dung` bị bỏ trống).
+    Chỉ xét `ap_dung` thì đúng logic decompose lý tưởng nhưng sai thực tế: `ap_dung` do LLM gán,
+    thiếu sót ở đó là chuyện thường, và banner phải luôn khớp với verdict lõi eval đã phát ra.
+    """
+    ap = canon_hinh_thuc(nd.ap_dung or "")
+    chi_lien_danh = ap == HINH_THUC_LIEN_DANH or _norm(nd.hsdt_kiem_tra) in _HO_SO_CHI_LIEN_DANH
+    chi_doc_lap = ap == HINH_THUC_DOC_LAP
+    return ((hinh_thuc == HINH_THUC_DOC_LAP and chi_lien_danh)
+            or (hinh_thuc == HINH_THUC_LIEN_DANH and chi_doc_lap))
 
 
 def _hsdt_files(pkg: models.ProcurementPackage,

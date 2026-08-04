@@ -673,3 +673,106 @@ def test_ho_so_chua_nop_rong_khi_nop_du(client, monkeypatch):
     assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
     v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
     assert v["ho_so_chua_nop"] == []
+
+
+def _seed_chi_lien_danh_khong_gan_co(client) -> int:
+    """1 tiêu chí thỏa thuận liên danh mà decompose QUÊN gán `ap_dung` — mô phỏng thiếu sót thật
+    của LLM lúc bóc tiêu chí (`ap_dung` không phải trường bắt buộc, khác `_HO_SO_CHI_LIEN_DANH`
+    là hằng CODE kiểm soát)."""
+    pid = client.post("/api/v1/packages",
+                      json={"ma_so": "G-LD0", "ten": "g", "vendors": ["A"]}).json()["data"]["id"]
+    client.put(f"/api/v1/packages/{pid}/rubric", json={"criteria": [
+        {"nhom": "hop_le", "ten": "Thỏa thuận liên danh", "yeu_cau_goc": "Có thỏa thuận",
+         "hsdt_can_kiem_tra": ["thoa_thuan_lien_danh"],
+         "noi_dung_can_kiem_tra": [{
+             "noi_dung_kiem_tra": "Có thỏa thuận", "hsdt_kiem_tra": "thoa_thuan_lien_danh",
+             "yeu_cau": "có", "can_lam_ro": "", "can_tra_cuu": False, "thong_tin_bo_sung": "",
+             "nguon": "", "can_review": False}]},   # KHÔNG có "ap_dung" -> mặc định ""
+    ]})
+    return pid
+
+
+def test_ho_so_chua_nop_khong_bao_lien_danh_du_ap_dung_rong_khi_nha_thau_doc_lap(client, monkeypatch):
+    """Ca chính của fix: decompose quên gán ap_dung='lien_danh', nhưng thoa_thuan_lien_danh nằm
+    trong _HO_SO_CHI_LIEN_DANH (evaluate.py) nên lõi eval vẫn phát verdict 'không áp dụng' cho nhà
+    thầu độc lập. Banner phải im lặng theo, không được mâu thuẫn với verdict đó."""
+    import routers.evaluation as re_
+
+    pid = _seed_chi_lien_danh_khong_gan_co(client)
+    monkeypatch.setattr(re_, "evaluate_vendor", _fake_eval_nhan_don("độc lập"))
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+    assert "thoa_thuan_lien_danh" not in [x["loai_ho_so"] for x in v["ho_so_chua_nop"]]
+
+
+def test_ho_so_chua_nop_van_bao_lien_danh_ap_dung_rong_khi_nha_thau_lien_danh(client, monkeypatch):
+    """Đối chứng: tín hiệu _HO_SO_CHI_LIEN_DANH không được nới lỏng tới mức nuốt mất phát hiện
+    thật — nhà thầu liên danh chưa nộp thì vẫn phải báo, kể cả khi ap_dung bị bỏ trống."""
+    import routers.evaluation as re_
+
+    pid = _seed_chi_lien_danh_khong_gan_co(client)
+    monkeypatch.setattr(re_, "evaluate_vendor", _fake_eval_nhan_don("liên danh"))
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+    assert "thoa_thuan_lien_danh" in [x["loai_ho_so"] for x in v["ho_so_chua_nop"]]
+
+
+def test_ho_so_chua_nop_van_bao_lien_danh_ap_dung_rong_khi_hinh_thuc_khong_ro(client, monkeypatch):
+    """Fail-safe hình thức rỗng vẫn đứng vững dù có thêm tín hiệu _HO_SO_CHI_LIEN_DANH: chưa biết
+    nhà thầu là gì thì không được suy diễn — không trừ gì."""
+    import routers.evaluation as re_
+
+    pid = _seed_chi_lien_danh_khong_gan_co(client)
+    monkeypatch.setattr(re_, "evaluate_vendor", _fake_eval_nhan_don(""))
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+    assert "thoa_thuan_lien_danh" in [x["loai_ho_so"] for x in v["ho_so_chua_nop"]]
+
+
+def test_ho_so_chua_nop_giu_loai_khong_co_noi_dung_tro_toi(client, monkeypatch):
+    """hsdt_can_kiem_tra khai một loại mà KHÔNG nội dung nào của tiêu chí trỏ tới (`nds` rỗng) ->
+    không đủ thông tin để xét ap_dung, nên fail-safe: vẫn coi là đang áp dụng, giữ trong ds thiếu."""
+    import routers.evaluation as re_
+
+    pid = client.post("/api/v1/packages",
+                      json={"ma_so": "G-ND0", "ten": "g", "vendors": ["A"]}).json()["data"]["id"]
+    client.put(f"/api/v1/packages/{pid}/rubric", json={"criteria": [
+        {"nhom": "hop_le", "ten": "Giấy ủy quyền", "yeu_cau_goc": "Có giấy",
+         "hsdt_can_kiem_tra": ["giay_uy_quyen"],   # khai nhưng KHÔNG noi_dung nào trỏ tới
+         "noi_dung_can_kiem_tra": [{
+             "noi_dung_kiem_tra": "Có đơn", "hsdt_kiem_tra": "don_du_thau", "yeu_cau": "có",
+             "can_lam_ro": "", "can_tra_cuu": False, "thong_tin_bo_sung": "", "nguon": "",
+             "can_review": False}]},
+    ]})
+    monkeypatch.setattr(re_, "evaluate_vendor", _fake_eval_nhan_don("độc lập"))
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+    assert "giay_uy_quyen" in [x["loai_ho_so"] for x in v["ho_so_chua_nop"]]
+
+
+def test_ho_so_chua_nop_giu_loai_khi_mot_trong_hai_tieu_chi_ap_dung_moi_hinh_thuc(client, monkeypatch):
+    """Một loại hồ sơ (không thuộc _HO_SO_CHI_LIEN_DANH) được 2 tiêu chí tham chiếu: tiêu chí A
+    chỉ áp dụng liên danh, tiêu chí B áp dụng mọi hình thức -> với nhà thầu độc lập, KHÔNG phải
+    MỌI nội dung đều lệch (còn tiêu chí B) nên loại này vẫn coi là áp dụng, chưa nộp vẫn phải báo."""
+    import routers.evaluation as re_
+
+    pid = client.post("/api/v1/packages",
+                      json={"ma_so": "G-2TC", "ten": "g", "vendors": ["A"]}).json()["data"]["id"]
+    client.put(f"/api/v1/packages/{pid}/rubric", json={"criteria": [
+        {"nhom": "hop_le", "ten": "Ủy quyền ký thỏa thuận liên danh", "yeu_cau_goc": "Có A",
+         "hsdt_can_kiem_tra": ["giay_uy_quyen"],
+         "noi_dung_can_kiem_tra": [{
+             "noi_dung_kiem_tra": "Có A", "hsdt_kiem_tra": "giay_uy_quyen", "yeu_cau": "có",
+             "can_lam_ro": "", "can_tra_cuu": False, "thong_tin_bo_sung": "", "nguon": "",
+             "can_review": False, "ap_dung": "lien_danh"}]},
+        {"nhom": "hop_le", "ten": "Ủy quyền ký hồ sơ (mọi hình thức)", "yeu_cau_goc": "Có B",
+         "hsdt_can_kiem_tra": ["giay_uy_quyen"],
+         "noi_dung_can_kiem_tra": [{
+             "noi_dung_kiem_tra": "Có B", "hsdt_kiem_tra": "giay_uy_quyen", "yeu_cau": "có",
+             "can_lam_ro": "", "can_tra_cuu": False, "thong_tin_bo_sung": "", "nguon": "",
+             "can_review": False}]},   # KHÔNG gán ap_dung -> áp dụng mọi hình thức
+    ]})
+    monkeypatch.setattr(re_, "evaluate_vendor", _fake_eval_nhan_don("độc lập"))
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+    assert "giay_uy_quyen" in [x["loai_ho_so"] for x in v["ho_so_chua_nop"]]
