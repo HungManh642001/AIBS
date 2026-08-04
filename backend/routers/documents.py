@@ -75,8 +75,15 @@ async def upload_document(
         pages = documents.extract_document(content, file_kind)
         doc.extracted_text = json.dumps(pages, ensure_ascii=False)
         doc.trang_thai_ocr = "hoan_thanh"
-        if doc.artifact_type:
+        # `pages` rỗng = bản scan (extract_document cố ý không OCR ở bước upload, để vision đọc ảnh
+        # lúc chấm). Gọi LLM kiểm loại trên nội dung RỖNG vừa bắt người dùng chờ vô ích, vừa sinh
+        # cảnh báo "nghi tải nhầm loại" giả. Không có text thì không có gì để phán -> để None.
+        if doc.artifact_type and pages:
             doc.artifact_validation = await validate_artifact(pages, doc.artifact_type)
+        else:
+            # `default=dict` của cột (models.py) đã gán "{}" ở lần commit đầu tiên (dòng phía
+            # trên) — không ghi đè thì "{}" giả một kết quả kiểm loại trong khi không có.
+            doc.artifact_validation = None
     except Exception as exc:  # graceful degradation (NFR 5.3)
         doc.trang_thai_ocr = f"loi: {exc}"
     db.commit()
@@ -108,11 +115,10 @@ async def update_document_type(package_id: int, doc_id: int, payload: dict[str, 
         # thì xóa tài liệu, không để nó tồn tại ở trạng thái không chấm được.
         return fail("Không thể bỏ trống loại hồ sơ — chọn loại khác hoặc xóa tài liệu", 400)
     doc.artifact_type = artifact_type or None
-    if artifact_type:
-        pages = json.loads(doc.extracted_text or "[]")
-        doc.artifact_validation = await validate_artifact(pages, artifact_type)
-    else:
-        doc.artifact_validation = None
+    pages = json.loads(doc.extracted_text or "[]")
+    # Cùng lý do như lúc upload: file scan có extracted_text="[]" nên không có căn cứ để kiểm.
+    doc.artifact_validation = (await validate_artifact(pages, artifact_type)
+                               if artifact_type and pages else None)
     db.commit()
     db.refresh(doc)
     return ok(_doc_out(doc))

@@ -125,3 +125,115 @@ def test_patch_khong_cho_xoa_trang_loai_ho_so(client):
     assert r.status_code == 400
     got = client.get(f"/api/v1/packages/{pid}/documents").json()["data"]
     assert got[0]["artifact_type"] == "don_du_thau"   # giữ nguyên giá trị cũ
+
+
+def _scan_pdf() -> bytes:
+    """PDF KHÔNG có text nhúng -> classify_pdf trả 'pdf_scan' (ngưỡng 20 ký tự)."""
+    doc = fitz.open()
+    doc.new_page()          # trang trắng, không chèn chữ
+    return doc.tobytes()
+
+
+def test_upload_scan_khong_goi_llm_kiem_loai(client, monkeypatch):
+    """Bản scan không có text để phán -> gọi LLM là vừa tốn thời gian chờ vừa sinh cảnh báo giả."""
+    import routers.documents as rd
+
+    goi = []
+
+    async def spy(pages, declared_type):
+        goi.append(declared_type)
+        return {"match": False, "suggested_type": "", "confidence": 0.0, "note": "x"}
+
+    monkeypatch.setattr(rd, "validate_artifact", spy)
+    p = client.post("/api/v1/packages",
+                    json={"ma_so": "G-SC", "ten": "G", "vendors": ["A"]}).json()["data"]
+    pid, vid = p["id"], p["vendors"][0]["id"]
+    r = client.post(f"/api/v1/packages/{pid}/documents",
+                    files={"file": ("scan.pdf", _scan_pdf(), "application/pdf")},
+                    data={"loai": "HSDT", "vendor_id": str(vid),
+                          "artifact_type": "don_du_thau"})
+    assert r.status_code == 200
+    doc = r.json()["data"]
+    assert doc["file_kind"] == "pdf_scan"
+    assert goi == []                              # KHÔNG call LLM nào
+    assert doc["artifact_validation"] is None     # để None, KHÔNG bịa kết quả
+    assert doc["artifact_type"] == "don_du_thau"  # loại hồ sơ vẫn được ghi
+
+
+def test_upload_pdf_co_text_van_kiem_loai_nhu_cu(client, monkeypatch):
+    """Hồi quy: file có text nhúng vẫn được kiểm loại — đây là ca kiểm thật sự có căn cứ."""
+    import routers.documents as rd
+
+    goi = []
+
+    async def spy(pages, declared_type):
+        goi.append(declared_type)
+        return {"match": True, "suggested_type": "don_du_thau", "confidence": 0.9, "note": "ok"}
+
+    monkeypatch.setattr(rd, "validate_artifact", spy)
+    p = client.post("/api/v1/packages",
+                    json={"ma_so": "G-TX", "ten": "G", "vendors": ["A"]}).json()["data"]
+    pid, vid = p["id"], p["vendors"][0]["id"]
+    r = client.post(f"/api/v1/packages/{pid}/documents",
+                    files={"file": ("don.pdf", _text_pdf("Đơn dự thầu của nhà thầu"),
+                                    "application/pdf")},
+                    data={"loai": "HSDT", "vendor_id": str(vid),
+                          "artifact_type": "don_du_thau"})
+    assert r.status_code == 200
+    assert goi == ["don_du_thau"]
+    assert r.json()["data"]["artifact_validation"]["match"] is True
+
+
+def test_doi_loai_ho_so_tren_file_scan_khong_goi_llm(client, monkeypatch):
+    """PATCH đổi loại: file scan có extracted_text='[]' -> mỗi lần đổi lại tốn 1 call vô ích."""
+    import routers.documents as rd
+
+    p = client.post("/api/v1/packages",
+                    json={"ma_so": "G-PT", "ten": "G", "vendors": ["A"]}).json()["data"]
+    pid, vid = p["id"], p["vendors"][0]["id"]
+    doc_id = client.post(f"/api/v1/packages/{pid}/documents",
+                         files={"file": ("scan.pdf", _scan_pdf(), "application/pdf")},
+                         data={"loai": "HSDT", "vendor_id": str(vid),
+                               "artifact_type": "don_du_thau"}).json()["data"]["id"]
+
+    goi = []
+
+    async def spy(pages, declared_type):
+        goi.append(declared_type)
+        return {"match": True, "suggested_type": declared_type, "confidence": 0.9, "note": "ok"}
+
+    monkeypatch.setattr(rd, "validate_artifact", spy)
+    r = client.patch(f"/api/v1/packages/{pid}/documents/{doc_id}",
+                     json={"artifact_type": "bao_dam_du_thau"})
+    assert r.status_code == 200
+    assert goi == []
+    assert r.json()["data"]["artifact_type"] == "bao_dam_du_thau"
+    assert r.json()["data"]["artifact_validation"] is None
+
+
+def test_doi_loai_ho_so_tren_file_co_text_van_kiem_nhu_cu(client, monkeypatch):
+    """Hồi quy chiều còn lại: file có text nhúng thì PATCH vẫn kiểm loại như trước."""
+    import routers.documents as rd
+
+    p = client.post("/api/v1/packages",
+                    json={"ma_so": "G-PX", "ten": "G", "vendors": ["A"]}).json()["data"]
+    pid, vid = p["id"], p["vendors"][0]["id"]
+
+    goi = []
+
+    async def spy(pages, declared_type):
+        goi.append(declared_type)
+        return {"match": True, "suggested_type": declared_type, "confidence": 0.9, "note": "ok"}
+
+    monkeypatch.setattr(rd, "validate_artifact", spy)
+    doc_id = client.post(f"/api/v1/packages/{pid}/documents",
+                         files={"file": ("don.pdf", _text_pdf("Đơn dự thầu của nhà thầu"),
+                                         "application/pdf")},
+                         data={"loai": "HSDT", "vendor_id": str(vid),
+                               "artifact_type": "don_du_thau"}).json()["data"]["id"]
+    goi.clear()                                   # bỏ lần gọi lúc upload, chỉ đo lần PATCH
+    r = client.patch(f"/api/v1/packages/{pid}/documents/{doc_id}",
+                     json={"artifact_type": "bao_dam_du_thau"})
+    assert r.status_code == 200
+    assert goi == ["bao_dam_du_thau"]
+    assert r.json()["data"]["artifact_validation"]["match"] is True
