@@ -66,26 +66,42 @@ async def test_validate_failure_becomes_error(monkeypatch):
 async def test_ai_call_khong_chen_event_loop(monkeypatch):
     """Call LLM đồng bộ nằm trong async def sẽ chẹn loop -> mọi gather thành tuần tự.
 
-    Đo bằng chính triệu chứng: hai call chạy chồng nhau thì tổng thời gian phải xấp xỉ MỘT call,
-    không phải hai.
+    Đo bằng chính triệu chứng cần chứng minh, KHÔNG bằng đồng hồ (đồng hồ chập chờn theo tải máy:
+    asyncio.to_thread khởi tạo ThreadPoolExecutor ở lần dùng đầu trong tiến trình, chi phí đó có
+    thể ăn hết biên thời gian mà không phải do code hỏng).
+
+    Hàm giả CHẶN THẬT SỰ cho tới khi đủ 2 luồng cùng vào (threading.Barrier) rồi mới nhả. Nếu event
+    loop bị chẹn thì call thứ hai không bao giờ vào kịp trong lúc call đầu đang giữ luồng ->
+    barrier hết hạn -> BrokenBarrierError, đỏ rõ ràng, không phụ thuộc tốc độ máy.
     """
     import asyncio
-    import time
+    import threading
 
     import config
     from services import ai_client
 
+    # Phải >= 2: nếu chỉ 1, CHÍNH cổng song song sẽ tuần tự hoá hai call -> barrier timeout vì lý
+    # do sai (cổng hẹp), không phải vì event loop bị chẹn.
     monkeypatch.setenv("ABES_AI_SONG_SONG", "4")
     config.get_settings.cache_clear()
     monkeypatch.setattr(ai_client.settings, "ai_mock", False)
 
+    dang_bay = 0
+    dinh = 0
+    khoa = threading.Lock()
+    rao = threading.Barrier(2, timeout=5)   # hàm giả chạy TRONG thread do to_thread bọc
+
     def cham(system, prompt, max_tokens=None):
-        time.sleep(0.20)                      # ĐỒNG BỘ, đúng như litellm.completion
+        nonlocal dang_bay, dinh
+        with khoa:
+            dang_bay += 1
+            dinh = max(dinh, dang_bay)
+        rao.wait()                          # chặn tới khi ĐỦ 2 luồng cùng vào -> chồng lấn thật
+        with khoa:
+            dang_bay -= 1
         return '{"ok": 1}'
 
     monkeypatch.setattr(ai_client, "_litellm_completion", cham)
-    t0 = time.perf_counter()
     await asyncio.gather(ai_client.ai_call("s", "p", mock_key="k"),
                          ai_client.ai_call("s", "p2", mock_key="k"))
-    trong = time.perf_counter() - t0
-    assert trong < 0.35, f"hai call mất {trong:.2f}s — vẫn đang tuần tự"
+    assert dinh == 2, f"đỉnh đồng thời = {dinh} — vẫn đang tuần tự, call LLM đang chẹn event loop"

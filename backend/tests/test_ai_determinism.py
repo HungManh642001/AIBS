@@ -60,26 +60,43 @@ def test_seed_co_trong_cau_hinh():
 
 
 async def test_vision_khong_chen_event_loop(monkeypatch):
-    """Đường vision cũng phải nhả loop — nó là đường tốn nhất (ingest từng trang)."""
+    """Đường vision cũng phải nhả loop — nó là đường tốn nhất (ingest từng trang).
+
+    Đo bằng đỉnh đồng thời thật (threading.Barrier), không bằng đồng hồ — xem docstring
+    `test_ai_call_khong_chen_event_loop` (tests/test_ai_call.py) cho lý do đổi cách đo.
+    """
     import asyncio
     import sys
-    import time
+    import threading
 
     import config
     from experiment.evaluate import vision
 
+    dang_bay = 0
+    dinh = 0
+    khoa = threading.Lock()
+    rao = threading.Barrier(2, timeout=5)   # completion() chạy TRONG thread do to_thread bọc
+
     class _Cham:
         @staticmethod
         def completion(**kw):
-            time.sleep(0.20)
+            nonlocal dang_bay, dinh
+            with khoa:
+                dang_bay += 1
+                dinh = max(dinh, dang_bay)
+            rao.wait()                      # chặn tới khi ĐỦ 2 luồng cùng vào -> chồng lấn thật
+            with khoa:
+                dang_bay -= 1
             return {"choices": [{"message": {"content": '{"text": "x"}'}, "finish_reason": "stop"}]}
 
     monkeypatch.setitem(sys.modules, "litellm", _Cham)
     monkeypatch.setenv("ABES_AI_MOCK", "false")
+    # Phải >= 2: nếu chỉ 1, CHÍNH cổng song song sẽ tuần tự hoá hai call -> barrier timeout vì lý
+    # do sai (cổng hẹp), không phải vì event loop bị chẹn.
     monkeypatch.setenv("ABES_AI_SONG_SONG", "4")
     config.get_settings.cache_clear()
 
-    t0 = time.perf_counter()
     await asyncio.gather(vision.default_vision_fn("s", "p"), vision.default_vision_fn("s", "p2"))
-    trong = time.perf_counter() - t0
-    assert trong < 0.35, f"hai call vision mất {trong:.2f}s — vẫn đang tuần tự"
+    assert dinh == 2, (
+        f"đỉnh đồng thời = {dinh} — vẫn đang tuần tự, call LLM đang chẹn event loop"
+    )
