@@ -1,6 +1,7 @@
 """Tầng C+D — đánh giá từng nội dung (đối chiếu HSDT vs chuẩn HSMT) + roll-up tiêu chí."""
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from services import artifact_catalog
@@ -264,27 +265,36 @@ async def evaluate_criterion(crit: dict[str, Any], pages: list[PageRecord],
     """
     ten = crit.get("ten", "")
     log.info("  [eval] %s", ten)
-    verdicts: list[Verdict] = []
     nds = crit.get("noi_dung_can_kiem_tra", [])
     ten_nds = [str(n.get("noi_dung_kiem_tra", "")) for n in nds]
     skills = registry.matching(crit) if registry is not None else []
     luat_cho_nd = _phan_luat_cho_nd(skills, nds)
     by_type_ = by_type if by_type is not None else pages_by_type(pages)
+    # Pha 1 (đồng bộ): gate N/A và chọn luật — không tốn call, phải quyết TRƯỚC khi thả song song.
+    # Verdict N/A giữ chỗ sẵn theo đúng chỉ số để thứ tự cuối cùng khớp thứ tự nội dung.
+    cho: list[Verdict | None] = []
+    viec: list[tuple[int, Any]] = []          # (chỉ số, coroutine)
     for i, nd in enumerate(nds):
         gated = _gate_khong_ap_dung(nd, profile, crit)   # N/A trước luật: khỏi tốn call
         if gated is not None:
-            verdicts.append(gated)
+            cho.append(gated)
             continue
+        cho.append(None)
         skill = luat_cho_nd.get(i)
         if skill is not None:
-            verdicts.append(await run_skill(skill, by_type_, vendor_ctx, crit, vision_fn, nd=nd))
+            viec.append((i, run_skill(skill, by_type_, vendor_ctx, crit, vision_fn, nd=nd)))
             continue
         extra = crit.get("hsdt_can_kiem_tra", [])   # eval tự lọc ra tài liệu ngoài hồ sơ chính
         anh_em = [t for j, t in enumerate(ten_nds) if j != i and t]   # 1 gốc -> N need: phân công rõ
-        verdicts.append(await eval_noi_dung(nd, pages, vision_fn, extra_types=extra,
-                                            vendor_ctx=vendor_ctx, profile=profile,
-                                            yeu_cau_goc=str(crit.get("yeu_cau_goc", "")),
-                                            anh_em=anh_em or None))
+        viec.append((i, eval_noi_dung(nd, pages, vision_fn, extra_types=extra,
+                                      vendor_ctx=vendor_ctx, profile=profile,
+                                      yeu_cau_goc=str(crit.get("yeu_cau_goc", "")),
+                                      anh_em=anh_em or None)))
+
+    # Pha 2 (song song): gather giữ nguyên thứ tự nên khớp lại theo chỉ số đã ghi.
+    for (i, _), v in zip(viec, await asyncio.gather(*(c for _, c in viec))):
+        cho[i] = v
+    verdicts: list[Verdict] = [v for v in cho if v is not None]
     xet = [v for v in verdicts if v.ket_qua != KET_QUA_KHONG_AP_DUNG]   # N/A trung tính
     kq = {v.ket_qua for v in xet}
     if KET_QUA_KHONG in kq:
