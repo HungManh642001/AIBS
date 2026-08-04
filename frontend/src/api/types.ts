@@ -50,7 +50,13 @@ export interface CriterionEval {
 export interface EvalSummary {
   n_tieu_chi: number; n_dat: number; n_khong_dat: number; n_can_lam_ro: number;
   n_khong_ap_dung?: number;
-  /** Khoản mục CON của n_can_lam_ro: số tiêu chí có ít nhất một nội dung thiếu hồ sơ. */
+  /** LÁT CẮT ĐỘC LẬP: số tiêu chí có ít nhất một nội dung "thiếu hồ sơ".
+   *
+   *  KHÔNG phải khoản mục con của n_can_lam_ro và KHÔNG tham gia đẳng thức
+   *  n_tieu_chi = n_dat + n_khong_dat + n_can_lam_ro + n_khong_ap_dung: một tiêu chí vừa có nội
+   *  dung "không đạt" vừa có nội dung "thiếu hồ sơ" sẽ roll-up thành "không đạt" nhưng vẫn được
+   *  đếm ở đây. Vì vậy nó có thể LỚN HƠN n_can_lam_ro. Trình bày bằng Tag/cột RIÊNG, không lồng
+   *  vào ô "cần làm rõ" (xem docstring _summary ở backend/routers/evaluation.py). */
   n_thieu_ho_so?: number;
 }
 export interface VendorProfile {

@@ -7,19 +7,24 @@ import type { CriterionEval, EvalResultsPayload, Verdict, VendorEval } from "../
 import { useArtifactLabel } from "../api/artifacts";
 import Loader from "../components/Loader";
 
+// Giá trị ket_qua cấp VERDICT (nội dung kiểm tra). Phải có "thiếu hồ sơ": lõi eval phát verdict
+// này thật, và đây là chỗ DUY NHẤT chuyên gia nhìn thấy nó — cấp tiêu chí không bao giờ mang giá
+// trị này vì _rollup cuộn nó thành "cần làm rõ". Thiếu trong danh sách thì ô Select hiện chữ trần
+// không nhãn, và mở ra chỉ thấy 4 giá trị khác -> chuyên gia không đặt lại được đúng giá trị cũ.
 const KQ_OPTS = [
   { value: "đạt", label: "Đạt" },
   { value: "không đạt", label: "Không đạt" },
   { value: "cần làm rõ", label: "Cần làm rõ" },
+  { value: "thiếu hồ sơ", label: "Thiếu hồ sơ" },   // nhà thầu không nộp, khác "AI chưa đủ căn cứ"
   { value: "không áp dụng", label: "Không áp dụng" },
 ];
 
+// Chỉ dùng cho pill cấp TIÊU CHÍ, nên không có nhánh "thiếu hồ sơ" (xem KQ_OPTS ở trên).
 function pillClass(kq: string): string {
   if (kq === "đạt") return "dat";
   if (kq === "không đạt") return "khong-dat";
   if (kq === "lỗi") return "loi";
   if (kq === "không áp dụng") return "khong-ap-dung";   // trung tính (xám), khác cam "cần làm rõ"
-  if (kq === "thiếu hồ sơ") return "thieu-ho-so";       // nhà thầu không nộp, khác "AI chưa đủ căn cứ"
   return "can-lam-ro";
 }
 
