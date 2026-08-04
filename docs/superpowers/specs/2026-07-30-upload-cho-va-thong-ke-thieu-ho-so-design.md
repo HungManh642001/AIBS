@@ -113,16 +113,36 @@ Hai phép trừ đều có lý do nghiệp vụ cụ thể:
   phải thứ nhà thầu nộp. Báo "nhà thầu chưa nộp webform" là quy kết sai. Dùng
   `artifact_catalog.la_dung_chung(code)` — cùng hàm mà lõi eval dùng để lọc dữ liệu nhà thầu khác
   ra khỏi prompt, nên không phát sinh nguồn sự thật thứ hai.
-- **Loại chỉ áp dụng hình thức khác.** Một loại bị loại khỏi tập yêu cầu khi **mọi** nội dung trỏ
-  tới nó đều có `ap_dung` lệch với `hinh_thuc` đã dò của nhà thầu (`HsdtVendorEval.hinh_thuc`).
-  Nhà thầu độc lập không bị báo thiếu `thoa_thuan_lien_danh`. Đọc `ap_dung` từ
-  `RubricNoiDung.ap_dung` (`models.py:113`) — **không** cài lại phép gate của
-  `evaluate._gate_khong_ap_dung`; chỉ đọc cùng dữ liệu đầu vào mà nó đọc.
-  `hinh_thuc` rỗng (không rõ) → **không trừ gì** (fail-safe: thà báo thừa còn hơn giấu mất một
-  loại hồ sơ thật sự thiếu).
+- **Loại chỉ áp dụng hình thức khác.** Một loại bị loại khỏi tập yêu cầu khi **mọi** nội dung xét
+  đến đều lệch hình thức của nhà thầu (`HsdtVendorEval.hinh_thuc`). Nhà thầu độc lập không bị báo
+  thiếu `thoa_thuan_lien_danh`. `hinh_thuc` rỗng (không rõ) → **không trừ gì** (fail-safe: thà báo
+  thừa còn hơn giấu mất một loại hồ sơ thật sự thiếu).
+
+  > **Sửa sau review (2026-07-30, chủ dự án quyết):** bản đầu chỉ đọc trường `ap_dung`. Thiếu.
+  > `evaluate._gate_khong_ap_dung` còn coi mọi nội dung có `hsdt_kiem_tra ∈ _HO_SO_CHI_LIEN_DANH`
+  > là chỉ-liên-danh **bất kể `ap_dung`** — fallback đó tồn tại vì `ap_dung` do LLM gán lúc
+  > decompose nên có thể khuyết. Chỉ đọc `ap_dung` thì khi decompose quên gán cờ, cùng một trang sẽ
+  > hiện verdict "không áp dụng" mà banner vẫn báo "chưa nộp thỏa thuận liên danh". Quyết định: xét
+  > **cả hai tín hiệu**, **import `_HO_SO_CHI_LIEN_DANH`** dùng chung thay vì chép cứng chuỗi.
+  >
+  > Review cuối nhánh bổ sung một lỗ cùng loại: loại hồ sơ chỉ đóng vai trò **tài liệu đối chiếu**
+  > không có nội dung nào trỏ tới nó, nên luôn rơi vào fail-safe và luôn bị báo — kể cả khi cả tiêu
+  > chí đã "không áp dụng". Sửa: không có nội dung nào trỏ tới loại đó thì lùi lên xét **cả tiêu
+  > chí**; mọi nội dung của tiêu chí đều lệch hình thức → không kéo tài liệu đối chiếu vào. Tiêu chí
+  > trộn nội dung chung với nội dung liên danh thì VẪN giữ loại.
 
 Mỗi mục trong tập CHƯA NỘP kèm **tên các tiêu chí cần loại hồ sơ đó**, để chuyên gia thấy ngay hệ
 quả thay vì phải tự tra ngược.
+
+**Mã loại hồ sơ phải ép về catalog** (`artifact_catalog.resolve_code`, giữ mã gốc khi không tra
+được): `hsdt_can_kiem_tra` do LLM sinh và không được snap ở đâu cả, nên alias của `webform`
+(`ket_qua_mo_thau`, `bien_ban_mo_thau`) sẽ trượt `la_dung_chung` và quy kết nhà thầu chưa nộp tài
+liệu của **bên mời thầu** — đúng thứ phép trừ này sinh ra để chặn.
+
+**Nhà thầu chưa được chấm lần nào** (`HsdtVendorEval` chưa tồn tại) → trả **danh sách rỗng**. Không
+có `ho_so_nhan_duoc` nghĩa là chưa có căn cứ, không phải nhà thầu nộp thiếu; báo "chưa nộp" lúc đó
+là khẳng định sai sự thật, và mâu thuẫn với chính thẻ "Chưa có kết quả đánh giá" ngay cạnh. Khác
+hẳn ca đã chấm mà `ho_so_nhan_duoc` rỗng — ca đó vẫn phải báo.
 
 Payload `results` thêm cho mỗi nhà thầu:
 
@@ -136,25 +156,36 @@ Payload `results` thêm cho mỗi nhà thầu:
 
 Vì roll-up không bao giờ cho tiêu chí kết quả `"thiếu hồ sơ"`, ô đếm phải định nghĩa lại cho đúng:
 
-**Đếm số TIÊU CHÍ có ít nhất một verdict `"thiếu hồ sơ"`**, và trình bày như **khoản mục con của
-"cần làm rõ"**, không phải ô đếm ngang hàng:
+**Đếm số TIÊU CHÍ có ít nhất một verdict `"thiếu hồ sơ"`**, đơn vị TIÊU CHÍ để cùng đơn vị với các
+ô còn lại (một tiêu chí có hai nội dung cùng thiếu vẫn đếm là một).
 
-> cần làm rõ: 4 — trong đó thiếu hồ sơ: 2
-
-Lý do chọn cách này thay vì thêm ô ngang hàng: mọi ô đếm hiện có đều đếm **tiêu chí** và cộng lại
-đúng bằng `n_tieu_chi` (`n_dat + n_khong_dat + n_can_lam_ro + n_khong_ap_dung`). Thêm một ô ngang
-hàng sẽ phá đẳng thức đó và làm bảng tổng hợp nói dối. Đếm verdict thay vì tiêu chí cũng phá vì
-đơn vị khác hẳn.
+> **Sửa sau review (2026-07-30, chủ dự án quyết):** bản đầu của spec này định nghĩa `n_thieu_ho_so`
+> là **khoản mục con của "cần làm rõ"** và trình bày lồng trong ô đó. Sai. `_rollup` ưu tiên
+> `"không đạt"` TRƯỚC `{SOI, THIEU, LOI}`, nên một tiêu chí có cả verdict `"không đạt"` lẫn
+> `"thiếu hồ sơ"` rơi vào `n_khong_dat` — mà vẫn được đếm — cho ra `n_thieu_ho_so > n_can_lam_ro`
+> và UI hiện "0 cần làm rõ (1 thiếu hồ sơ)": một khoản mục con lớn hơn cha, đúng thứ spec này viết
+> ra để tránh.
+>
+> Quyết định: **giữ phép đếm** (đếm mọi tiêu chí có verdict thiếu hồ sơ — lọc theo roll-up sẽ giấu
+> mất việc thiếu tài liệu ở đúng những tiêu chí đã có vấn đề khác, là chỗ chuyên gia cần biết
+> nhất), nhưng `n_thieu_ho_so` là **LÁT CẮT ĐỘC LẬP** nằm NGOÀI đẳng thức bốn ô, trình bày bằng
+> Tag/cột RIÊNG. Đẳng thức `n_tieu_chi = n_dat + n_khong_dat + n_can_lam_ro + n_khong_ap_dung` vẫn
+> đúng vì `n_thieu_ho_so` không tham gia phép cộng đó.
 
 `_summary` thêm khoá `n_thieu_ho_so`; `EvalSummary` (frontend types) thêm field tương ứng
 (optional, để payload cũ không vỡ).
 
 ### B3 — UI
 
-- `pillClass` tách `"thiếu hồ sơ"` khỏi nhánh mặc định `can-lam-ro`, cho class/màu riêng. Hiện nó
-  dùng chung màu cam với "cần làm rõ" nên chuyên gia không phân biệt được "AI chưa đủ căn cứ" với
-  "nhà thầu không nộp tài liệu" — hai việc cần hai hành động khác nhau.
-- Tab "Tổng hợp" (bảng so sánh nhà thầu): cột "Cần làm rõ" hiện thêm phần trong đó thiếu hồ sơ.
+- **Sửa sau review:** bản đầu yêu cầu tách màu ở `pillClass`. Sai chỗ — `ResultPill` chỉ dùng ở cấp
+  **tiêu chí**, mà tiêu chí không bao giờ mang kết quả `"thiếu hồ sơ"` (cả hai roll-up đều cuộn nó
+  thành `"cần làm rõ"`), nên nhánh đó là code chết. Chỗ chuyên gia thật sự thấy `"thiếu hồ sơ"` là
+  ô `Select` cấp **verdict** — mà `KQ_OPTS` lại thiếu giá trị đó nên verdict ấy hiện thành chữ trần
+  và dropdown âm thầm chỉ có bốn lựa chọn. Quyết định: xóa nhánh chết + CSS thừa, bổ sung
+  `"thiếu hồ sơ"` vào `KQ_OPTS`. Ô verdict là `antd Select` thuần (mọi giá trị đều không màu) nên
+  phân biệt bằng nhãn, không tô màu riêng.
+- Tab "Tổng hợp" (bảng so sánh nhà thầu): thêm **cột riêng** "Thiếu hồ sơ" ngay sau cột "Cần làm
+  rõ"; cột "Cần làm rõ" giữ nguyên, không lồng chú thích vào.
 - Đầu mỗi tab nhà thầu: khi `ho_so_chua_nop` khác rỗng, hiện thẻ liệt kê loại hồ sơ chưa nộp kèm
   tiêu chí bị ảnh hưởng. Rỗng thì không hiện gì (không thêm nhiễu cho ca đủ hồ sơ).
 
@@ -187,11 +218,40 @@ hàng sẽ phá đẳng thức đó và làm bảng tổng hợp nói dối. Đ�
 - Nhà thầu nộp đủ → `ho_so_chua_nop` là mảng rỗng.
 - `n_thieu_ho_so` đếm đúng số **tiêu chí** có ≥1 verdict `"thiếu hồ sơ"`; một tiêu chí có 2 verdict
   thiếu vẫn đếm là 1.
-- Đẳng thức tổng vẫn đúng: `n_tieu_chi == n_dat + n_khong_dat + n_can_lam_ro + n_khong_ap_dung`,
-  và `n_thieu_ho_so <= n_can_lam_ro`.
+- Đẳng thức tổng vẫn đúng: `n_tieu_chi == n_dat + n_khong_dat + n_can_lam_ro + n_khong_ap_dung`.
+  **KHÔNG** assert `n_thieu_ho_so <= n_can_lam_ro` — bất biến đó đã bị bác (xem mục B2): tiêu chí
+  có cả "không đạt" lẫn "thiếu hồ sơ" làm `n_thieu_ho_so` vượt `n_can_lam_ro` một cách hợp lệ.
+- Nhà thầu chưa chấm lần nào → `ho_so_chua_nop == []`; đã chấm mà `ho_so_nhan_duoc` rỗng → vẫn liệt kê.
+- Tiêu chí toàn nội dung `ap_dung="lien_danh"` + nhà thầu độc lập → tài liệu đối chiếu của tiêu chí
+  đó (vd `giay_uy_quyen`) **không** bị liệt; thêm một nội dung `ap_dung=""` vào tiêu chí đó → **có**.
+- Tiêu chí khai alias (`ket_qua_mo_thau`) → vẫn nhận ra là `webform`, không bị liệt. Khai
+  `bao_lanh_du_thau` trong khi nhà thầu đã nộp `bao_dam_du_thau` → không bị liệt.
 - Payload cũ (không có `n_thieu_ho_so` / `ho_so_chua_nop`) không làm vỡ frontend.
 
 ## Thứ tự triển khai đề xuất
 
 Phần A trước (rẻ, độc lập, và làm mọi lần thử tay sau đó nhanh hơn), rồi Phần B.
 Trong Phần B: B2 trước B1 — B2 chỉ đụng `_summary` + UI, B1 cần thêm phép tính và dữ liệu mới.
+
+## Nợ kỹ thuật còn lại (đã triển khai xong, cố ý hoãn)
+
+Review cuối nhánh (2026-07-30) nêu và chủ dự án đồng ý hoãn:
+
+1. **`artifact_validation` giữ `{}` khi `validate_artifact` NÉM lỗi** (vd LLM timeout) với file có
+   text — vi phạm cùng hợp đồng "không có kết luận thì `None`" mà Phần A vừa dựng. Lỗi có từ trước;
+   `{}` là falsy với consumer duy nhất (`?.match === false`) nên không sinh cảnh báo giả. Gộp vào
+   lần tới khi đụng phần xử lý lỗi của `upload_document`.
+2. **Không có test tự động cho state `uploading`** ở frontend — repo chưa có hạ tầng test component
+   cho file đó; dựng Vitest + Testing Library cho một boolean là không tương xứng.
+3. **`EvalResult.summary` (`experiment/evaluate/schema.py`) là bản đếm thứ hai**, không có
+   `n_thieu_ho_so`. Frontend không đi đường đó nên chưa lộ; đã thêm comment trỏ đường ở cả hai phía.
+4. **Báo cáo Word/Excel chưa mang số liệu mới** — `services/reports.py` dùng shape cũ. Spec B1 viện
+   dẫn "báo cáo về sau cũng cần cùng con số" làm một lý do tính ở backend, nên đây là việc tiếp theo
+   đã biết trước.
+5. **Skew giữa rubric hiện tại và ảnh chụp lúc chấm:** `_ho_so_chua_nop` đọc `RubricCriterion` HIỆN
+   TẠI còn `ho_so_nhan_duoc` là ảnh chụp lúc chấm. Sửa rubric sau khi chấm làm banner mô tả một
+   rubric mà các verdict bên dưới chưa từng thấy.
+6. **Một cờ `uploading` làm cả bốn nút upload cùng quay** — chặn upload đồng thời là đúng, nhưng
+   spinner nên nằm ở đúng nút được bấm.
+7. **`--teal` đọc như màu tích cực** (nó là màu nút chính của app), trong khi cột "Thiếu hồ sơ" dùng
+   nó cho một con số cần chú ý. Bảng token hẹp nên đây là lựa chọn có cân nhắc, không phải sơ suất.
