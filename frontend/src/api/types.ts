@@ -58,11 +58,13 @@ export interface VendorProfile {
   do_tin: number; mau_thuan: boolean; ghi_chu: string;
 }
 export interface HoSoNhanDuoc { loai_ho_so: string; files: string[]; n_trang: number; }
+export interface HoSoChuaNop { loai_ho_so: string; tieu_chi: string[]; }
 export interface VendorEval {
   vendor_id: number; ten: string; summary: EvalSummary; criteria: CriterionEval[];
   ten_viet_tat?: string; hinh_thuc?: string;
   vendor_profile?: VendorProfile | null;
   ho_so_nhan_duoc?: HoSoNhanDuoc[];
+  ho_so_chua_nop?: HoSoChuaNop[];
 }
 export interface EvalResultsPayload { vendors: VendorEval[]; }
 // Danh mục loại hồ sơ giờ lấy động từ backend — dùng hook useArtifactTypes() (api/artifacts.ts).

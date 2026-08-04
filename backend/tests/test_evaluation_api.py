@@ -571,3 +571,105 @@ def test_thieu_ho_so_trong_tieu_chi_da_khong_dat_van_dem(client, monkeypatch):
     assert s["n_thieu_ho_so"] == 1        # > n_can_lam_ro -> ĐÚNG, không phải bug (xem docstring)
     assert s["n_tieu_chi"] == (s["n_dat"] + s["n_khong_dat"]
                                + s["n_can_lam_ro"] + s["n_khong_ap_dung"])
+
+
+def _seed_hai_loai(client) -> int:
+    """Gói có 3 tiêu chí: đơn dự thầu; bảng giá ↔ webform (dùng chung); thỏa thuận liên danh."""
+    pid = client.post("/api/v1/packages",
+                      json={"ma_so": "G-CN", "ten": "g", "vendors": ["A"]}).json()["data"]["id"]
+    client.put(f"/api/v1/packages/{pid}/rubric", json={"criteria": [
+        {"nhom": "hop_le", "ten": "Đơn dự thầu", "yeu_cau_goc": "Có đơn",
+         "hsdt_can_kiem_tra": ["don_du_thau"],
+         "noi_dung_can_kiem_tra": [{
+             "noi_dung_kiem_tra": "Có đơn", "hsdt_kiem_tra": "don_du_thau", "yeu_cau": "có",
+             "can_lam_ro": "", "can_tra_cuu": False, "thong_tin_bo_sung": "", "nguon": "",
+             "can_review": False}]},
+        {"nhom": "hop_le", "ten": "Giá khớp webform", "yeu_cau_goc": "Giá khớp",
+         "hsdt_can_kiem_tra": ["bang_gia", "webform"],
+         "noi_dung_can_kiem_tra": [{
+             "noi_dung_kiem_tra": "Giá khớp", "hsdt_kiem_tra": "bang_gia", "yeu_cau": "khớp",
+             "can_lam_ro": "", "can_tra_cuu": False, "thong_tin_bo_sung": "", "nguon": "",
+             "can_review": False}]},
+        {"nhom": "hop_le", "ten": "Thỏa thuận liên danh", "yeu_cau_goc": "Có thỏa thuận",
+         "hsdt_can_kiem_tra": ["thoa_thuan_lien_danh"],
+         "noi_dung_can_kiem_tra": [{
+             "noi_dung_kiem_tra": "Có thỏa thuận", "hsdt_kiem_tra": "thoa_thuan_lien_danh",
+             "yeu_cau": "có", "can_lam_ro": "", "can_tra_cuu": False, "thong_tin_bo_sung": "",
+             "nguon": "", "can_review": False, "ap_dung": "lien_danh"}]},
+    ]})
+    return pid
+
+
+def _fake_eval_nhan_don(hinh_thuc: str = "độc lập"):
+    """evaluate_vendor giả: nhà thầu CHỈ nộp đơn dự thầu, hình thức theo tham số."""
+    async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
+                   registry=None, pkg_ctx=None, cache=None, call_cache=None):
+        r = EvalResult(doc=doc, vendor=vendor_ctx,
+                       vendor_profile=VendorProfile(hinh_thuc=hinh_thuc, nguon="khai báo"),
+                       ho_so_nhan_duoc=[HoSoNhanDuoc("don_du_thau", ["don.pdf"], 1)])
+        for c in criteria:
+            r.criteria.append(CriterionEval(nhom=c["nhom"], ten=c["ten"], ket_qua="đạt",
+                                            verdicts=[], yeu_cau_goc=""))
+        return r
+    return fake
+
+
+def test_ho_so_chua_nop_loai_webform_va_lien_danh_cho_nha_thau_doc_lap(client, monkeypatch):
+    """webform là tài liệu bên mời thầu; thỏa thuận liên danh không áp dụng nhà thầu độc lập."""
+    import routers.evaluation as re_
+
+    pid = _seed_hai_loai(client)
+    monkeypatch.setattr(re_, "evaluate_vendor", _fake_eval_nhan_don("độc lập"))
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+
+    v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+    loais = [x["loai_ho_so"] for x in v["ho_so_chua_nop"]]
+    assert "bang_gia" in loais                    # thật sự thiếu
+    assert "don_du_thau" not in loais             # đã nộp
+    assert "webform" not in loais                 # tài liệu DÙNG CHUNG, không phải nhà thầu nộp
+    assert "thoa_thuan_lien_danh" not in loais    # chỉ áp dụng liên danh
+    # Mỗi mục nêu tiêu chí bị ảnh hưởng để chuyên gia thấy ngay hệ quả.
+    bg = next(x for x in v["ho_so_chua_nop"] if x["loai_ho_so"] == "bang_gia")
+    assert bg["tieu_chi"] == ["Giá khớp webform"]
+
+
+def test_ho_so_chua_nop_bao_thoa_thuan_lien_danh_cho_nha_thau_lien_danh(client, monkeypatch):
+    import routers.evaluation as re_
+
+    pid = _seed_hai_loai(client)
+    monkeypatch.setattr(re_, "evaluate_vendor", _fake_eval_nhan_don("liên danh"))
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+    assert "thoa_thuan_lien_danh" in [x["loai_ho_so"] for x in v["ho_so_chua_nop"]]
+
+
+def test_ho_so_chua_nop_hinh_thuc_khong_ro_thi_khong_tru_gi(client, monkeypatch):
+    """Fail-safe: không dò được hình thức -> thà báo thừa còn hơn giấu mất hồ sơ thật sự thiếu."""
+    import routers.evaluation as re_
+
+    pid = _seed_hai_loai(client)
+    monkeypatch.setattr(re_, "evaluate_vendor", _fake_eval_nhan_don(""))
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+    assert "thoa_thuan_lien_danh" in [x["loai_ho_so"] for x in v["ho_so_chua_nop"]]
+
+
+def test_ho_so_chua_nop_rong_khi_nop_du(client, monkeypatch):
+    import routers.evaluation as re_
+
+    async def fake(criteria, hsdt_files, *, doc="HSDT", vision_fn=None, vendor_ctx=None,
+                   registry=None, pkg_ctx=None, cache=None, call_cache=None):
+        r = EvalResult(doc=doc, vendor=vendor_ctx,
+                       vendor_profile=VendorProfile(hinh_thuc="độc lập", nguon="khai báo"),
+                       ho_so_nhan_duoc=[HoSoNhanDuoc("don_du_thau", ["don.pdf"], 1),
+                                        HoSoNhanDuoc("bang_gia", ["bg.pdf"], 2)])
+        for c in criteria:
+            r.criteria.append(CriterionEval(nhom=c["nhom"], ten=c["ten"], ket_qua="đạt",
+                                            verdicts=[], yeu_cau_goc=""))
+        return r
+
+    pid = _seed_hai_loai(client)
+    monkeypatch.setattr(re_, "evaluate_vendor", fake)
+    assert client.post(f"/api/v1/packages/{pid}/evaluate").status_code == 200
+    v = client.get(f"/api/v1/packages/{pid}/results").json()["data"]["vendors"][0]
+    assert v["ho_so_chua_nop"] == []

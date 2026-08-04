@@ -181,6 +181,28 @@ function HinhThucBanner({ v }: { v: VendorEval }) {
   );
 }
 
+// Loại hồ sơ HSMT đòi mà nhà thầu chưa nộp. Rỗng thì KHÔNG hiện gì — ca đủ hồ sơ không cần thêm
+// nhiễu, và một khối luôn hiện sẽ dạy mắt bỏ qua nó.
+function HoSoChuaNopBanner({ v }: { v: VendorEval }) {
+  const nhan = useArtifactLabel();
+  const ds = v.ho_so_chua_nop ?? [];
+  if (ds.length === 0) return null;
+  return (
+    <div style={{ marginTop: "var(--sp-3)", padding: "var(--sp-3)", borderRadius: 6,
+                  background: "var(--partial-bg)", border: "1px solid var(--line)" }}>
+      <div style={{ fontWeight: 600, color: "var(--partial)", marginBottom: "var(--sp-2)" }}>
+        Chưa nộp {ds.length} loại hồ sơ
+      </div>
+      {ds.map((h) => (
+        <div key={h.loai_ho_so} style={{ fontSize: "var(--fs-label)", color: "var(--ink)" }}>
+          {nhan(h.loai_ho_so)}
+          <span style={{ color: "var(--ink-muted)" }}> — cần cho: {h.tieu_chi.join("; ")}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function VendorSection({ v, onOverride }: {
   v: VendorEval;
   onOverride: (id: number, payload: Record<string, unknown>) => void;
@@ -199,6 +221,7 @@ function VendorSection({ v, onOverride }: {
         </div>
         <div style={{ marginTop: "var(--sp-2)" }}><SummaryChips v={v} /></div>
         <HinhThucBanner v={v} />
+        <HoSoChuaNopBanner v={v} />
       </div>
 
       <div style={{ padding: "var(--sp-3) var(--sp-4) var(--sp-4)" }}>

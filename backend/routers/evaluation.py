@@ -17,11 +17,14 @@ from responses import ok, fail
 from services.hsdt_pipeline import evaluate_vendor  # tests monkeypatch tên này
 from services.ai_cache import DbCallCache, xoa_ai_cache
 from services.ocr_cache import DocumentOcrCache, xoa_cache
+from services import artifact_catalog
 from experiment.evaluate.ingest import DPI_MAC_DINH, ingest_cache_key
+from experiment.evaluate.route import _norm
 from experiment.evaluate.schema import (
     KET_QUA_DAT, KET_QUA_KHONG, KET_QUA_KHONG_AP_DUNG, KET_QUA_LOI, KET_QUA_SOI, KET_QUA_THIEU,
     PackageContext, VendorContext,
 )
+from experiment.evaluate.vendor_profile import canon_hinh_thuc
 
 router = APIRouter(prefix="/api/v1", tags=["evaluation"])
 log = logging.getLogger("abes.evaluate")
@@ -57,6 +60,59 @@ def _thieu_loai_ho_so(pkg: models.ProcurementPackage, vendor_id: int) -> list[st
     """Tên các file HSDT chưa gán loại hồ sơ — không chấm được, phải báo thay vì bỏ qua."""
     return [Path(d.file_path).name
             for d in _ho_so_cua_vendor(pkg, vendor_id) if not d.artifact_type]
+
+
+def _ho_so_chua_nop(db: Session, package_id: int,
+                    ve: models.HsdtVendorEval | None) -> list[dict[str, Any]]:
+    """Loại hồ sơ HSMT đòi mà nhà thầu CHƯA NỘP, kèm tiêu chí bị ảnh hưởng.
+
+    Khác `_thieu_loai_ho_so` (file đã tải nhưng chưa gán loại) — đây là loại hồ sơ hoàn toàn vắng
+    mặt. Trừ hai nhóm khỏi tập yêu cầu:
+
+    - Tài liệu DÙNG CHUNG (webform = kết quả mở thầu) do bên mời thầu công bố cho cả gói, không
+      phải thứ nhà thầu nộp — báo thiếu là quy kết sai.
+    - Loại mà MỌI nội dung trỏ tới nó đều `ap_dung` lệch hình thức của nhà thầu (vd thỏa thuận
+      liên danh với nhà thầu độc lập). Đọc cùng dữ liệu mà `_gate_khong_ap_dung` đọc, KHÔNG cài
+      lại phép gate.
+
+    Chưa dò được hình thức -> KHÔNG trừ theo hình thức (fail-safe: thà báo thừa còn hơn giấu mất
+    một loại hồ sơ thật sự thiếu).
+
+    So tập bằng `_norm` vì `ho_so_nhan_duoc.loai_ho_so` đã được inventory_pages chuẩn hoá, còn
+    `hsdt_can_kiem_tra` là mã catalog nguyên bản. Giữ mã gốc để hiển thị nhãn.
+    """
+    crits = db.scalars(select(models.RubricCriterion).where(
+        models.RubricCriterion.package_id == package_id)
+        .order_by(models.RubricCriterion.thu_tu)).all()
+    hinh_thuc = (ve.hinh_thuc if ve else "") or ""
+    da_nhan = {_norm(str(h.get("loai_ho_so", ""))) for h in ((ve.ho_so_nhan_duoc if ve else []) or [])}
+
+    # mã gốc -> {"tieu_chi": [...], "chi_hinh_thuc_khac": bool}
+    can: dict[str, dict[str, Any]] = {}
+    for c in crits:
+        for raw in (c.hsdt_can_kiem_tra or []):
+            ma = str(raw).strip()
+            if not ma or artifact_catalog.la_dung_chung(_norm(ma)):
+                continue
+            muc = can.setdefault(ma, {"tieu_chi": [], "chi_hinh_thuc_khac": True})
+            if c.ten not in muc["tieu_chi"]:
+                muc["tieu_chi"].append(c.ten)
+            # Loại này còn "áp dụng" nếu có ÍT NHẤT MỘT nội dung không bị lệch hình thức.
+            nds = [n for n in c.noi_dung if _norm(n.hsdt_kiem_tra) == _norm(ma)]
+            if not nds or not hinh_thuc:
+                muc["chi_hinh_thuc_khac"] = False
+            elif any(not _lech_hinh_thuc(n.ap_dung, hinh_thuc) for n in nds):
+                muc["chi_hinh_thuc_khac"] = False
+
+    return [{"loai_ho_so": ma, "tieu_chi": muc["tieu_chi"]}
+            for ma, muc in can.items()
+            if _norm(ma) not in da_nhan and not muc["chi_hinh_thuc_khac"]]
+
+
+def _lech_hinh_thuc(ap_dung: str, hinh_thuc: str) -> bool:
+    """Nội dung chỉ áp dụng một hình thức, mà nhà thầu thuộc hình thức KHÁC?"""
+    ap = canon_hinh_thuc(ap_dung or "")
+    return bool(ap) and ap != hinh_thuc
 
 
 def _hsdt_files(pkg: models.ProcurementPackage,
@@ -281,7 +337,8 @@ async def results(package_id: int, db: Session = Depends(get_db)):
             "vendor_id": v.id, "ten": v.ten, "ten_viet_tat": v.ten_viet_tat, "hinh_thuc": v.hinh_thuc,
             "summary": _summary(evals), "criteria": crit_out,
             "vendor_profile": _profile_out(ve),
-            "ho_so_nhan_duoc": ve.ho_so_nhan_duoc if ve else []})
+            "ho_so_nhan_duoc": ve.ho_so_nhan_duoc if ve else [],
+            "ho_so_chua_nop": _ho_so_chua_nop(db, package_id, ve)})
     return ok({"vendors": vendors_out})
 
 
