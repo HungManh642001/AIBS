@@ -196,6 +196,22 @@ Không đọc được `/metrics` của vLLM, nên dò từ phía ứng dụng:
 4. Trần an toàn cuối cùng ghi vào `.env`; giữ **≤ 32** vì thread pool mặc định của
    `asyncio.to_thread`.
 
+### Cạm bẫy khi đo trên máy này — đọc trước khi so bất kỳ con số nào
+
+Repo nằm ở `/mnt/d`, tức **drvfs** (ổ Windows nhìn qua WSL). drvfs chậm hơn ext4 nhiều lần ở thao
+tác mở/stat file — thứ chi phối việc import Python, mà `backend/tests/conftest.py` lại **nạp lại
+`main`/`database`/`models`/`routers*` cho MỖI test**. Hệ quả:
+
+- Đặt hai nhánh trên hai filesystem khác nhau (vd worktree so sánh ở `/tmp`, bản chính ở `/mnt/d`)
+  cho ra chênh lệch **~40% hoàn toàn giả**. Đây là bẫy đã thật sự sập một lần trong đợt này: phép
+  đo ban đầu báo "chậm 38%", điều tra ra là do filesystem chứ không phải code.
+- Ngay trên cùng một commit, cùng filesystem, ba lần chạy liên tiếp lệch nhau tới **14%** tuỳ tải máy.
+
+**Quy tắc:** mọi phép so hiệu năng phải (a) đặt cả hai nhánh trên **CÙNG** filesystem, và (b) chạy
+**xen kẽ** BASE/HEAD nhiều vòng để khử trôi theo thời gian. Đo một lần mỗi bên rồi kết luận là sai.
+Phép đo đúng cách trong đợt này (cả hai trên ext4, xen kẽ 2 vòng) cho BASE 51.8/57.1s vs HEAD
+50.2/37.0s — tức **không có hồi quy**.
+
 ## Files chạm
 
 `backend/services/llm_gate.py` (mới), `backend/services/ai_client.py`, `backend/config.py`,
